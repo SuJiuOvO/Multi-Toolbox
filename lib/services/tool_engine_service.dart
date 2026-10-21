@@ -735,7 +735,12 @@ class ToolEngineService {
     // ========================================================
     onProgress?.call(0.10, '正在检测系统 FFmpeg 编解码引擎...');
     String? ffmpegPath;
-    final candidates = <String>['ffmpeg'];
+    final exeDir = p.dirname(Platform.resolvedExecutable);
+    final candidates = <String>[
+      p.join(exeDir, 'ffmpeg.exe'),
+      p.join(exeDir, 'bin', 'ffmpeg.exe'),
+      'ffmpeg',
+    ];
     final home = Platform.environment['USERPROFILE'] ?? '';
     if (home.isNotEmpty) {
       candidates.add(p.join(home, r'AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe'));
@@ -770,7 +775,7 @@ class ToolEngineService {
     if (ffmpegPath == null) {
       return ProcessingResult(
         success: false,
-        message: '未在系统路径中找到有效 FFmpeg。\n请在 Windows PowerShell 中运行:\nwinget install Gyan.FFmpeg.Essentials\n安装后重启软件即可。',
+        message: '未在系统路径或程序目录中找到有效 FFmpeg。\n若下载的是极简便携包，可在 Windows PowerShell 中运行:\nwinget install Gyan.FFmpeg.Essentials\n安装后重启软件；或直接下载自带 FFmpeg 的完整便携包。',
       );
     }
 
@@ -1193,7 +1198,12 @@ class ToolEngineService {
       return _cachedFfmpegPath;
     }
 
-    final candidates = <String>['ffmpeg'];
+    final exeDir = p.dirname(Platform.resolvedExecutable);
+    final candidates = <String>[
+      p.join(exeDir, 'ffmpeg.exe'),
+      p.join(exeDir, 'bin', 'ffmpeg.exe'),
+      'ffmpeg',
+    ];
     final home = Platform.environment['USERPROFILE'] ?? '';
     if (home.isNotEmpty) {
       candidates.add(p.join(home, r'AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe'));
@@ -1266,7 +1276,7 @@ class ToolEngineService {
     if (ffmpegPath == null) {
       return ProcessingResult(
         success: false,
-        message: '未在系统路径中找到有效 FFmpeg。\n请在 Windows PowerShell 中运行:\nwinget install Gyan.FFmpeg.Essentials\n安装后重启软件即可。',
+        message: '未在系统路径或程序目录中找到有效 FFmpeg。\n若下载的是极简便携包，可在 Windows PowerShell 中运行:\nwinget install Gyan.FFmpeg.Essentials\n安装后重启软件；或直接下载自带 FFmpeg 的完整便携包。',
       );
     }
 
