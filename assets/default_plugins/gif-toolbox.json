@@ -1,0 +1,199 @@
+{
+  "id": "gif-toolbox",
+  "name": "GIF 动图制作与解析",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "category": "media",
+  "description": "综合动态图处理工具箱：支持多张静态图片批量合成动态 GIF、视频智能提取高清动图（调色板防噪点抖动算法优化），以及 GIF 逐帧拆解并导出 PNG/JPG 序列帧与 ZIP 打包归档。",
+  "icon": "gif",
+  "author": "Toolbox Team",
+  "engineType": "native_tool",
+  "inputs": [
+    {
+      "id": "mode",
+      "label": "功能模式",
+      "type": "select",
+      "defaultValue": "images_to_gif",
+      "options": [
+        {"label": "🖼️ 多图合成动图 (Images to GIF)", "value": "images_to_gif"},
+        {"label": "🎬 视频转换动图 (Video to GIF)", "value": "video_to_gif"},
+        {"label": "🔍 动图逐帧解析 (GIF Frame Extractor)", "value": "extract_frames"}
+      ]
+    },
+    {
+      "id": "images",
+      "label": "选择多张连续图片 (支持顺序合成)",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": true,
+      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "images_to_gif"
+      }
+    },
+    {
+      "id": "delayMs",
+      "label": "单帧播放间隔 (毫秒 ms，如 200ms 对应约 5 FPS)",
+      "type": "slider",
+      "defaultValue": 200,
+      "min": 40,
+      "max": 1000,
+      "step": 20,
+      "visibleIf": {
+        "field": "mode",
+        "equals": "images_to_gif"
+      }
+    },
+    {
+      "id": "scaleWidth",
+      "label": "最大限制宽度 (0 为保持原图尺寸)",
+      "type": "select",
+      "defaultValue": 0,
+      "options": [
+        {"label": "保持原图尺寸 (原始分辨率)", "value": 0},
+        {"label": "320 px (表情包/微缩尺寸)", "value": 320},
+        {"label": "480 px (标准适中推荐)", "value": 480},
+        {"label": "640 px (高清宽屏)", "value": 640}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "images_to_gif"
+      }
+    },
+    {
+      "id": "repeat",
+      "label": "循环播放模式",
+      "type": "select",
+      "defaultValue": 0,
+      "options": [
+        {"label": "无限循环播放 (默认推荐)", "value": 0},
+        {"label": "仅播放一次后停止", "value": 1}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "images_to_gif"
+      }
+    },
+    {
+      "id": "videoFile",
+      "label": "选择待转换视频文件",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["mp4", "mov", "mkv", "avi", "flv", "webm"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "video_to_gif"
+      }
+    },
+    {
+      "id": "startTime",
+      "label": "截取起始时间 (秒数如 0，或时间格式 00:00:02)",
+      "type": "textarea",
+      "defaultValue": "0",
+      "required": false,
+      "visibleIf": {
+        "field": "mode",
+        "equals": "video_to_gif"
+      }
+    },
+    {
+      "id": "duration",
+      "label": "截取片段时长 (秒, 建议 1~15s 控制动图体积)",
+      "type": "slider",
+      "defaultValue": 5,
+      "min": 1,
+      "max": 30,
+      "step": 1,
+      "visibleIf": {
+        "field": "mode",
+        "equals": "video_to_gif"
+      }
+    },
+    {
+      "id": "fps",
+      "label": "输出帧率 (FPS, 越高越流畅但文件越大)",
+      "type": "slider",
+      "defaultValue": 12,
+      "min": 6,
+      "max": 24,
+      "step": 1,
+      "visibleIf": {
+        "field": "mode",
+        "equals": "video_to_gif"
+      }
+    },
+    {
+      "id": "width",
+      "label": "目标宽度 (高度自适应等比缩放)",
+      "type": "select",
+      "defaultValue": 480,
+      "options": [
+        {"label": "320 px (小体积/快速加载)", "value": 320},
+        {"label": "480 px (标准平衡/推荐)", "value": 480},
+        {"label": "640 px (清晰质感)", "value": 640},
+        {"label": "800 px (超清大图)", "value": 800}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "video_to_gif"
+      }
+    },
+    {
+      "id": "gifFile",
+      "label": "选择待解析的 GIF 动图",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["gif"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "extract_frames"
+      }
+    },
+    {
+      "id": "format",
+      "label": "导出序列帧格式",
+      "type": "select",
+      "defaultValue": "png",
+      "options": [
+        {"label": "PNG (无损透明度保留)", "value": "png"},
+        {"label": "JPG (轻量化高压缩)", "value": "jpg"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "extract_frames"
+      }
+    },
+    {
+      "id": "exportZip",
+      "label": "输出打包方式",
+      "type": "select",
+      "defaultValue": "true",
+      "options": [
+        {"label": "同时生成 ZIP 压缩包与散列帧文件", "value": "true"},
+        {"label": "仅生成独立散列帧图片", "value": "false"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "extract_frames"
+      }
+    }
+  ],
+  "action": {
+    "handler": "gif_toolbox",
+    "params": {
+      "mode": "${mode}",
+      "delayMs": "${delayMs}",
+      "scaleWidth": "${scaleWidth}",
+      "repeat": "${repeat}",
+      "startTime": "${startTime}",
+      "duration": "${duration}",
+      "fps": "${fps}",
+      "width": "${width}",
+      "format": "${format}",
+      "exportZip": "${exportZip}"
+    }
+  }
+}

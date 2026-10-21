@@ -1,0 +1,73 @@
+{
+  "id": "video-audio-toolbox",
+  "name": "音视频综合工具箱",
+  "version": "1.2.0",
+  "minAppVersion": "1.0.0",
+  "category": "media",
+  "description": "基于工业级 FFmpeg 管道的音视频全能工具箱：支持极速零损提取原音轨 (Stream Copy 秒级导出)、高品质转换 MP3/WAV/AAC、HandBrake 级视频智能压缩、完全视频倒放（自适应内存保护）与通用 MP4 格式转换。",
+  "icon": "movie",
+  "author": "Toolbox Team",
+  "engineType": "media_pipeline",
+  "inputs": [
+    {
+      "id": "sourceFiles",
+      "label": "选择媒体文件 (音/视频)",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["mp4", "mkv", "mov", "avi", "mp3", "wav", "flac", "aac", "webm", "ts"]
+    },
+    {
+      "id": "operation",
+      "label": "选择执行功能",
+      "type": "select",
+      "defaultValue": "compress_video",
+      "options": [
+        {"label": "视频智能压缩 (减小体积保画质)", "value": "compress_video"},
+        {"label": "极速提取原音轨 (Stream Copy 零损耗/秒级)", "value": "extract_audio_copy"},
+        {"label": "提取音频为高兼容 MP3 (LAME VBR 动态编码)", "value": "extract_audio_mp3"},
+        {"label": "视频完全倒放 (自适应内存保护，防卡死)", "value": "reverse_video"},
+        {"label": "转换为通用 MP4 格式 (H.264+AAC)", "value": "to_mp4"},
+        {"label": "音频格式转换 (MP3/WAV/AAC)", "value": "audio_convert"}
+      ]
+    },
+    {
+      "id": "compressPreset",
+      "label": "视频压缩预设方案",
+      "type": "select",
+      "defaultValue": "normal",
+      "options": [
+        {"label": "推荐均衡模式 (减小 50%~70% 体积，保持画质)", "value": "normal"},
+        {"label": "极致小体积模式 (降为 720p/30fps，减小 75%+)", "value": "extreme"},
+        {"label": "高保真模式 (接近无损，体积减小 30%~50%)", "value": "high_quality"}
+      ],
+      "visibleIf": {
+        "field": "operation",
+        "equals": "compress_video"
+      }
+    },
+    {
+      "id": "audioTargetFormat",
+      "label": "音频转换目标格式",
+      "type": "select",
+      "defaultValue": "mp3",
+      "options": [
+        {"label": "MP3 (通用高兼容)", "value": "mp3"},
+        {"label": "WAV (无损 PCM 未压缩)", "value": "wav"},
+        {"label": "AAC (高保真小体积)", "value": "aac"}
+      ],
+      "visibleIf": {
+        "field": "operation",
+        "equals": "audio_convert"
+      }
+    }
+  ],
+  "action": {
+    "handler": "media_pipeline",
+    "params": {
+      "op": "${operation}",
+      "preset": "${compressPreset}",
+      "format": "${audioTargetFormat}"
+    }
+  }
+}

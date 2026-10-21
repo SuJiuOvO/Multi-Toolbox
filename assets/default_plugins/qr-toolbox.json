@@ -1,0 +1,84 @@
+{
+  "id": "qr-toolbox",
+  "name": "二维码制作与识别",
+  "version": "1.1.0",
+  "minAppVersion": "1.0.0",
+  "category": "utility",
+  "description": "纯原生 Dart 离线实现的专业二维码生成与扫描识别引擎。支持 L/M/Q/H 多档容错率、自定义图片分辨率 (200~1600px)、像素级静区位图渲染，以及灰度增强智能反解图片中的二维码与条码。",
+  "icon": "qr_code",
+  "author": "Toolbox Team",
+  "engineType": "native_tool",
+  "inputs": [
+    {
+      "id": "mode",
+      "label": "操作模式",
+      "type": "select",
+      "defaultValue": "generate",
+      "options": [
+        {"label": "✨ 制作生成二维码", "value": "generate"},
+        {"label": "🔍 识别解析已有二维码", "value": "decode"}
+      ]
+    },
+    {
+      "id": "content",
+      "label": "文本或网址内容",
+      "type": "textarea",
+      "defaultValue": "https://github.com",
+      "required": true,
+      "visibleIf": {
+        "field": "mode",
+        "equals": "generate"
+      }
+    },
+    {
+      "id": "errorLevel",
+      "label": "纠错容错等级",
+      "type": "select",
+      "defaultValue": "M",
+      "options": [
+        {"label": "等级 L (7% 容错率 - 适合超长字符/高密度)", "value": "L"},
+        {"label": "等级 M (15% 容错率 - 行业标准推荐)", "value": "M"},
+        {"label": "等级 Q (25% 容错率 - 适合户外/轻度污损)", "value": "Q"},
+        {"label": "等级 H (30% 容错率 - 最高防损/适合实体印制)", "value": "H"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "generate"
+      }
+    },
+    {
+      "id": "size",
+      "label": "生成图片分辨率 (边长 200~1600 px)",
+      "type": "slider",
+      "defaultValue": 600,
+      "min": 200,
+      "max": 1600,
+      "step": 50,
+      "visibleIf": {
+        "field": "mode",
+        "equals": "generate"
+      }
+    },
+    {
+      "id": "sourceFiles",
+      "label": "选择含二维码的图片",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "decode"
+      }
+    }
+  ],
+  "action": {
+    "handler": "qr_toolbox",
+    "params": {
+      "mode": "${mode}",
+      "content": "${content}",
+      "errorLevel": "${errorLevel}",
+      "size": "${size}"
+    }
+  }
+}

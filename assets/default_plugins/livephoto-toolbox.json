@@ -1,0 +1,123 @@
+{
+  "id": "livephoto-toolbox",
+  "name": "实况照片制作与解析",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "category": "media",
+  "description": "基于 Google Camera / Android 标准 XMP 容器规范，支持静态大片与短视频合流封装为动态照片 (.jpg)，支持长视频智能截取提炼实况照片，以及实况照片原画封面与微动视频的毫秒级无损分离剥离。",
+  "icon": "motion_photo",
+  "author": "Toolbox Team",
+  "engineType": "native_tool",
+  "inputs": [
+    {
+      "id": "mode",
+      "label": "操作模式",
+      "type": "select",
+      "defaultValue": "image_video_to_live",
+      "options": [
+        {"label": "📸 封面图 + 短视频合流制作 (Image + Video)", "value": "image_video_to_live"},
+        {"label": "🎬 视频一键提炼实况照片 (Video to Live Photo)", "value": "video_to_live"},
+        {"label": "🔍 实况照片解析与分离 (Extract Motion Photo)", "value": "extract_live_photo"}
+      ]
+    },
+    {
+      "id": "imageFile",
+      "label": "选择静态封面大片 (JPG/PNG/WebP)",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "image_video_to_live"
+      }
+    },
+    {
+      "id": "videoFile",
+      "label": "选择微动实况视频 (MP4/MOV，建议 1.5s~3s)",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["mp4", "mov", "mkv", "avi", "webm"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "image_video_to_live"
+      }
+    },
+    {
+      "id": "videoSource",
+      "label": "选择待提炼的视频文件",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["mp4", "mov", "mkv", "avi", "webm"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "video_to_live"
+      }
+    },
+    {
+      "id": "coverTimestamp",
+      "label": "封面抽取时间点 (秒数如 0，或时间格式 00:00:01)",
+      "type": "textarea",
+      "defaultValue": "00:00:00",
+      "required": false,
+      "visibleIf": {
+        "field": "mode",
+        "equals": "video_to_live"
+      }
+    },
+    {
+      "id": "duration",
+      "label": "实况片段时长 (秒, 1.5~4.0s 为佳)",
+      "type": "slider",
+      "defaultValue": 2.0,
+      "min": 1.0,
+      "max": 5.0,
+      "step": 0.5,
+      "visibleIf": {
+        "field": "mode",
+        "equals": "video_to_live"
+      }
+    },
+    {
+      "id": "motionPhotoFile",
+      "label": "选择待解析分离的实况/动态照片 (.jpg)",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["jpg", "jpeg"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "extract_live_photo"
+      }
+    },
+    {
+      "id": "exportFormat",
+      "label": "导出实况照片规范",
+      "type": "select",
+      "defaultValue": "android_motion_photo",
+      "options": [
+        {"label": "Android Motion Photo (推荐：单张.jpg，Google/小米/三星相册即按即动)", "value": "android_motion_photo"},
+        {"label": "iOS Live Photo 兼容配对包 (同名 JPG+MOV，生成 ZIP)", "value": "ios_live_photo"},
+        {"label": "双格式同步输出 (Android 单文件 + iOS 配对包)", "value": "both"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "in": ["image_video_to_live", "video_to_live"],
+        "inValues": ["image_video_to_live", "video_to_live"]
+      }
+    }
+  ],
+  "action": {
+    "handler": "livephoto_toolbox",
+    "params": {
+      "mode": "${mode}",
+      "imageFile": "${imageFile}",
+      "videoFile": "${videoFile}",
+      "coverTimestamp": "${coverTimestamp}",
+      "duration": "${duration}",
+      "exportFormat": "${exportFormat}"
+    }
+  }
+}

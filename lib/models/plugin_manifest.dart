@@ -1,0 +1,289 @@
+import 'dart:io';
+
+/// 插件输入显示条件定义 (用于模式/选项切换时的联动隐藏显示)
+class PluginInputCondition {
+  final String field;
+  final dynamic equals;
+  final dynamic notEquals;
+  final List<dynamic>? inValues;
+  final List<PluginInputCondition>? and;
+
+  PluginInputCondition({
+    required this.field,
+    this.equals,
+    this.notEquals,
+    this.inValues,
+    this.and,
+  });
+
+  factory PluginInputCondition.fromJson(Map<String, dynamic> json) {
+    return PluginInputCondition(
+      field: json['field']?.toString() ?? '',
+      equals: json['equals'],
+      notEquals: json['notEquals'],
+      inValues: ((json['in'] ?? json['inValues']) as List?)?.toList(),
+      and: (json['and'] as List?)
+          ?.map((e) => PluginInputCondition.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+    );
+  }
+}
+
+/// 插件输入参数定义
+class PluginInputDef {
+  final String id;
+  final String label;
+  final String type; // file_picker, slider, select, number, text
+  final bool required;
+  final bool allowMultiple;
+  final List<String> allowedExtensions;
+  final dynamic defaultValue;
+  final double? min;
+  final double? max;
+  final double? step;
+  final List<PluginSelectOption> options;
+  final PluginInputCondition? visibleIf;
+  final List<String> platforms; // universal, windows, android
+
+  PluginInputDef({
+    required this.id,
+    required this.label,
+    required this.type,
+    this.required = false,
+    this.allowMultiple = false,
+    this.allowedExtensions = const [],
+    this.defaultValue,
+    this.min,
+    this.max,
+    this.step,
+    this.options = const [],
+    this.visibleIf,
+    this.platforms = const ['universal'],
+  });
+
+  bool isSupportedOnCurrentPlatform() {
+    if (platforms.isEmpty || platforms.contains('universal')) return true;
+    if (Platform.isWindows && platforms.contains('windows')) return true;
+    if (Platform.isAndroid && platforms.contains('android')) return true;
+    return false;
+  }
+
+  String get platformBadgeText {
+    final lower = platforms.map((e) => e.toLowerCase()).toList();
+    if (lower.contains('windows') && !lower.contains('android') && !lower.contains('universal')) {
+      return '🪟 Windows 专享';
+    }
+    if (lower.contains('android') && !lower.contains('windows') && !lower.contains('universal')) {
+      return '🤖 Android 专享';
+    }
+    return '🌐 全平台通用';
+  }
+
+  bool isWindowsOnly() {
+    final lower = platforms.map((e) => e.toLowerCase()).toList();
+    return lower.contains('windows') && !lower.contains('universal');
+  }
+
+  bool isAndroidOnly() {
+    final lower = platforms.map((e) => e.toLowerCase()).toList();
+    return lower.contains('android') && !lower.contains('universal');
+  }
+
+  factory PluginInputDef.fromJson(Map<String, dynamic> json) {
+    var rawOptions = json['options'] as List?;
+    var rawPlatforms = json['platforms'] as List?;
+    return PluginInputDef(
+      id: json['id'] ?? '',
+      label: json['label'] ?? '',
+      type: json['type'] ?? 'text',
+      required: json['required'] ?? false,
+      allowMultiple: json['allowMultiple'] ?? false,
+      allowedExtensions: (json['allowedExtensions'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      defaultValue: json['defaultValue'],
+      min: (json['min'] as num?)?.toDouble(),
+      max: (json['max'] as num?)?.toDouble(),
+      step: (json['step'] as num?)?.toDouble(),
+      options: rawOptions != null
+          ? rawOptions.map((e) => PluginSelectOption.fromJson(e)).toList()
+          : [],
+      visibleIf: json['visibleIf'] != null
+          ? PluginInputCondition.fromJson(Map<String, dynamic>.from(json['visibleIf']))
+          : null,
+      platforms: rawPlatforms != null
+          ? rawPlatforms.map((e) => e.toString().toLowerCase()).toList()
+          : const ['universal'],
+    );
+  }
+}
+
+class PluginSelectOption {
+  final String label;
+  final String value;
+  final List<String> platforms; // universal, windows, android
+
+  PluginSelectOption({
+    required this.label,
+    required this.value,
+    this.platforms = const ['universal'],
+  });
+
+  bool isSupportedOnCurrentPlatform() {
+    if (platforms.isEmpty || platforms.contains('universal')) return true;
+    if (Platform.isWindows && platforms.contains('windows')) return true;
+    if (Platform.isAndroid && platforms.contains('android')) return true;
+    return false;
+  }
+
+  String get platformBadgeText {
+    final lower = platforms.map((e) => e.toLowerCase()).toList();
+    if (lower.contains('windows') && !lower.contains('android') && !lower.contains('universal')) {
+      return '🪟 Windows 专享';
+    }
+    if (lower.contains('android') && !lower.contains('windows') && !lower.contains('universal')) {
+      return '🤖 Android 专享';
+    }
+    return '🌐 全平台通用';
+  }
+
+  bool isWindowsOnly() {
+    final lower = platforms.map((e) => e.toLowerCase()).toList();
+    return lower.contains('windows') && !lower.contains('universal');
+  }
+
+  bool isAndroidOnly() {
+    final lower = platforms.map((e) => e.toLowerCase()).toList();
+    return lower.contains('android') && !lower.contains('universal');
+  }
+
+  factory PluginSelectOption.fromJson(Map<String, dynamic> json) {
+    var rawPlatforms = json['platforms'] as List?;
+    return PluginSelectOption(
+      label: json['label']?.toString() ?? '',
+      value: json['value']?.toString() ?? '',
+      platforms: rawPlatforms != null
+          ? rawPlatforms.map((e) => e.toString().toLowerCase()).toList()
+          : const ['universal'],
+    );
+  }
+}
+
+/// 插件处理流水线 / 动作定义
+class PluginActionDef {
+  final String handler;
+  final Map<String, dynamic> params;
+
+  PluginActionDef({required this.handler, required this.params});
+
+  factory PluginActionDef.fromJson(Map<String, dynamic> json) {
+    return PluginActionDef(
+      handler: json['handler'] ?? '',
+      params: Map<String, dynamic>.from(json['params'] ?? {}),
+    );
+  }
+}
+
+/// 插件本地/远程实体
+class PluginManifest {
+  final String id;
+  final String name;
+  final String version;
+  final String minAppVersion;
+  final String category; // image, media, text, other
+  final String description;
+  final String icon;
+  final String author;
+  final String engineType; // native_image, media_pipeline, webview
+  final String? downloadUrl;
+  final Map<String, String> downloadUrls;
+  final bool isOfficial;
+  final int? size;
+  final String? md5;
+  final List<PluginInputDef> inputs;
+  final PluginActionDef? action;
+  final List<String> platforms; // universal, windows, android
+  
+  // 运行期状态
+  bool isInstalled;
+  bool isUpdateAvailable;
+  String? localDir;
+
+  PluginManifest({
+    required this.id,
+    required this.name,
+    required this.version,
+    this.minAppVersion = '1.0.0',
+    required this.category,
+    required this.description,
+    required this.icon,
+    required this.author,
+    required this.engineType,
+    this.downloadUrl,
+    this.downloadUrls = const {},
+    this.isOfficial = false,
+    this.size,
+    this.md5,
+    this.inputs = const [],
+    this.action,
+    this.platforms = const ['universal'],
+    this.isInstalled = false,
+    this.isUpdateAvailable = false,
+    this.localDir,
+  });
+
+  bool isSupportedOnCurrentPlatform() {
+    if (platforms.isEmpty || platforms.contains('universal')) return true;
+    if (Platform.isWindows && platforms.contains('windows')) return true;
+    if (Platform.isAndroid && platforms.contains('android')) return true;
+    return false;
+  }
+
+  String get platformBadgeText {
+    final lower = platforms.map((e) => e.toLowerCase()).toList();
+    if (lower.contains('windows') && !lower.contains('android') && !lower.contains('universal')) {
+      return '🪟 Windows 专享';
+    }
+    if (lower.contains('android') && !lower.contains('windows') && !lower.contains('universal')) {
+      return '🤖 Android 专享';
+    }
+    return '🌐 全平台通用';
+  }
+
+  bool isWindowsOnly() {
+    final lower = platforms.map((e) => e.toLowerCase()).toList();
+    return lower.contains('windows') && !lower.contains('universal');
+  }
+
+  bool isAndroidOnly() {
+    final lower = platforms.map((e) => e.toLowerCase()).toList();
+    return lower.contains('android') && !lower.contains('universal');
+  }
+
+  factory PluginManifest.fromJson(Map<String, dynamic> json, {bool isRemote = false}) {
+    var rawInputs = json['inputs'] as List?;
+    var rawPlatforms = json['platforms'] as List?;
+    return PluginManifest(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+      version: json['version'] ?? '1.0.0',
+      minAppVersion: json['minAppVersion']?.toString() ?? '1.0.0',
+      category: json['category'] ?? 'other',
+      description: json['description'] ?? '',
+      icon: json['icon'] ?? 'extension',
+      author: json['author'] ?? 'Unknown',
+      engineType: json['engineType'] ?? 'custom',
+      downloadUrl: json['downloadUrl'],
+      downloadUrls: (json['downloadUrls'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? {},
+      isOfficial: json['isOfficial'] ?? false,
+      size: json['size'],
+      md5: json['md5'],
+      inputs: rawInputs != null
+          ? rawInputs.map((e) => PluginInputDef.fromJson(e)).toList()
+          : [],
+      action: json['action'] != null ? PluginActionDef.fromJson(json['action']) : null,
+      platforms: rawPlatforms != null
+          ? rawPlatforms.map((e) => e.toString().toLowerCase()).toList()
+          : const ['universal'],
+      isInstalled: !isRemote,
+    );
+  }
+}

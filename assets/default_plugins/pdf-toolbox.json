@@ -1,0 +1,228 @@
+{
+  "id": "pdf-toolbox",
+  "name": "PDF 综合工具箱",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "category": "document",
+  "description": "全功能专业 PDF 综合处理工具箱：支持多页 PDF 与高清图片双向批量互转、多个 PDF 文档高保真合并拼合、单页提取与指定页码范围拆分、添加文字水印，以及深度无损流压缩优化。",
+  "icon": "pdf",
+  "author": "Toolbox Team",
+  "engineType": "native_tool",
+  "inputs": [
+    {
+      "id": "mode",
+      "label": "操作模式",
+      "type": "select",
+      "defaultValue": "images_to_pdf",
+      "options": [
+        {"label": "🖼️ 图片批量转 PDF (Images to PDF)", "value": "images_to_pdf"},
+        {"label": "📷 PDF 转高清图片 (PDF to Images)", "value": "pdf_to_images"},
+        {"label": "📑 PDF 页面合并 (Merge Multiple PDFs)", "value": "merge_pdf"},
+        {"label": "✂️ PDF 页面拆分/提取 (Split / Extract Pages)", "value": "split_pdf"},
+        {"label": "🗜️ PDF 深度压缩 (Compress PDF)", "value": "compress_pdf"}
+      ]
+    },
+    {
+      "id": "imagesFiles",
+      "label": "选择待转换图片 (支持多选，按次序排版)",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": true,
+      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "images_to_pdf"
+      }
+    },
+    {
+      "id": "pageSize",
+      "label": "页面尺寸规格",
+      "type": "select",
+      "defaultValue": "a4",
+      "options": [
+        {"label": "标准 A4 纸张 (打印阅读通用)", "value": "a4"},
+        {"label": "自适应图片尺寸 (保留原始宽高比)", "value": "fit_image"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "images_to_pdf"
+      }
+    },
+    {
+      "id": "pageOrientation",
+      "label": "页面方向 (A4纸张有效)",
+      "type": "select",
+      "defaultValue": "auto",
+      "options": [
+        {"label": "自适应图片长宽比 (推荐)", "value": "auto"},
+        {"label": "纵向 (Portrait)", "value": "portrait"},
+        {"label": "横向 (Landscape)", "value": "landscape"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "images_to_pdf"
+      }
+    },
+    {
+      "id": "margin",
+      "label": "页面页边距",
+      "type": "select",
+      "defaultValue": "none",
+      "options": [
+        {"label": "无边距 (全画幅铺满)", "value": "none"},
+        {"label": "窄边距 (20pt 留白)", "value": "small"},
+        {"label": "标准边距 (40pt 商务装订)", "value": "normal"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "images_to_pdf"
+      }
+    },
+    {
+      "id": "pdfToImagesFile",
+      "label": "选择待转换的 PDF 文档",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["pdf"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "pdf_to_images"
+      }
+    },
+    {
+      "id": "imageFormat",
+      "label": "导出图片格式",
+      "type": "select",
+      "defaultValue": "png",
+      "options": [
+        {"label": "PNG 格式 (高清无损)", "value": "png"},
+        {"label": "JPG 格式 (较小文件体积)", "value": "jpg"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "pdf_to_images"
+      }
+    },
+    {
+      "id": "dpi",
+      "label": "渲染分辨率 (DPI)",
+      "type": "select",
+      "defaultValue": 150,
+      "options": [
+        {"label": "150 DPI (高清，兼顾速度与画质)", "value": 150},
+        {"label": "300 DPI (超高清，打印冲印级极清细节)", "value": 300}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "pdf_to_images"
+      }
+    },
+    {
+      "id": "bundleZip",
+      "label": "导出方式",
+      "type": "select",
+      "defaultValue": "true",
+      "options": [
+        {"label": "多页自动打包为 ZIP 压缩包 (方便分享保存)", "value": "true"},
+        {"label": "导出为单张独立图片文件", "value": "false"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "pdf_to_images"
+      }
+    },
+    {
+      "id": "mergePdfs",
+      "label": "选择待合并的 PDF 文件 (可多选，按选择顺序合并)",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": true,
+      "allowedExtensions": ["pdf"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "merge_pdf"
+      }
+    },
+    {
+      "id": "splitPdfFile",
+      "label": "选择待拆分/提取的 PDF 文档",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["pdf"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "split_pdf"
+      }
+    },
+    {
+      "id": "splitMode",
+      "label": "拆分/提取模式",
+      "type": "select",
+      "defaultValue": "all_pages",
+      "options": [
+        {"label": "全部页面逐页切分为独立单页 PDF (打包 ZIP)", "value": "all_pages"},
+        {"label": "按指定页码范围提取为新 PDF", "value": "custom_range"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "split_pdf"
+      }
+    },
+    {
+      "id": "pageRange",
+      "label": "提取页码范围 (如: 1-3, 5, 8-10)",
+      "type": "textarea",
+      "defaultValue": "1-3",
+      "required": false,
+      "visibleIf": {
+        "and": [
+          {"field": "mode", "equals": "split_pdf"},
+          {"field": "splitMode", "equals": "custom_range"}
+        ]
+      }
+    },
+    {
+      "id": "compressPdfFile",
+      "label": "选择待压缩的 PDF 文档",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["pdf"],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "compress_pdf"
+      }
+    },
+    {
+      "id": "compressStrategy",
+      "label": "压缩策略",
+      "type": "select",
+      "defaultValue": "lossless",
+      "options": [
+        {"label": "无损流优化 (保持矢量字形与清晰度，零膨胀保护)", "value": "lossless"},
+        {"label": "扫描件/画质深度压缩 (重采样栅格图片为 120 DPI，大幅缩减体积)", "value": "scanned_image"}
+      ],
+      "visibleIf": {
+        "field": "mode",
+        "equals": "compress_pdf"
+      }
+    }
+  ],
+  "action": {
+    "handler": "pdf_toolbox",
+    "params": {
+      "mode": "${mode}",
+      "pageSize": "${pageSize}",
+      "pageOrientation": "${pageOrientation}",
+      "margin": "${margin}",
+      "imageFormat": "${imageFormat}",
+      "dpi": "${dpi}",
+      "bundleZip": "${bundleZip}",
+      "splitMode": "${splitMode}",
+      "pageRange": "${pageRange}",
+      "compressStrategy": "${compressStrategy}"
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "id": "downloader-toolbox",
+  "name": "多线程分块下载器",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "category": "network",
+  "description": "基于 HTTP Range 分段协议的高性能多线程网络下载引擎。支持 1~16 线程并行切片拉取、断点续传、实时下载测速与 ETA 剩余时间预估，采用无锁流式拼合直接落盘保存文件。",
+  "icon": "download",
+  "author": "Toolbox Team",
+  "engineType": "native_tool",
+  "inputs": [
+    {
+      "id": "url",
+      "label": "下载地址 (HTTP/HTTPS 直链)",
+      "type": "text",
+      "defaultValue": "https://speed.cloudflare.com/__down?bytes=10485760",
+      "required": true
+    },
+    {
+      "id": "threads",
+      "label": "切片并发线程数 (1~16 并行切片)",
+      "type": "slider",
+      "defaultValue": 4,
+      "min": 1,
+      "max": 16,
+      "step": 1
+    },
+    {
+      "id": "fileName",
+      "label": "自定义保存文件名 (留空则从 Content-Disposition 或 URL 自动识别)",
+      "type": "text",
+      "defaultValue": "",
+      "required": false
+    }
+  ],
+  "action": {
+    "handler": "chunk_downloader",
+    "params": {
+      "url": "${url}",
+      "threads": "${threads}",
+      "fileName": "${fileName}"
+    }
+  }
+}

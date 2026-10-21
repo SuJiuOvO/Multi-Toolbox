@@ -1,0 +1,63 @@
+{
+  "id": "image-resize",
+  "name": "图片修改尺寸",
+  "version": "1.1.0",
+  "minAppVersion": "1.0.0",
+  "category": "image",
+  "description": "基于三次样条插值 (Cubic Resampling) 算法，高质量保持清晰度与宽高比缩放图片。支持按比例百分比缩放、锁定宽度自适应、锁定高度自适应或指定固定像素拉伸宽高，支持批量多图处理。",
+  "icon": "aspect_ratio",
+  "author": "Toolbox Team",
+  "engineType": "native_image",
+  "inputs": [
+    {
+      "id": "sourceFiles",
+      "label": "选择待缩放图片 (支持批量)",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": true,
+      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"]
+    },
+    {
+      "id": "resizeMode",
+      "label": "缩放模式",
+      "type": "select",
+      "defaultValue": "scale",
+      "options": [
+        {"label": "按比例缩放 (百分比)", "value": "scale"},
+        {"label": "锁定宽度 (自适应高度)", "value": "fit_width"},
+        {"label": "锁定高度 (自适应宽度)", "value": "fit_height"},
+        {"label": "指定固定宽高 (拉伸)", "value": "fixed"}
+      ]
+    },
+    {
+      "id": "scalePercent",
+      "label": "缩放比例 (%, 仅百分比模式有效)",
+      "type": "slider",
+      "defaultValue": 50,
+      "min": 10,
+      "max": 200,
+      "step": 5
+    },
+    {
+      "id": "targetWidth",
+      "label": "目标宽度 (px)",
+      "type": "number",
+      "defaultValue": 1280
+    },
+    {
+      "id": "targetHeight",
+      "label": "目标高度 (px)",
+      "type": "number",
+      "defaultValue": 720
+    }
+  ],
+  "action": {
+    "handler": "image_resize",
+    "params": {
+      "mode": "${resizeMode}",
+      "scale": "${scalePercent}",
+      "width": "${targetWidth}",
+      "height": "${targetHeight}"
+    }
+  }
+}
