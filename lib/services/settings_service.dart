@@ -17,7 +17,7 @@ class SettingsService extends ChangeNotifier {
   static const _keyDeepSearchDefault = 'deep_search_default';
 
   // State
-  String _themeId = 'tech_blue';
+  String _themeId = 'minimal_clean';
   bool _runInBackground = true;
   bool _notifyOnComplete = true;
   bool _bannerDismissedPermanently = false;
@@ -33,7 +33,7 @@ class SettingsService extends ChangeNotifier {
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
-    _themeId = _prefs?.getString(_keyThemeId) ?? 'tech_blue';
+    _themeId = _prefs?.getString(_keyThemeId) ?? 'minimal_clean';
     _runInBackground = _prefs?.getBool(_keyRunInBackground) ?? true;
     _notifyOnComplete = _prefs?.getBool(_keyNotifyOnComplete) ?? true;
     _bannerDismissedPermanently = _prefs?.getBool(_keyBannerDismissedPermanently) ?? false;

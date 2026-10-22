@@ -13,10 +13,32 @@ import 'theme/app_theme_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SettingsService().init();
-  await NotificationService().init();
-  await PluginManagerService().init();
+
+  // 1. 本地轻量偏好读取（带防超时保护，绝不阻塞应用启动）
+  try {
+    await SettingsService().init().timeout(const Duration(milliseconds: 1000));
+  } catch (e) {
+    debugPrint('SettingsService init fallback: $e');
+  }
+
+  // 2. 本地插件索引读取（带防超时保护）
+  try {
+    await PluginManagerService().init().timeout(const Duration(milliseconds: 1500));
+  } catch (e) {
+    debugPrint('PluginManagerService init fallback: $e');
+  }
+
+  // 3. 立即启动根应用！第一时间挂载首帧，彻底根治安卓启动白屏卡死问题！
   runApp(const MultiToolboxApp());
+
+  // 4. 通知插件等非核心平台原生服务在首帧后异步挂载，严禁阻塞 UI 启动
+  Future.microtask(() async {
+    try {
+      await NotificationService().init();
+    } catch (e) {
+      debugPrint('NotificationService async init fallback: $e');
+    }
+  });
 }
 
 /// 支持全平台（含 Windows 桌面鼠标直接拖动滚动）的滚动行为
@@ -346,9 +368,10 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
   }
 
   Color _getPlatformBadgeColor(PluginManifest item) {
-    if (item.isWindowsOnly()) return const Color(0xFF0284C7);
-    if (item.isAndroidOnly()) return const Color(0xFF16A34A);
-    return const Color(0xFF4F46E5);
+    if (item.platforms.contains('universal')) return AppThemeManager.accentGreen;
+    if (item.isWindowsOnly()) return AppThemeManager.accentBlue;
+    if (item.isAndroidOnly()) return AppThemeManager.accentYellow;
+    return AppThemeManager.accentBlue;
   }
 
   IconData _getIconData(String iconName) {
@@ -649,15 +672,23 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
     required bool selected,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final primary = Theme.of(context).colorScheme.primary;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? Colors.blue.withValues(alpha: 0.12) : Colors.grey.shade100,
+          color: selected
+              ? primary
+              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF3F4F6)),
           border: Border.all(
-            color: selected ? Colors.blueAccent : Colors.grey.shade300,
+            color: selected
+                ? primary
+                : (isDark ? const Color(0xFF334155) : const Color(0xFFD1D5DB)),
             width: selected ? 1.4 : 1.0,
           ),
           borderRadius: BorderRadius.circular(8),
@@ -665,22 +696,140 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 15, color: selected ? Colors.blueAccent : Colors.black54),
+            Icon(icon, size: 15, color: selected ? Colors.white : onSurface),
             const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                color: selected ? Colors.blue.shade900 : Colors.black87,
+                fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                color: selected ? Colors.white : onSurface,
               ),
             ),
             if (selected) ...[
               const SizedBox(width: 4),
-              const Icon(Icons.check, size: 13, color: Colors.blueAccent),
+              const Icon(Icons.check, size: 13, color: Colors.white),
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onSelected,
+    required ThemeData theme,
+    required bool isDark,
+    required Color textPrimary,
+  }) {
+    return InkWell(
+      onTap: onSelected,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colorScheme.primary
+              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF3F4F6)),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : (isDark ? const Color(0xFF334155) : const Color(0xFFD1D5DB)),
+            width: selected ? 1.2 : 1.0,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+            color: selected ? Colors.white : textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardContainer({
+    required BuildContext context,
+    required Widget child,
+    required VoidCallback onTap,
+    EdgeInsetsGeometry? margin,
+    double borderRadius = 12,
+  }) {
+    final theme = Theme.of(context);
+    final isGlass = SettingsService().themeId == 'liquid_glass';
+
+    if (isGlass) {
+      return Container(
+        margin: margin ?? EdgeInsets.zero,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(borderRadius),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.7),
+              blurRadius: 2,
+              offset: const Offset(-1, -1),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(borderRadius),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.80),
+                    Colors.white.withValues(alpha: 0.50),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(borderRadius),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  width: 1.4,
+                ),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(borderRadius),
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      margin: margin ?? EdgeInsets.zero,
+      elevation: 1,
+      color: theme.cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(borderRadius),
+        side: BorderSide(
+          color: theme.colorScheme.outline.withValues(alpha: 0.6),
+          width: 1.0,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: child,
       ),
     );
   }
@@ -691,6 +840,10 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 600;
     final isPortrait = screenSize.height > screenSize.width || screenSize.width < 500;
+    final isDark = theme.brightness == Brightness.dark;
+    final isGlass = SettingsService().themeId == 'liquid_glass';
+    final textPrimary = theme.colorScheme.onSurface;
+    final textSecondary = theme.colorScheme.onSurfaceVariant;
 
     // 过滤已安装插件
     final plugins = _pluginManager.installedPlugins.where((p) {
@@ -741,39 +894,43 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
       return true;
     }).toList();
 
-    return Scaffold(
-      body: CustomScrollView(
+    final bodyContent = CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         slivers: [
           SliverAppBar(
             floating: true,
             snap: true,
             pinned: !isMobile,
+            backgroundColor: isGlass ? Colors.white.withValues(alpha: 0.65) : null,
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.handyman_rounded, color: Colors.blueAccent),
+                const Icon(Icons.handyman_rounded, color: AppThemeManager.accentBlue),
                 const SizedBox(width: 8),
                 Text(
                   '多功能百宝箱',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 16 : 18),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: isMobile ? 16 : 18,
+                    color: textPrimary,
+                  ),
                 ),
               ],
             ),
             actions: [
               if (isMobile) ...[
                 IconButton(
-                  icon: const Icon(Icons.add_shopping_cart, color: Colors.blueAccent),
+                  icon: const Icon(Icons.add_shopping_cart, color: AppThemeManager.accentBlue),
                   tooltip: '下载新工具 / 模块市场',
                   onPressed: _openStore,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.settings_outlined),
+                  icon: Icon(Icons.settings_outlined, color: textPrimary),
                   tooltip: '系统设置与关于',
                   onPressed: _openSettings,
                 ),
                 PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
+                  icon: Icon(Icons.more_vert, color: textPrimary),
                   tooltip: '更多选项',
                   onSelected: (val) {
                     if (val == 'settings') {
@@ -791,7 +948,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       value: 'settings',
                       child: Row(
                         children: [
-                          Icon(Icons.settings_outlined, size: 18, color: Colors.blueAccent),
+                          Icon(Icons.settings_outlined, size: 18, color: AppThemeManager.accentBlue),
                           SizedBox(width: 8),
                           Text('系统设置与关于'),
                         ],
@@ -801,7 +958,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       value: 'install',
                       child: Row(
                         children: [
-                          Icon(Icons.file_upload_outlined, size: 18, color: Colors.blueAccent),
+                          Icon(Icons.file_upload_outlined, size: 18, color: AppThemeManager.accentBlue),
                           SizedBox(width: 8),
                           Text('本地安装模块 (.json / .zip)'),
                         ],
@@ -811,7 +968,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       value: 'update',
                       child: Row(
                         children: [
-                          Icon(Icons.system_update_alt_rounded, size: 18, color: Colors.orange),
+                          Icon(Icons.system_update_alt_rounded, size: 18, color: AppThemeManager.accentYellow),
                           SizedBox(width: 8),
                           Text('检查客户端新版本'),
                         ],
@@ -844,17 +1001,17 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                 ),
                 IconButton(
                   tooltip: '系统设置与关于',
-                  icon: const Icon(Icons.settings_outlined),
+                  icon: Icon(Icons.settings_outlined, color: textPrimary),
                   onPressed: _openSettings,
                 ),
                 IconButton(
                   tooltip: '检查新版本更新',
-                  icon: const Icon(Icons.system_update_alt_rounded),
+                  icon: const Icon(Icons.system_update_alt_rounded, color: AppThemeManager.accentYellow),
                   onPressed: _checkAppUpdate,
                 ),
                 IconButton(
                   tooltip: '刷新已安装工具',
-                  icon: const Icon(Icons.refresh),
+                  icon: Icon(Icons.refresh, color: textPrimary),
                   onPressed: _refreshList,
                 ),
                 const SizedBox(width: 8),
@@ -875,12 +1032,12 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      theme.colorScheme.primary.withValues(alpha: 0.08),
-                      theme.colorScheme.primary.withValues(alpha: 0.02),
+                      theme.colorScheme.primary.withValues(alpha: 0.10),
+                      theme.colorScheme.primary.withValues(alpha: 0.03),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
+                  border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: [
@@ -893,15 +1050,16 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                           Text(
                             '客户端免重新安装 · 云端热插拔与本地扩展',
                             style: TextStyle(
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.bold,
                               fontSize: isMobile ? 12.5 : 14,
+                              color: textPrimary,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             '所有工具均通过模块化规范加载。可进入右上角「模块市场」下载，或点击「本地安装」加载 .json/.zip 模块。',
                             style: TextStyle(
-                              color: Colors.black54,
+                              color: textSecondary,
                               fontSize: isMobile ? 11 : 12,
                             ),
                           ),
@@ -909,7 +1067,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close, size: 18, color: Colors.grey),
+                      icon: Icon(Icons.close, size: 18, color: textSecondary),
                       tooltip: '关闭提示',
                       onPressed: _handleDismissBanner,
                     ),
@@ -929,7 +1087,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       height: 38,
                       child: TextField(
                         controller: _searchController,
-                        style: const TextStyle(fontSize: 13),
+                        style: TextStyle(fontSize: 13, color: textPrimary),
                         onChanged: (val) {
                           setState(() {
                             _searchQuery = val;
@@ -939,12 +1097,12 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                           hintText: _isDeepSearch
                               ? (isMobile ? '深度搜索 (匹配简介与参数)...' : '深度搜索已安装工具 (深入匹配功能简介、算法及参数说明)...')
                               : (isMobile ? '搜索已安装工具...' : '搜索已安装工具 (名称、分类、ID)...'),
-                          hintStyle: const TextStyle(fontSize: 12.5, color: Colors.grey),
-                          prefixIcon: const Icon(Icons.search, size: 18),
+                          hintStyle: TextStyle(fontSize: 12.5, color: textSecondary),
+                          prefixIcon: Icon(Icons.search, size: 18, color: textSecondary),
                           prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                           suffixIcon: _searchQuery.isNotEmpty
                               ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 16),
+                                  icon: Icon(Icons.clear, size: 16, color: textSecondary),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                                   onPressed: () {
@@ -958,18 +1116,18 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           filled: true,
-                          fillColor: Colors.grey.shade100,
+                          fillColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF3F4F6),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(20),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
+                            borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFD1D5DB)),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(20),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
+                            borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFD1D5DB)),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(20),
-                            borderSide: BorderSide(color: theme.colorScheme.primary),
+                            borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
                           ),
                         ),
                       ),
@@ -987,13 +1145,13 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         decoration: BoxDecoration(
                           color: _isDeepSearch
-                              ? theme.colorScheme.primary.withValues(alpha: 0.1)
-                              : Colors.grey.shade100,
+                              ? AppThemeManager.accentYellow.withValues(alpha: 0.15)
+                              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF3F4F6)),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                             color: _isDeepSearch
-                                ? theme.colorScheme.primary.withValues(alpha: 0.4)
-                                : Colors.grey.shade300,
+                                ? AppThemeManager.accentYellow
+                                : (isDark ? const Color(0xFF334155) : const Color(0xFFD1D5DB)),
                           ),
                         ),
                         child: Row(
@@ -1003,8 +1161,8 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                               '深度搜索',
                               style: TextStyle(
                                 fontSize: 11.5,
-                                fontWeight: _isDeepSearch ? FontWeight.bold : FontWeight.normal,
-                                color: _isDeepSearch ? theme.colorScheme.primary : Colors.black87,
+                                fontWeight: _isDeepSearch ? FontWeight.bold : FontWeight.w500,
+                                color: _isDeepSearch ? AppThemeManager.accentYellow : textPrimary,
                               ),
                             ),
                             const SizedBox(width: 2),
@@ -1012,7 +1170,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                               scale: 0.68,
                               child: Switch(
                                 value: _isDeepSearch,
-                                activeColor: theme.colorScheme.primary,
+                                activeColor: AppThemeManager.accentYellow,
                                 onChanged: (val) => setState(() => _isDeepSearch = val),
                                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
@@ -1036,12 +1194,12 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                   children: [
                     Text(
                       '共检索到 ${plugins.length} 个功能模块',
-                      style: const TextStyle(fontSize: 12, color: Colors.blueAccent, fontWeight: FontWeight.w600),
+                      style: const TextStyle(fontSize: 12, color: AppThemeManager.accentBlue, fontWeight: FontWeight.bold),
                     ),
                     if (_isDeepSearch)
-                      const Text(
+                      Text(
                         ' (已开启深度搜索：包含简介及参数)',
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                        style: TextStyle(fontSize: 11, color: textSecondary),
                       ),
                     const Spacer(),
                     InkWell(
@@ -1049,7 +1207,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                         _searchController.clear();
                         setState(() => _searchQuery = '');
                       },
-                      child: const Text('清除搜索', style: TextStyle(fontSize: 11, color: Colors.redAccent)),
+                      child: const Text('清除搜索', style: TextStyle(fontSize: 11, color: AppThemeManager.accentRed, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -1068,40 +1226,40 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       physics: const BouncingScrollPhysics(),
                       child: Row(
                         children: [
-                          FilterChip(
-                            label: const Text('全部'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11.5),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          _buildFilterChip(
+                            label: '全部',
                             selected: _selectedCategory == 'all',
-                            onSelected: (_) => setState(() => _selectedCategory = 'all'),
+                            onSelected: () => setState(() => _selectedCategory = 'all'),
+                            theme: theme,
+                            isDark: isDark,
+                            textPrimary: textPrimary,
                           ),
                           const SizedBox(width: 6),
-                          FilterChip(
-                            label: const Text('图片处理'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11.5),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          _buildFilterChip(
+                            label: '图片处理',
                             selected: _selectedCategory == 'image',
-                            onSelected: (_) => setState(() => _selectedCategory = 'image'),
+                            onSelected: () => setState(() => _selectedCategory = 'image'),
+                            theme: theme,
+                            isDark: isDark,
+                            textPrimary: textPrimary,
                           ),
                           const SizedBox(width: 6),
-                          FilterChip(
-                            label: const Text('音视频'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11.5),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          _buildFilterChip(
+                            label: '音视频',
                             selected: _selectedCategory == 'media',
-                            onSelected: (_) => setState(() => _selectedCategory = 'media'),
+                            onSelected: () => setState(() => _selectedCategory = 'media'),
+                            theme: theme,
+                            isDark: isDark,
+                            textPrimary: textPrimary,
                           ),
                           const SizedBox(width: 6),
-                          FilterChip(
-                            label: const Text('文档/PDF'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11.5),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          _buildFilterChip(
+                            label: '文档/PDF',
                             selected: _selectedCategory == 'document',
-                            onSelected: (_) => setState(() => _selectedCategory = 'document'),
+                            onSelected: () => setState(() => _selectedCategory = 'document'),
+                            theme: theme,
+                            isDark: isDark,
+                            textPrimary: textPrimary,
                           ),
                         ],
                       ),
@@ -1117,11 +1275,11 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       child: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.08),
+                          color: AppThemeManager.accentBlue.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+                          border: Border.all(color: AppThemeManager.accentBlue.withValues(alpha: 0.3)),
                         ),
-                        child: const Icon(Icons.tune_rounded, size: 18, color: Colors.blueAccent),
+                        child: const Icon(Icons.tune_rounded, size: 18, color: AppThemeManager.accentBlue),
                       ),
                     ),
                   ),
@@ -1142,40 +1300,40 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       physics: const BouncingScrollPhysics(),
                       child: Row(
                         children: [
-                          ChoiceChip(
-                            label: const Text('全部'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          _buildFilterChip(
+                            label: '全部',
                             selected: _selectedPlatform == 'all',
-                            onSelected: (_) => setState(() => _selectedPlatform = 'all'),
+                            onSelected: () => setState(() => _selectedPlatform == 'all'),
+                            theme: theme,
+                            isDark: isDark,
+                            textPrimary: textPrimary,
                           ),
                           const SizedBox(width: 6),
-                          ChoiceChip(
-                            label: const Text('🌐 通用'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          _buildFilterChip(
+                            label: '🌐 通用',
                             selected: _selectedPlatform == 'universal',
-                            onSelected: (_) => setState(() => _selectedPlatform = 'universal'),
+                            onSelected: () => setState(() => _selectedPlatform == 'universal'),
+                            theme: theme,
+                            isDark: isDark,
+                            textPrimary: textPrimary,
                           ),
                           const SizedBox(width: 6),
-                          ChoiceChip(
-                            label: const Text('🪟 Win'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          _buildFilterChip(
+                            label: '🪟 Win',
                             selected: _selectedPlatform == 'windows',
-                            onSelected: (_) => setState(() => _selectedPlatform = 'windows'),
+                            onSelected: () => setState(() => _selectedPlatform == 'windows'),
+                            theme: theme,
+                            isDark: isDark,
+                            textPrimary: textPrimary,
                           ),
                           const SizedBox(width: 6),
-                          ChoiceChip(
-                            label: const Text('🤖 安卓'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          _buildFilterChip(
+                            label: '🤖 安卓',
                             selected: _selectedPlatform == 'android',
-                            onSelected: (_) => setState(() => _selectedPlatform = 'android'),
+                            onSelected: () => setState(() => _selectedPlatform == 'android'),
+                            theme: theme,
+                            isDark: isDark,
+                            textPrimary: textPrimary,
                           ),
                         ],
                       ),
@@ -1191,16 +1349,20 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       child: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: _isCompactGrid ? Colors.blue.withValues(alpha: 0.1) : Colors.grey.shade100,
+                          color: _isCompactGrid
+                              ? AppThemeManager.accentBlue.withValues(alpha: 0.12)
+                              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF3F4F6)),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: _isCompactGrid ? Colors.blue.withValues(alpha: 0.3) : Colors.grey.shade300,
+                            color: _isCompactGrid
+                                ? AppThemeManager.accentBlue
+                                : (isDark ? const Color(0xFF334155) : const Color(0xFFD1D5DB)),
                           ),
                         ),
                         child: Icon(
                           _isCompactGrid ? Icons.view_agenda_outlined : Icons.grid_view_rounded,
                           size: 18,
-                          color: _isCompactGrid ? Colors.blueAccent : Colors.black54,
+                          color: _isCompactGrid ? AppThemeManager.accentBlue : textSecondary,
                         ),
                       ),
                     ),
@@ -1221,13 +1383,13 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.search_off_rounded, size: 60, color: Colors.grey),
+                      Icon(Icons.search_off_rounded, size: 60, color: textSecondary),
                       const SizedBox(height: 12),
                       Text(
                         _searchQuery.isNotEmpty
                             ? '未搜索到匹配 “$_searchQuery” 的功能模块'
                             : '当前分类或平台筛选下暂无已安装的工具',
-                        style: const TextStyle(color: Colors.grey, fontSize: 15),
+                        style: TextStyle(color: textSecondary, fontSize: 15),
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -1280,78 +1442,81 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                 delegate: SliverChildBuilderDelegate(
                   (ctx, index) {
                     final item = plugins[index];
-                    return Card(
-                      elevation: 0.5,
-                      color: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        side: BorderSide(color: Colors.grey.shade200),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => DynamicToolRunnerPage(plugin: item),
-                            ),
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: isMobile ? 16 : 18,
-                                backgroundColor: theme.colorScheme.primaryContainer,
-                                child: Icon(_getIconData(item.icon),
-                                    size: isMobile ? 18 : 20, color: theme.colorScheme.primary),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      item.name,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: isMobile ? 12.5 : 13.5,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          'v${item.version}',
-                                          style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 0.5),
-                                          decoration: BoxDecoration(
-                                            color: _getPlatformBadgeColor(item).withValues(alpha: 0.1),
-                                            borderRadius: BorderRadius.circular(3),
-                                          ),
-                                          child: Text(
-                                            item.platforms.contains('universal') ? '通用' : (item.isWindowsOnly() ? 'Win' : '安卓'),
-                                            style: TextStyle(
-                                              fontSize: 8.5,
-                                              fontWeight: FontWeight.w500,
-                                              color: _getPlatformBadgeColor(item),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                    final badgeColor = _getPlatformBadgeColor(item);
+                    return _buildCardContainer(
+                      context: context,
+                      borderRadius: 10,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => DynamicToolRunnerPage(plugin: item),
                           ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: isMobile ? 32 : 36,
+                              height: isMobile ? 32 : 36,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                _getIconData(item.icon),
+                                size: isMobile ? 18 : 20,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    item.name,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: isMobile ? 12.5 : 13.5,
+                                      color: textPrimary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'v${item.version}',
+                                        style: TextStyle(fontSize: 10, color: textSecondary),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
+                                        decoration: BoxDecoration(
+                                          color: badgeColor.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(3),
+                                          border: Border.all(color: badgeColor.withValues(alpha: 0.3), width: 0.5),
+                                        ),
+                                        child: Text(
+                                          item.platforms.contains('universal') ? '通用' : (item.isWindowsOnly() ? 'Win' : '安卓'),
+                                          style: TextStyle(
+                                            fontSize: 8.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: badgeColor,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -1373,90 +1538,98 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                 delegate: SliverChildBuilderDelegate(
                   (ctx, index) {
                     final item = plugins[index];
-                    return Card(
+                    final badgeColor = _getPlatformBadgeColor(item);
+                    return _buildCardContainer(
+                      context: context,
                       margin: const EdgeInsets.only(bottom: 8),
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => DynamicToolRunnerPage(plugin: item),
-                            ),
-                          );
-                        },
-                        child: Padding(
-                          padding: EdgeInsets.all(isMobile ? 12 : 14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: isMobile ? 16 : 18,
-                                    backgroundColor: theme.colorScheme.primaryContainer,
-                                    child: Icon(_getIconData(item.icon),
-                                        size: isMobile ? 18 : 20, color: theme.colorScheme.primary),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item.name,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: isMobile ? 13.5 : 14,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        Row(
-                                          children: [
-                                            Text(
-                                              'v${item.version}',
-                                              style: const TextStyle(fontSize: 10.5, color: Colors.grey),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                              decoration: BoxDecoration(
-                                                color: _getPlatformBadgeColor(item).withValues(alpha: 0.12),
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                item.platformBadgeText,
-                                                style: TextStyle(
-                                                  fontSize: 9.5,
-                                                  fontWeight: FontWeight.w500,
-                                                  color: _getPlatformBadgeColor(item),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                item.description,
-                                style: TextStyle(
-                                  fontSize: isMobile ? 11.5 : 12,
-                                  color: Colors.black87,
-                                  height: 1.35,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                      borderRadius: 12,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => DynamicToolRunnerPage(plugin: item),
                           ),
+                        );
+                      },
+                      child: Padding(
+                        padding: EdgeInsets.all(isMobile ? 12 : 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: isMobile ? 34 : 38,
+                                  height: isMobile ? 34 : 38,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    _getIconData(item.icon),
+                                    size: isMobile ? 18 : 20,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.name,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: isMobile ? 13.5 : 14.5,
+                                          color: textPrimary,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            'v${item.version}',
+                                            style: TextStyle(fontSize: 10.5, color: textSecondary),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: badgeColor.withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: badgeColor.withValues(alpha: 0.3), width: 0.5),
+                                            ),
+                                            child: Text(
+                                              item.platformBadgeText,
+                                              style: TextStyle(
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.bold,
+                                                color: badgeColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(Icons.chevron_right, size: 20, color: textSecondary),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              item.description,
+                              style: TextStyle(
+                                fontSize: isMobile ? 11.5 : 12,
+                                color: textSecondary,
+                                height: 1.35,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -1479,91 +1652,99 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                 delegate: SliverChildBuilderDelegate(
                   (ctx, index) {
                     final item = plugins[index];
-                    return Card(
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => DynamicToolRunnerPage(plugin: item),
-                            ),
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 18,
-                                    backgroundColor: theme.colorScheme.primaryContainer,
-                                    child: Icon(_getIconData(item.icon),
-                                        size: 20, color: theme.colorScheme.primary),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item.name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        Row(
-                                          children: [
-                                            Text(
-                                              'v${item.version}',
-                                              style: const TextStyle(fontSize: 10.5, color: Colors.grey),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                              decoration: BoxDecoration(
-                                                color: _getPlatformBadgeColor(item).withValues(alpha: 0.12),
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                item.platformBadgeText,
-                                                style: TextStyle(
-                                                  fontSize: 9.5,
-                                                  fontWeight: FontWeight.w500,
-                                                  color: _getPlatformBadgeColor(item),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Expanded(
-                                child: Text(
-                                  item.description,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.black87,
-                                    height: 1.35,
-                                  ),
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                    final badgeColor = _getPlatformBadgeColor(item);
+                    return _buildCardContainer(
+                      context: context,
+                      borderRadius: 12,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => DynamicToolRunnerPage(plugin: item),
                           ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    _getIconData(item.icon),
+                                    size: 20,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.name,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14.5,
+                                          color: textPrimary,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            'v${item.version}',
+                                            style: TextStyle(fontSize: 10.5, color: textSecondary),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: badgeColor.withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: badgeColor.withValues(alpha: 0.3), width: 0.5),
+                                            ),
+                                            child: Text(
+                                              item.platformBadgeText,
+                                              style: TextStyle(
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.bold,
+                                                color: badgeColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(Icons.chevron_right, size: 20, color: textSecondary),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: Text(
+                                item.description,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: textSecondary,
+                                  height: 1.35,
+                                ),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -1573,7 +1754,26 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
               ),
             ),
         ],
-      ),
+      );
+
+    return Scaffold(
+      body: isGlass
+          ? Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFF0F4FF),
+                    Color(0xFFE5EEFF),
+                    Color(0xFFF3E8FF),
+                    Color(0xFFE0F2FE),
+                  ],
+                ),
+              ),
+              child: bodyContent,
+            )
+          : bodyContent,
     );
   }
 }

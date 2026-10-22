@@ -25,53 +25,68 @@ class AppThemeOption {
 }
 
 class AppThemeManager {
+  // 次色调通用定义：蓝、绿、黄、红
+  static const Color accentBlue = Color(0xFF2563EB);
+  static const Color accentGreen = Color(0xFF10B981);
+  static const Color accentYellow = Color(0xFFF59E0B);
+  static const Color accentRed = Color(0xFFEF4444);
+
   static const List<AppThemeOption> options = [
     AppThemeOption(
-      id: 'tech_blue',
-      name: '科技蔚蓝',
-      description: '经典纯净科技蓝，高雅大气且清爽干练',
-      icon: Icons.water_drop_rounded,
-      primaryColor: Color(0xFF2563EB),
-      secondaryColor: Color(0xFF38BDF8),
-      previewBackground: Color(0xFFF8FAFC),
+      id: 'minimal_clean',
+      name: '简约黑白灰',
+      description: '主色黑白灰极简耐看，高对比度清晰分明，配蓝绿黄红次色调',
+      icon: Icons.contrast_rounded,
+      primaryColor: Color(0xFF111827),
+      secondaryColor: Color(0xFF2563EB),
+      previewBackground: Color(0xFFF9FAFB),
+    ),
+    AppThemeOption(
+      id: 'liquid_glass',
+      name: '液态晶透',
+      description: '真实毛玻璃模糊晶体美学，半透明微光边框与灵动光晕',
+      icon: Icons.blur_on_rounded,
+      primaryColor: Color(0xFF0F172A),
+      secondaryColor: Color(0xFF0284C7),
+      previewBackground: Color(0xFFEEF2F6),
+      isGlass: true,
     ),
     AppThemeOption(
       id: 'obsidian_aurora',
       name: '黑曜极光',
-      description: '极客纯黑与夜空霓虹紫蓝，极致护眼沉浸',
+      description: '纯黑深邃护眼底色，纯白高对比度文字与极光霓虹点缀',
       icon: Icons.nightlight_round,
       primaryColor: Color(0xFF818CF8),
       secondaryColor: Color(0xFFA855F7),
-      previewBackground: Color(0xFF0F172A),
+      previewBackground: Color(0xFF0B1120),
       isDark: true,
+    ),
+    AppThemeOption(
+      id: 'tech_blue',
+      name: '科技蔚蓝',
+      description: '经典科技深蓝，高对比度清爽干练',
+      icon: Icons.water_drop_rounded,
+      primaryColor: Color(0xFF1D4ED8),
+      secondaryColor: Color(0xFF38BDF8),
+      previewBackground: Color(0xFFF8FAFC),
     ),
     AppThemeOption(
       id: 'forest_emerald',
       name: '晨曦青翠',
-      description: '自然生机墨绿与薄荷青，清新柔和舒适',
+      description: '自然生机墨绿，雅致护眼高对比度',
       icon: Icons.eco_rounded,
-      primaryColor: Color(0xFF059669),
-      secondaryColor: Color(0xFF34D399),
+      primaryColor: Color(0xFF047857),
+      secondaryColor: Color(0xFF10B981),
       previewBackground: Color(0xFFF4FBF7),
     ),
     AppThemeOption(
       id: 'sunset_coral',
       name: '暮光暖橘',
-      description: '温润落日珊瑚与活力暖橙，优雅生动',
+      description: '温润落日珊瑚与金秋活力暖色',
       icon: Icons.wb_sunny_rounded,
-      primaryColor: Color(0xFFEA580C),
-      secondaryColor: Color(0xFFFB923C),
+      primaryColor: Color(0xFFC2410C),
+      secondaryColor: Color(0xFFF97316),
       previewBackground: Color(0xFFFFF9F5),
-    ),
-    AppThemeOption(
-      id: 'liquid_glass',
-      name: '液态晶透',
-      description: '拟物晶莹毛玻璃美学，通透微光与亚克力质感',
-      icon: Icons.blur_on_rounded,
-      primaryColor: Color(0xFF0284C7),
-      secondaryColor: Color(0xFF38BDF8),
-      previewBackground: Color(0xFFEFF6FF),
-      isGlass: true,
     ),
   ];
 
@@ -82,31 +97,49 @@ class AppThemeManager {
   static ThemeData getThemeData(String id) {
     final option = getOption(id);
 
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: option.primaryColor,
-      brightness: option.isDark ? Brightness.dark : Brightness.light,
-      primary: option.primaryColor,
-    );
-
     if (option.isDark) {
+      // 纯粹暗黑：纯黑底、纯白字、高对比度！
+      const bg = Color(0xFF0B1120);
+      const cardBg = Color(0xFF1E293B);
+      const primary = Color(0xFF818CF8);
+
       return ThemeData(
         brightness: Brightness.dark,
-        colorScheme: colorScheme,
+        scaffoldBackgroundColor: bg,
+        colorScheme: ColorScheme.dark(
+          primary: primary,
+          onPrimary: Colors.white,
+          secondary: const Color(0xFF38BDF8),
+          surface: cardBg,
+          onSurface: const Color(0xFFF8FAFC), // 纯白高对比度文字
+          onSurfaceVariant: const Color(0xFFCBD5E1), // 浅灰高对比度描述
+          outline: const Color(0xFF475569),
+          error: accentRed,
+        ),
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFF0B1120),
-        cardColor: const Color(0xFF1E293B),
+        cardColor: cardBg,
         cardTheme: CardThemeData(
-          color: const Color(0xFF1E293B),
-          elevation: 1,
+          color: cardBg,
+          elevation: 2,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: Color(0xFF334155), width: 0.8),
+            side: const BorderSide(color: Color(0xFF334155), width: 1.0),
           ),
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0B1120),
+          backgroundColor: bg,
+          foregroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
+        ),
+        dividerColor: const Color(0xFF334155),
+        textTheme: const TextTheme(
+          titleLarge: TextStyle(color: Color(0xFFF8FAFC), fontWeight: FontWeight.bold),
+          titleMedium: TextStyle(color: Color(0xFFF8FAFC), fontWeight: FontWeight.w600),
+          titleSmall: TextStyle(color: Color(0xFFF8FAFC), fontWeight: FontWeight.w600),
+          bodyLarge: TextStyle(color: Color(0xFFF8FAFC)),
+          bodyMedium: TextStyle(color: Color(0xFFCBD5E1)),
+          bodySmall: TextStyle(color: Color(0xFF94A3B8)),
         ),
         fontFamilyFallback: const [
           'PingFang SC',
@@ -118,24 +151,46 @@ class AppThemeManager {
     }
 
     if (option.isGlass) {
+      // 液态晶透毛玻璃：半透明表面 + 高对比度深色文本
+      const primary = Color(0xFF0F172A);
+
       return ThemeData(
         brightness: Brightness.light,
-        colorScheme: colorScheme,
-        useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF1F5F9),
-        cardColor: Colors.white.withValues(alpha: 0.85),
+        colorScheme: ColorScheme.light(
+          primary: primary,
+          onPrimary: Colors.white,
+          secondary: const Color(0xFF0284C7),
+          surface: Colors.white.withValues(alpha: 0.78),
+          onSurface: const Color(0xFF0F172A), // 纯黑高对比度
+          onSurfaceVariant: const Color(0xFF334155), // 深灰高对比度
+          outline: Colors.white.withValues(alpha: 0.8),
+          error: accentRed,
+        ),
+        useMaterial3: true,
+        cardColor: Colors.white.withValues(alpha: 0.82),
         cardTheme: CardThemeData(
-          color: Colors.white.withValues(alpha: 0.88),
-          elevation: 1.5,
+          color: Colors.white.withValues(alpha: 0.82),
+          elevation: 2,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.8), width: 1.2),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.9), width: 1.5),
           ),
         ),
         appBarTheme: AppBarTheme(
-          backgroundColor: Colors.white.withValues(alpha: 0.75),
+          backgroundColor: Colors.white.withValues(alpha: 0.70),
+          foregroundColor: const Color(0xFF0F172A),
           surfaceTintColor: Colors.transparent,
           elevation: 0,
+        ),
+        dividerColor: Colors.black.withValues(alpha: 0.08),
+        textTheme: const TextTheme(
+          titleLarge: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold),
+          titleMedium: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+          titleSmall: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+          bodyLarge: TextStyle(color: Color(0xFF0F172A)),
+          bodyMedium: TextStyle(color: Color(0xFF334155)),
+          bodySmall: TextStyle(color: Color(0xFF475569)),
         ),
         fontFamilyFallback: const [
           'PingFang SC',
@@ -146,25 +201,47 @@ class AppThemeManager {
       );
     }
 
-    // Standard light themes (Tech blue, Forest emerald, Sunset coral)
+    // 默认极简黑白灰及浅色主题：严格保证黑白分明与极高对比度
+    final primary = option.id == 'minimal_clean' ? const Color(0xFF111827) : option.primaryColor;
+    final secondary = option.id == 'minimal_clean' ? accentBlue : option.secondaryColor;
+
     return ThemeData(
       brightness: Brightness.light,
-      colorScheme: colorScheme,
-      useMaterial3: true,
       scaffoldBackgroundColor: option.previewBackground,
+      colorScheme: ColorScheme.light(
+        primary: primary,
+        onPrimary: Colors.white,
+        secondary: secondary,
+        surface: Colors.white,
+        onSurface: const Color(0xFF111827), // 纯黑 Charcoal，锐利清晰！
+        onSurfaceVariant: const Color(0xFF374151), // 深灰 Slate，文字高对比度！
+        outline: const Color(0xFFD1D5DB), // 干净清晰的边框
+        error: accentRed,
+      ),
+      useMaterial3: true,
       cardColor: Colors.white,
       cardTheme: CardThemeData(
         color: Colors.white,
-        elevation: 0.8,
+        elevation: 1,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200, width: 0.8),
+          side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.0),
         ),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: option.previewBackground,
+        foregroundColor: const Color(0xFF111827),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
+      ),
+      dividerColor: const Color(0xFFE5E7EB),
+      textTheme: const TextTheme(
+        titleLarge: TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.bold),
+        titleMedium: TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w600),
+        titleSmall: TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w600),
+        bodyLarge: TextStyle(color: Color(0xFF111827)),
+        bodyMedium: TextStyle(color: Color(0xFF374151)),
+        bodySmall: TextStyle(color: Color(0xFF4B5563)),
       ),
       fontFamilyFallback: const [
         'PingFang SC',
