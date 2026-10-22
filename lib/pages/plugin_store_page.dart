@@ -375,19 +375,27 @@ class _PluginStorePageState extends State<PluginStorePage> {
                       return RadioListTile<String>(
                         value: node.id,
                         groupValue: currentMode,
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                         title: Row(
                           children: [
-                            Text('${node.icon} ${node.name}', style: const TextStyle(fontSize: 13)),
-                            const Spacer(),
+                            Expanded(
+                              child: Text(
+                                '${node.icon} ${node.name}',
+                                style: const TextStyle(fontSize: 12.5),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                               decoration: BoxDecoration(
                                 color: latencyColor.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
                                 latencyText,
-                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: latencyColor),
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: latencyColor),
                               ),
                             ),
                           ],
@@ -872,9 +880,42 @@ class _PluginStorePageState extends State<PluginStorePage> {
     final isMobile = MediaQuery.of(context).size.width < 600;
     final activeNode = _pluginManager.currentActiveNode;
 
+    final filteredPlugins = _pluginManager.remotePlugins.where((p) {
+      if (_selectedScope == 'official' && !p.isOfficial) return false;
+      if (_selectedScope == 'community' && p.isOfficial) return false;
+      if (_selectedPlatform != 'all') {
+        if (_selectedPlatform == 'universal' && !p.platforms.contains('universal')) {
+          return false;
+        }
+        if (_selectedPlatform == 'windows' &&
+            !p.platforms.contains('windows') &&
+            !p.platforms.contains('universal')) {
+          return false;
+        }
+        if (_selectedPlatform == 'android' &&
+            !p.platforms.contains('android') &&
+            !p.platforms.contains('universal')) {
+          return false;
+        }
+      }
+      if (_searchQuery.trim().isNotEmpty) {
+        final q = _searchQuery.trim().toLowerCase();
+        final nameMatch = p.name.toLowerCase().contains(q);
+        final descMatch = p.description.toLowerCase().contains(q);
+        final catMatch = p.category.toLowerCase().contains(q);
+        final authorMatch = p.author.toLowerCase().contains(q);
+        final idMatch = p.id.toLowerCase().contains(q);
+        return nameMatch || descMatch || catMatch || authorMatch || idMatch;
+      }
+      return true;
+    }).toList();
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('功能插件市场 (云端社区中心)'),
+        title: Text(
+          isMobile ? '插件模块市场' : '功能插件市场 (云端社区中心)',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 16 : 18),
+        ),
         actions: [
           if (!isMobile) ...[
             FilledButton.tonalIcon(
@@ -888,293 +929,336 @@ class _PluginStorePageState extends State<PluginStorePage> {
               icon: const Icon(Icons.system_update_alt_rounded, size: 16),
               label: const Text('检查更新'),
             ),
+            IconButton(
+              icon: const Icon(Icons.speed),
+              tooltip: '镜像节点测速与换源',
+              onPressed: _showNodeSelectionDialog,
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: '刷新插件市场',
+              onPressed: _refreshStore,
+            ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              tooltip: '更多与社区',
+              onSelected: (val) {
+                if (val == 'gitee') {
+                  _openCommunityRepo('https://gitee.com/sujiuovo/toolbox-community-registry');
+                } else if (val == 'github') {
+                  _openCommunityRepo('https://github.com/SuJiuOvO/Toolbox-Community-Registry');
+                } else if (val == 'update') {
+                  _checkAppUpdate();
+                } else if (val == 'nodes') {
+                  _showNodeSelectionDialog();
+                }
+              },
+              itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'gitee',
+                  child: Row(children: [Text('🇨🇳 Gitee 社区仓库'), Spacer(), Icon(Icons.open_in_new, size: 16)]),
+                ),
+                const PopupMenuItem(
+                  value: 'github',
+                  child: Row(children: [Text('🐙 GitHub 社区仓库'), Spacer(), Icon(Icons.open_in_new, size: 16)]),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'update',
+                  child: Row(children: [Text('🚀 检查客户端版本更新')]),
+                ),
+                const PopupMenuItem(
+                  value: 'nodes',
+                  child: Row(children: [Text('🌐 多节点线路测速与换源')]),
+                ),
+              ],
+            ),
           ] else ...[
             IconButton(
-              icon: const Icon(Icons.file_upload_outlined),
-              tooltip: '本地安装插件 (.json / .zip)',
-              onPressed: _pickAndInstallLocalPlugin,
+              icon: const Icon(Icons.speed),
+              tooltip: '镜像节点测速与换源',
+              onPressed: _showNodeSelectionDialog,
             ),
-            IconButton(
-              icon: const Icon(Icons.system_update_alt_rounded),
-              tooltip: '检查客户端更新',
-              onPressed: _checkAppUpdate,
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              tooltip: '更多与社区',
+              onSelected: (val) {
+                if (val == 'install') {
+                  _pickAndInstallLocalPlugin();
+                } else if (val == 'update') {
+                  _checkAppUpdate();
+                } else if (val == 'refresh') {
+                  _refreshStore();
+                } else if (val == 'gitee') {
+                  _openCommunityRepo('https://gitee.com/sujiuovo/toolbox-community-registry');
+                } else if (val == 'github') {
+                  _openCommunityRepo('https://github.com/SuJiuOvO/Toolbox-Community-Registry');
+                }
+              },
+              itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'install',
+                  child: Row(children: [
+                    Icon(Icons.file_upload_outlined, size: 18, color: Colors.blueAccent),
+                    SizedBox(width: 8),
+                    Text('本地安装模块 (.json / .zip)'),
+                  ]),
+                ),
+                const PopupMenuItem(
+                  value: 'update',
+                  child: Row(children: [
+                    Icon(Icons.system_update_alt_rounded, size: 18, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Text('检查客户端新版本'),
+                  ]),
+                ),
+                const PopupMenuItem(
+                  value: 'refresh',
+                  child: Row(children: [
+                    Icon(Icons.refresh, size: 18),
+                    SizedBox(width: 8),
+                    Text('刷新插件市场'),
+                  ]),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'gitee',
+                  child: Row(children: [
+                    Text('🇨🇳 Gitee 社区仓库'),
+                    Spacer(),
+                    Icon(Icons.open_in_new, size: 16),
+                  ]),
+                ),
+                const PopupMenuItem(
+                  value: 'github',
+                  child: Row(children: [
+                    Text('🐙 GitHub 社区仓库'),
+                    Spacer(),
+                    Icon(Icons.open_in_new, size: 16),
+                  ]),
+                ),
+              ],
             ),
           ],
-          IconButton(
-            icon: const Icon(Icons.speed),
-            tooltip: '镜像节点测速与换源',
-            onPressed: _showNodeSelectionDialog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新插件市场',
-            onPressed: _refreshStore,
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            tooltip: '更多与社区',
-            onSelected: (val) {
-              if (val == 'gitee') {
-                _openCommunityRepo('https://gitee.com/sujiuovo/toolbox-community-registry');
-              } else if (val == 'github') {
-                _openCommunityRepo('https://github.com/SuJiuOvO/Toolbox-Community-Registry');
-              } else if (val == 'update') {
-                _checkAppUpdate();
-              } else if (val == 'nodes') {
-                _showNodeSelectionDialog();
-              }
-            },
-            itemBuilder: (ctx) => [
-              const PopupMenuItem(
-                value: 'gitee',
-                child: Row(children: [Text('🇨🇳 Gitee 社区仓库'), Spacer(), Icon(Icons.open_in_new, size: 16)]),
-              ),
-              const PopupMenuItem(
-                value: 'github',
-                child: Row(children: [Text('🐙 GitHub 社区仓库'), Spacer(), Icon(Icons.open_in_new, size: 16)]),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: 'update',
-                child: Row(children: [Text('🚀 检查客户端版本更新')]),
-              ),
-              const PopupMenuItem(
-                value: 'nodes',
-                child: Row(children: [Text('🌐 多节点线路测速与换源')]),
-              ),
-            ],
-          ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
+          : CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+              slivers: [
                 // 顶部多源网络节点连接状态条
-                Container(
-                  margin: const EdgeInsets.fromLTRB(16, 6, 16, 2),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.15)),
-                  ),
-                  child: Row(
-                    children: [
-                      Text(activeNode.icon, style: const TextStyle(fontSize: 16)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Text(
-                              activeNode.name,
-                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
-                            ),
-                            if (_pluginManager.activeNodeLatency != null) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
+                SliverToBoxAdapter(
+                  child: Container(
+                    margin: EdgeInsets.fromLTRB(isMobile ? 12 : 16, 6, isMobile ? 12 : 16, 2),
+                    padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.15)),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(activeNode.icon, style: const TextStyle(fontSize: 16)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Flexible(
                                 child: Text(
-                                  '${_pluginManager.activeNodeLatency}ms',
-                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green),
+                                  activeNode.name,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                            ],
-                            const SizedBox(width: 6),
-                            Text(
-                              _pluginManager.selectedNodeMode == 'auto' ? '(智能竞速)' : '(手动锁定)',
-                              style: const TextStyle(fontSize: 11, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                      InkWell(
-                        onTap: _showNodeSelectionDialog,
-                        borderRadius: BorderRadius.circular(4),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.swap_horiz, size: 16, color: Colors.blueAccent),
-                              SizedBox(width: 2),
-                              Text('测速换源', style: TextStyle(fontSize: 12, color: Colors.blueAccent, fontWeight: FontWeight.w600)),
+                              if (_pluginManager.activeNodeLatency != null) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    '${_pluginManager.activeNodeLatency}ms',
+                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(width: 4),
+                              Text(
+                                _pluginManager.selectedNodeMode == 'auto' ? '(竞速)' : '(锁定)',
+                                style: const TextStyle(fontSize: 10.5, color: Colors.grey),
+                              ),
                             ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // 市场搜索栏
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (val) {
-                      setState(() {
-                        _searchQuery = val;
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText: '搜索云端社区插件 (名称、简介、作者或分类)...',
-                      hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {
-                                  _searchQuery = '';
-                                });
-                              },
-                            )
-                          : null,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: theme.colorScheme.primary),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // 社区范围筛选与平台筛选
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-                  alignment: Alignment.centerLeft,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        FilterChip(
-                          label: const Text('全部模块'),
-                          selected: _selectedScope == 'all',
-                          onSelected: (_) => setState(() => _selectedScope = 'all'),
-                        ),
                         const SizedBox(width: 6),
-                        FilterChip(
-                          avatar: const Icon(Icons.verified, size: 14, color: Colors.blueAccent),
-                          label: const Text('官方认证'),
-                          selected: _selectedScope == 'official',
-                          onSelected: (_) => setState(() => _selectedScope = 'official'),
-                        ),
-                        const SizedBox(width: 6),
-                        FilterChip(
-                          avatar: const Icon(Icons.people, size: 14, color: Colors.teal),
-                          label: const Text('社区精选'),
-                          selected: _selectedScope == 'community',
-                          onSelected: (_) => setState(() => _selectedScope = 'community'),
-                        ),
-                        const SizedBox(width: 12),
-                        Container(width: 1, height: 20, color: Colors.grey.shade300),
-                        const SizedBox(width: 12),
-                        ChoiceChip(
-                          label: const Text('全部平台'),
-                          selected: _selectedPlatform == 'all',
-                          onSelected: (_) => setState(() => _selectedPlatform = 'all'),
-                        ),
-                        const SizedBox(width: 6),
-                        ChoiceChip(
-                          label: const Text('🌐 通用'),
-                          selected: _selectedPlatform == 'universal',
-                          onSelected: (_) => setState(() => _selectedPlatform = 'universal'),
-                        ),
-                        const SizedBox(width: 6),
-                        ChoiceChip(
-                          label: const Text('🪟 Windows'),
-                          selected: _selectedPlatform == 'windows',
-                          onSelected: (_) => setState(() => _selectedPlatform = 'windows'),
-                        ),
-                        const SizedBox(width: 6),
-                        ChoiceChip(
-                          label: const Text('🤖 Android'),
-                          selected: _selectedPlatform == 'android',
-                          onSelected: (_) => setState(() => _selectedPlatform = 'android'),
+                        InkWell(
+                          onTap: _showNodeSelectionDialog,
+                          borderRadius: BorderRadius.circular(4),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.swap_horiz, size: 16, color: Colors.blueAccent),
+                                SizedBox(width: 2),
+                                Text('换源测速', style: TextStyle(fontSize: 12, color: Colors.blueAccent, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ),
 
-                // 插件列表
-                Expanded(
-                  child: Builder(
-                    builder: (ctx) {
-                      final filteredPlugins = _pluginManager.remotePlugins.where((p) {
-                        if (_selectedScope == 'official' && !p.isOfficial) return false;
-                        if (_selectedScope == 'community' && p.isOfficial) return false;
-                        if (_selectedPlatform != 'all') {
-                          if (_selectedPlatform == 'universal' && !p.platforms.contains('universal')) {
-                            return false;
-                          }
-                          if (_selectedPlatform == 'windows' &&
-                              !p.platforms.contains('windows') &&
-                              !p.platforms.contains('universal')) {
-                            return false;
-                          }
-                          if (_selectedPlatform == 'android' &&
-                              !p.platforms.contains('android') &&
-                              !p.platforms.contains('universal')) {
-                            return false;
-                          }
-                        }
-                        if (_searchQuery.trim().isNotEmpty) {
-                          final q = _searchQuery.trim().toLowerCase();
-                          final nameMatch = p.name.toLowerCase().contains(q);
-                          final descMatch = p.description.toLowerCase().contains(q);
-                          final catMatch = p.category.toLowerCase().contains(q);
-                          final authorMatch = p.author.toLowerCase().contains(q);
-                          final idMatch = p.id.toLowerCase().contains(q);
-                          return nameMatch || descMatch || catMatch || authorMatch || idMatch;
-                        }
-                        return true;
-                      }).toList();
+                // 市场搜索栏
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(isMobile ? 12 : 16, 6, isMobile ? 12 : 16, 4),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (val) {
+                        setState(() {
+                          _searchQuery = val;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: isMobile ? '搜索插件 (名称、简介、作者)...' : '搜索云端社区插件 (名称、简介、作者或分类)...',
+                        hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                        prefixIcon: const Icon(Icons.search, size: 20),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {
+                                    _searchQuery = '';
+                                  });
+                                },
+                              )
+                            : null,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: theme.colorScheme.primary),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
 
-                      if (filteredPlugins.isEmpty) {
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.inbox_outlined, size: 54, color: Colors.grey),
-                                const SizedBox(height: 12),
-                                const Text('未找到匹配搜索或筛选条件的插件', style: TextStyle(color: Colors.grey, fontSize: 14)),
-                                const SizedBox(height: 12),
-                                OutlinedButton.icon(
-                                  onPressed: _showNodeSelectionDialog,
-                                  icon: const Icon(Icons.swap_horiz, size: 16),
-                                  label: const Text('切换其他可用镜像节点'),
-                                ),
-                              ],
-                            ),
+                // 社区范围筛选与平台筛选
+                SliverToBoxAdapter(
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: 2),
+                    alignment: Alignment.centerLeft,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: [
+                          FilterChip(
+                            label: const Text('全部模块'),
+                            selected: _selectedScope == 'all',
+                            onSelected: (_) => setState(() => _selectedScope = 'all'),
                           ),
-                        );
-                      }
+                          const SizedBox(width: 6),
+                          FilterChip(
+                            avatar: const Icon(Icons.verified, size: 14, color: Colors.blueAccent),
+                            label: const Text('官方认证'),
+                            selected: _selectedScope == 'official',
+                            onSelected: (_) => setState(() => _selectedScope = 'official'),
+                          ),
+                          const SizedBox(width: 6),
+                          FilterChip(
+                            avatar: const Icon(Icons.people, size: 14, color: Colors.teal),
+                            label: const Text('社区精选'),
+                            selected: _selectedScope == 'community',
+                            onSelected: (_) => setState(() => _selectedScope = 'community'),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(width: 1, height: 18, color: Colors.grey.shade300),
+                          const SizedBox(width: 10),
+                          ChoiceChip(
+                            label: const Text('全部平台'),
+                            selected: _selectedPlatform == 'all',
+                            onSelected: (_) => setState(() => _selectedPlatform = 'all'),
+                          ),
+                          const SizedBox(width: 6),
+                          ChoiceChip(
+                            label: const Text('🌐 通用'),
+                            selected: _selectedPlatform == 'universal',
+                            onSelected: (_) => setState(() => _selectedPlatform = 'universal'),
+                          ),
+                          const SizedBox(width: 6),
+                          ChoiceChip(
+                            label: const Text('🪟 Windows'),
+                            selected: _selectedPlatform == 'windows',
+                            onSelected: (_) => setState(() => _selectedPlatform = 'windows'),
+                          ),
+                          const SizedBox(width: 6),
+                          ChoiceChip(
+                            label: const Text('🤖 Android'),
+                            selected: _selectedPlatform == 'android',
+                            onSelected: (_) => setState(() => _selectedPlatform = 'android'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 4)),
 
-                      return ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        itemCount: filteredPlugins.length,
-                        itemBuilder: (ctx, index) {
+                // 插件列表
+                if (filteredPlugins.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.inbox_outlined, size: 54, color: Colors.grey),
+                            const SizedBox(height: 12),
+                            const Text('未找到匹配搜索或筛选条件的插件', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: _showNodeSelectionDialog,
+                              icon: const Icon(Icons.swap_horiz, size: 16),
+                              label: const Text('切换其他可用镜像节点'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      isMobile ? 12 : 16,
+                      4,
+                      isMobile ? 12 : 16,
+                      isMobile ? 24 : 16,
+                    ),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (ctx, index) {
                           final item = filteredPlugins[index];
                           final isDownloading = _downloadingPluginId == item.id;
                           final isAnyBusy = _downloadingPluginId != null;
@@ -1186,19 +1270,19 @@ class _PluginStorePageState extends State<PluginStorePage> {
                             elevation: 1,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             child: Padding(
-                              padding: const EdgeInsets.all(15),
+                              padding: EdgeInsets.all(isMobile ? 12 : 15),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
                                     children: [
                                       CircleAvatar(
-                                        radius: 20,
+                                        radius: isMobile ? 18 : 20,
                                         backgroundColor: theme.colorScheme.primaryContainer,
                                         child: Icon(_getIconData(item.icon),
-                                            size: 22, color: theme.colorScheme.primary),
+                                            size: isMobile ? 20 : 22, color: theme.colorScheme.primary),
                                       ),
-                                      const SizedBox(width: 12),
+                                      const SizedBox(width: 10),
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1208,7 +1292,10 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                                 Expanded(
                                                   child: Text(
                                                     item.name,
-                                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w600,
+                                                      fontSize: isMobile ? 14 : 15,
+                                                    ),
                                                   ),
                                                 ),
                                                 if (item.isOfficial)
@@ -1241,9 +1328,12 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                             const SizedBox(height: 2),
                                             Row(
                                               children: [
-                                                Text(
-                                                  'v${item.version} · ${item.author} · ${(item.size != null ? (item.size! / 1024).toStringAsFixed(1) : "0")} KB',
-                                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                                Expanded(
+                                                  child: Text(
+                                                    'v${item.version} · ${item.author} · ${(item.size != null ? (item.size! / 1024).toStringAsFixed(1) : "0")} KB',
+                                                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
                                                 ),
                                                 const SizedBox(width: 6),
                                                 Container(
@@ -1270,14 +1360,18 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 10),
+                                  const SizedBox(height: 8),
                                   Text(
                                     item.description,
-                                    style: const TextStyle(fontSize: 13, color: Colors.black87),
-                                    maxLines: 3,
+                                    style: TextStyle(
+                                      fontSize: isMobile ? 12 : 13,
+                                      color: Colors.black87,
+                                      height: 1.35,
+                                    ),
+                                    maxLines: isMobile ? 2 : 3,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 10),
+                                  const SizedBox(height: 8),
 
                                   // 按钮组：预览简介 + 下载/更新/卸载操作
                                   Row(
@@ -1285,7 +1379,7 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                     children: [
                                       OutlinedButton.icon(
                                         onPressed: () => _showPluginDetailDialog(item),
-                                        icon: const Icon(Icons.info_outline, size: 15),
+                                        icon: const Icon(Icons.info_outline, size: 14),
                                         label: const Text('预览简介', style: TextStyle(fontSize: 12)),
                                         style: OutlinedButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1363,7 +1457,7 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                     ],
                                   ),
                                   if (isDownloading) ...[
-                                    const SizedBox(height: 10),
+                                    const SizedBox(height: 8),
                                     LinearProgressIndicator(value: _downloadProgress > 0 ? _downloadProgress : null),
                                     const SizedBox(height: 4),
                                     Text(
@@ -1376,10 +1470,10 @@ class _PluginStorePageState extends State<PluginStorePage> {
                             ),
                           );
                         },
-                      );
-                    },
+                        childCount: filteredPlugins.length,
+                      ),
+                    ),
                   ),
-                ),
               ],
             ),
     );

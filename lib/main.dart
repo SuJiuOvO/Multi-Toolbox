@@ -79,6 +79,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
   bool _isDeepSearch = false;
   String _selectedCategory = 'all';
   String _selectedPlatform = 'all';
+  bool _showBanner = true;
 
   @override
   void initState() {
@@ -654,457 +655,537 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
     }).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.handyman_rounded, color: Colors.blueAccent),
-            SizedBox(width: 8),
-            Text(
-              '多功能百宝箱',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-          ],
-        ),
-        actions: [
-          if (isMobile) ...[
-            IconButton(
-              icon: const Icon(Icons.file_upload_outlined),
-              tooltip: '本地安装插件 (.json / .zip)',
-              onPressed: _pickAndInstallLocalPlugin,
-            ),
-            IconButton(
-              icon: const Icon(Icons.add_shopping_cart, color: Colors.blueAccent),
-              tooltip: '下载新工具',
-              onPressed: _openStore,
-            ),
-          ] else ...[
-            OutlinedButton.icon(
-              onPressed: _pickAndInstallLocalPlugin,
-              icon: const Icon(Icons.file_upload_outlined, size: 17),
-              label: const Text('本地安装'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: _openStore,
-              icon: const Icon(Icons.add_shopping_cart, size: 18),
-              label: const Text('功能中心 / 模块市场'),
-            ),
-          ],
-          IconButton(
-            tooltip: '检查新版本更新',
-            icon: const Icon(Icons.system_update_alt_rounded),
-            onPressed: _checkAppUpdate,
-          ),
-          IconButton(
-            tooltip: '刷新已安装工具',
-            icon: const Icon(Icons.refresh),
-            onPressed: _refreshList,
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 顶部横幅说明
-          Container(
-            width: double.infinity,
-            margin: EdgeInsets.symmetric(
-              horizontal: isMobile ? 12 : 20,
-              vertical: 6,
-            ),
-            padding: EdgeInsets.all(isMobile ? 10 : 14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  theme.colorScheme.primary.withValues(alpha: 0.08),
-                  theme.colorScheme.primary.withValues(alpha: 0.02),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
-            ),
-            child: Row(
+      body: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        slivers: [
+          SliverAppBar(
+            floating: true,
+            snap: true,
+            pinned: !isMobile,
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.cloud_sync, size: isMobile ? 26 : 32, color: theme.colorScheme.primary),
-                SizedBox(width: isMobile ? 10 : 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '客户端免重新安装 · 云端热插拔与本地扩展',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: isMobile ? 13 : 14,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '所有工具均通过模块化规范加载。可进入右上角「模块市场」下载，或点击「本地安装」加载 .json/.zip 模块。',
-                        style: TextStyle(
-                          color: Colors.black54,
-                          fontSize: isMobile ? 11 : 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 首页搜索栏 + 深度搜索开关
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (val) {
-                      setState(() {
-                        _searchQuery = val;
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText: _isDeepSearch
-                          ? '深度搜索已安装工具 (深入匹配功能简介、算法及参数说明)...'
-                          : '搜索已安装工具 (名称、分类、ID)...',
-                      hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {
-                                  _searchQuery = '';
-                                });
-                              },
-                            )
-                          : null,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: theme.colorScheme.primary),
-                      ),
-                    ),
-                  ),
-                ),
+                const Icon(Icons.handyman_rounded, color: Colors.blueAccent),
                 const SizedBox(width: 8),
-                // 深度搜索切换 Chip
-                Tooltip(
-                  message: '开启后将在功能模块的详细简介和参数说明中深入检索关键词',
-                  child: FilterChip(
-                    avatar: Icon(
-                      _isDeepSearch ? Icons.manage_search_rounded : Icons.search_rounded,
-                      size: 17,
-                      color: _isDeepSearch ? Colors.white : theme.colorScheme.primary,
-                    ),
-                    label: Text(
-                      _isDeepSearch ? '深度搜索' : '普通搜索',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: _isDeepSearch ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    selected: _isDeepSearch,
-                    selectedColor: theme.colorScheme.primary,
-                    showCheckmark: false,
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                    visualDensity: VisualDensity.compact,
-                    onSelected: (val) {
-                      setState(() {
-                        _isDeepSearch = val;
-                      });
-                    },
-                  ),
+                Text(
+                  '多功能百宝箱',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 16 : 18),
                 ),
               ],
             ),
-          ),
-
-          // 搜索结果提示条（如果正在搜索）
-          if (_searchQuery.trim().isNotEmpty)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: 2),
-              child: Row(
-                children: [
-                  Text(
-                    '共检索到 ${plugins.length} 个功能模块',
-                    style: const TextStyle(fontSize: 12, color: Colors.blueAccent, fontWeight: FontWeight.w600),
-                  ),
-                  if (_isDeepSearch)
-                    const Text(
-                      ' (已开启深度搜索：包含简介及参数)',
-                      style: TextStyle(fontSize: 11, color: Colors.grey),
-                    ),
-                  const Spacer(),
-                  InkWell(
-                    onTap: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                    child: const Text('清除搜索', style: TextStyle(fontSize: 11, color: Colors.redAccent)),
-                  ),
-                ],
-              ),
-            ),
-
-          // 分类筛选 Chip + 全屏展开按钮
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: 2),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Scrollbar(
-                    controller: _categoryScrollController,
-                    child: SingleChildScrollView(
-                      controller: _categoryScrollController,
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
+            actions: [
+              if (isMobile) ...[
+                IconButton(
+                  icon: const Icon(Icons.add_shopping_cart, color: Colors.blueAccent),
+                  tooltip: '下载新工具 / 模块市场',
+                  onPressed: _openStore,
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: '更多选项',
+                  onSelected: (val) {
+                    if (val == 'install') {
+                      _pickAndInstallLocalPlugin();
+                    } else if (val == 'update') {
+                      _checkAppUpdate();
+                    } else if (val == 'refresh') {
+                      _refreshList();
+                    }
+                  },
+                  itemBuilder: (ctx) => [
+                    const PopupMenuItem(
+                      value: 'install',
                       child: Row(
                         children: [
-                          FilterChip(
-                            label: const Text('全部工具'),
-                            selected: _selectedCategory == 'all',
-                            onSelected: (_) => setState(() => _selectedCategory = 'all'),
+                          Icon(Icons.file_upload_outlined, size: 18, color: Colors.blueAccent),
+                          SizedBox(width: 8),
+                          Text('本地安装模块 (.json / .zip)'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'update',
+                      child: Row(
+                        children: [
+                          Icon(Icons.system_update_alt_rounded, size: 18, color: Colors.orange),
+                          SizedBox(width: 8),
+                          Text('检查客户端新版本'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'refresh',
+                      child: Row(
+                        children: [
+                          Icon(Icons.refresh, size: 18),
+                          SizedBox(width: 8),
+                          Text('刷新已安装工具'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 4),
+              ] else ...[
+                OutlinedButton.icon(
+                  onPressed: _pickAndInstallLocalPlugin,
+                  icon: const Icon(Icons.file_upload_outlined, size: 17),
+                  label: const Text('本地安装'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: _openStore,
+                  icon: const Icon(Icons.add_shopping_cart, size: 18),
+                  label: const Text('功能中心 / 模块市场'),
+                ),
+                IconButton(
+                  tooltip: '检查新版本更新',
+                  icon: const Icon(Icons.system_update_alt_rounded),
+                  onPressed: _checkAppUpdate,
+                ),
+                IconButton(
+                  tooltip: '刷新已安装工具',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _refreshList,
+                ),
+                const SizedBox(width: 8),
+              ],
+            ],
+          ),
+
+          // 顶部横幅说明 (可关闭)
+          if (_showBanner)
+            SliverToBoxAdapter(
+              child: Container(
+                width: double.infinity,
+                margin: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 12 : 20,
+                  vertical: 6,
+                ),
+                padding: EdgeInsets.fromLTRB(isMobile ? 10 : 14, isMobile ? 8 : 10, 6, isMobile ? 8 : 10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.colorScheme.primary.withValues(alpha: 0.08),
+                      theme.colorScheme.primary.withValues(alpha: 0.02),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.cloud_sync, size: isMobile ? 24 : 30, color: theme.colorScheme.primary),
+                    SizedBox(width: isMobile ? 8 : 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '客户端免重新安装 · 云端热插拔与本地扩展',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: isMobile ? 12.5 : 14,
+                            ),
                           ),
-                          const SizedBox(width: 8),
-                          FilterChip(
-                            label: const Text('图片处理'),
-                            selected: _selectedCategory == 'image',
-                            onSelected: (_) => setState(() => _selectedCategory = 'image'),
-                          ),
-                          const SizedBox(width: 8),
-                          FilterChip(
-                            label: const Text('音视频转换'),
-                            selected: _selectedCategory == 'media',
-                            onSelected: (_) => setState(() => _selectedCategory = 'media'),
-                          ),
-                          const SizedBox(width: 8),
-                          FilterChip(
-                            label: const Text('文档/PDF'),
-                            selected: _selectedCategory == 'document',
-                            onSelected: (_) => setState(() => _selectedCategory = 'document'),
+                          const SizedBox(height: 2),
+                          Text(
+                            '所有工具均通过模块化规范加载。可进入右上角「模块市场」下载，或点击「本地安装」加载 .json/.zip 模块。',
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontSize: isMobile ? 11 : 12,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // 全屏展开筛选按钮
-                Tooltip(
-                  message: '全屏展开分类与架构筛选面板',
-                  child: ActionChip(
-                    avatar: const Icon(Icons.fullscreen_rounded, size: 18, color: Colors.blueAccent),
-                    label: const Text('全屏展开', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: _showCategoryFullscreenDialog,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 平台架构筛选 Chip（支持 Windows 鼠标按住直接拖拽滑动）
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: 2),
-            child: Scrollbar(
-              controller: _platformScrollController,
-              child: SingleChildScrollView(
-                controller: _platformScrollController,
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                child: Row(
-                  children: [
-                    ChoiceChip(
-                      label: const Text('全部平台'),
-                      selected: _selectedPlatform == 'all',
-                      onSelected: (_) => setState(() => _selectedPlatform = 'all'),
-                    ),
-                    const SizedBox(width: 6),
-                    ChoiceChip(
-                      label: const Text('🌐 全平台通用'),
-                      selected: _selectedPlatform == 'universal',
-                      onSelected: (_) => setState(() => _selectedPlatform = 'universal'),
-                    ),
-                    const SizedBox(width: 6),
-                    ChoiceChip(
-                      label: const Text('🪟 Windows 专享/优化'),
-                      selected: _selectedPlatform == 'windows',
-                      onSelected: (_) => setState(() => _selectedPlatform = 'windows'),
-                    ),
-                    const SizedBox(width: 6),
-                    ChoiceChip(
-                      label: const Text('🤖 Android 专享/优化'),
-                      selected: _selectedPlatform == 'android',
-                      onSelected: (_) => setState(() => _selectedPlatform = 'android'),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18, color: Colors.grey),
+                      tooltip: '关闭提示',
+                      onPressed: () => setState(() => _showBanner = false),
                     ),
                   ],
                 ),
               ),
             ),
+
+          // 首页搜索栏 + 深度搜索开关
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (val) {
+                        setState(() {
+                          _searchQuery = val;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: _isDeepSearch
+                            ? (isMobile ? '深度搜索 (匹配简介与参数)...' : '深度搜索已安装工具 (深入匹配功能简介、算法及参数说明)...')
+                            : (isMobile ? '搜索已安装工具...' : '搜索已安装工具 (名称、分类、ID)...'),
+                        hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                        prefixIcon: const Icon(Icons.search, size: 20),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {
+                                    _searchQuery = '';
+                                  });
+                                },
+                              )
+                            : null,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: theme.colorScheme.primary),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 深度搜索切换 Chip
+                  Tooltip(
+                    message: '开启后将在功能模块的详细简介和参数说明中深入检索关键词',
+                    child: FilterChip(
+                      avatar: Icon(
+                        _isDeepSearch ? Icons.manage_search_rounded : Icons.search_rounded,
+                        size: 17,
+                        color: _isDeepSearch ? Colors.white : theme.colorScheme.primary,
+                      ),
+                      label: Text(
+                        _isDeepSearch ? '深度搜索' : '普通搜索',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _isDeepSearch ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      selected: _isDeepSearch,
+                      selectedColor: theme.colorScheme.primary,
+                      showCheckmark: false,
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (val) {
+                        setState(() {
+                          _isDeepSearch = val;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
 
+          // 搜索结果提示条（如果正在搜索）
+          if (_searchQuery.trim().isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: 2),
+                child: Row(
+                  children: [
+                    Text(
+                      '共检索到 ${plugins.length} 个功能模块',
+                      style: const TextStyle(fontSize: 12, color: Colors.blueAccent, fontWeight: FontWeight.w600),
+                    ),
+                    if (_isDeepSearch)
+                      const Text(
+                        ' (已开启深度搜索：包含简介及参数)',
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    const Spacer(),
+                    InkWell(
+                      onTap: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                      child: const Text('清除搜索', style: TextStyle(fontSize: 11, color: Colors.redAccent)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // 分类筛选 Chip + 全屏展开按钮
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: 2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Scrollbar(
+                      controller: _categoryScrollController,
+                      child: SingleChildScrollView(
+                        controller: _categoryScrollController,
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        child: Row(
+                          children: [
+                            FilterChip(
+                              label: const Text('全部工具'),
+                              selected: _selectedCategory == 'all',
+                              onSelected: (_) => setState(() => _selectedCategory = 'all'),
+                            ),
+                            const SizedBox(width: 8),
+                            FilterChip(
+                              label: const Text('图片处理'),
+                              selected: _selectedCategory == 'image',
+                              onSelected: (_) => setState(() => _selectedCategory = 'image'),
+                            ),
+                            const SizedBox(width: 8),
+                            FilterChip(
+                              label: const Text('音视频转换'),
+                              selected: _selectedCategory == 'media',
+                              onSelected: (_) => setState(() => _selectedCategory = 'media'),
+                            ),
+                            const SizedBox(width: 8),
+                            FilterChip(
+                              label: const Text('文档/PDF'),
+                              selected: _selectedCategory == 'document',
+                              onSelected: (_) => setState(() => _selectedCategory = 'document'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 全屏展开筛选按钮
+                  Tooltip(
+                    message: '全屏展开分类与架构筛选面板',
+                    child: ActionChip(
+                      avatar: const Icon(Icons.fullscreen_rounded, size: 18, color: Colors.blueAccent),
+                      label: const Text('全屏展开', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _showCategoryFullscreenDialog,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 平台架构筛选 Chip
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: 2),
+              child: Scrollbar(
+                controller: _platformScrollController,
+                child: SingleChildScrollView(
+                  controller: _platformScrollController,
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(
+                    children: [
+                      ChoiceChip(
+                        label: const Text('全部平台'),
+                        selected: _selectedPlatform == 'all',
+                        onSelected: (_) => setState(() => _selectedPlatform = 'all'),
+                      ),
+                      const SizedBox(width: 6),
+                      ChoiceChip(
+                        label: const Text('🌐 全平台通用'),
+                        selected: _selectedPlatform == 'universal',
+                        onSelected: (_) => setState(() => _selectedPlatform = 'universal'),
+                      ),
+                      const SizedBox(width: 6),
+                      ChoiceChip(
+                        label: const Text('🪟 Windows 专享/优化'),
+                        selected: _selectedPlatform == 'windows',
+                        onSelected: (_) => setState(() => _selectedPlatform = 'windows'),
+                      ),
+                      const SizedBox(width: 6),
+                      ChoiceChip(
+                        label: const Text('🤖 Android 专享/优化'),
+                        selected: _selectedPlatform == 'android',
+                        onSelected: (_) => setState(() => _selectedPlatform = 'android'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 4)),
+
           // 工具卡片 Grid 列表
-          Expanded(
-            child: plugins.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
+          if (plugins.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.search_off_rounded, size: 60, color: Colors.grey),
+                      const SizedBox(height: 12),
+                      Text(
+                        _searchQuery.isNotEmpty
+                            ? '未搜索到匹配 “$_searchQuery” 的功能模块'
+                            : '当前分类或平台筛选下暂无已安装的工具',
+                        style: const TextStyle(color: Colors.grey, fontSize: 15),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.search_off_rounded, size: 60, color: Colors.grey),
-                          const SizedBox(height: 12),
-                          Text(
-                            _searchQuery.isNotEmpty
-                                ? '未搜索到匹配 “$_searchQuery” 的功能模块'
-                                : '当前分类或平台筛选下暂无已安装的工具',
-                            style: const TextStyle(color: Colors.grey, fontSize: 15),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_searchQuery.isNotEmpty ||
-                                  _selectedCategory != 'all' ||
-                                  _selectedPlatform != 'all')
-                                OutlinedButton.icon(
-                                  onPressed: () {
-                                    setState(() {
-                                      _searchController.clear();
-                                      _searchQuery = '';
-                                      _selectedCategory = 'all';
-                                      _selectedPlatform = 'all';
-                                    });
-                                  },
-                                  icon: const Icon(Icons.clear_all, size: 16),
-                                  label: const Text('重置筛选与搜索'),
-                                ),
-                              const SizedBox(width: 10),
-                              FilledButton.icon(
-                                onPressed: _openStore,
-                                icon: const Icon(Icons.download, size: 16),
-                                label: const Text('前往功能中心下载'),
-                              ),
-                            ],
+                          if (_searchQuery.isNotEmpty ||
+                              _selectedCategory != 'all' ||
+                              _selectedPlatform != 'all')
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _searchController.clear();
+                                  _searchQuery = '';
+                                  _selectedCategory = 'all';
+                                  _selectedPlatform = 'all';
+                                });
+                              },
+                              icon: const Icon(Icons.clear_all, size: 16),
+                              label: const Text('重置筛选与搜索'),
+                            ),
+                          const SizedBox(width: 10),
+                          FilledButton.icon(
+                            onPressed: _openStore,
+                            icon: const Icon(Icons.download, size: 16),
+                            label: const Text('前往功能中心下载'),
                           ),
                         ],
                       ),
-                    ),
-                  )
-                : GridView.builder(
-                    padding: EdgeInsets.all(isMobile ? 12 : 20),
-                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 380,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      mainAxisExtent: isMobile ? 145 : 165,
-                    ),
-                    itemCount: plugins.length,
-                    itemBuilder: (ctx, index) {
-                      final item = plugins[index];
-                      return Card(
-                        elevation: 1,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        clipBehavior: Clip.antiAlias,
-                        child: InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => DynamicToolRunnerPage(plugin: item),
-                              ),
-                            );
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 18,
-                                      backgroundColor: theme.colorScheme.primaryContainer,
-                                      child: Icon(_getIconData(item.icon),
-                                          size: 20, color: theme.colorScheme.primary),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            item.name,
-                                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          Row(
-                                            children: [
-                                              Text(
-                                                'v${item.version}',
-                                                style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                                decoration: BoxDecoration(
-                                                  color: _getPlatformBadgeColor(item).withValues(alpha: 0.12),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: Text(
-                                                  item.platformBadgeText,
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.w500,
-                                                    color: _getPlatformBadgeColor(item),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Expanded(
-                                  child: Text(
-                                    item.description,
-                                    style: const TextStyle(fontSize: 12, color: Colors.black87, height: 1.35),
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 12 : 20,
+                4,
+                isMobile ? 12 : 20,
+                isMobile ? 24 : 20,
+              ),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 380,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  mainAxisExtent: isMobile ? 130 : 155,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (ctx, index) {
+                    final item = plugins[index];
+                    return Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => DynamicToolRunnerPage(plugin: item),
                             ),
+                          );
+                        },
+                        child: Padding(
+                          padding: EdgeInsets.all(isMobile ? 11 : 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: isMobile ? 16 : 18,
+                                    backgroundColor: theme.colorScheme.primaryContainer,
+                                    child: Icon(_getIconData(item.icon),
+                                        size: isMobile ? 18 : 20, color: theme.colorScheme.primary),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item.name,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: isMobile ? 13.5 : 14,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Row(
+                                          children: [
+                                            Text(
+                                              'v${item.version}',
+                                              style: const TextStyle(fontSize: 10.5, color: Colors.grey),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: _getPlatformBadgeColor(item).withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                item.platformBadgeText,
+                                                style: TextStyle(
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: _getPlatformBadgeColor(item),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Expanded(
+                                child: Text(
+                                  item.description,
+                                  style: TextStyle(
+                                    fontSize: isMobile ? 11.5 : 12,
+                                    color: Colors.black87,
+                                    height: 1.35,
+                                  ),
+                                  maxLines: isMobile ? 2 : 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    },
-                  ),
-          ),
+                      ),
+                    );
+                  },
+                  childCount: plugins.length,
+                ),
+              ),
+            ),
         ],
       ),
     );

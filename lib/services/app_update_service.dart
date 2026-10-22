@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
@@ -60,39 +61,55 @@ class AppUpdateService {
     receiveTimeout: const Duration(seconds: 40),
   ));
 
-  /// 检查网络最新版本
+  /// 检查网络最新版本 (支持多镜像节点自动故障平滑转移)
   Future<AppUpdateInfo?> checkUpdate({String? directUrl}) async {
-    try {
-      final targetUrl = directUrl ?? PluginManagerService().currentActiveNode.appVersionUrl;
-      final response = await _dio.get(targetUrl);
-      if (response.statusCode == 200) {
-        final data = response.data is String ? response.data : response.data;
-        final map = data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data);
-
-        final latestVer = map['latestVersion']?.toString() ?? '1.0.0';
-        final hasUpdate = PluginManagerService.compareVersions(latestVer, PluginManagerService.currentAppVersion) > 0;
-
-        AppPlatformUpdate? platUpdate;
-        final platforms = map['platforms'] as Map?;
-        if (platforms != null) {
-          final platKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'universal');
-          if (platforms.containsKey(platKey)) {
-            platUpdate = AppPlatformUpdate.fromJson(Map<String, dynamic>.from(platforms[platKey]));
-          }
+    final urlsToTry = <String>[];
+    if (directUrl != null && directUrl.trim().isNotEmpty) {
+      urlsToTry.add(directUrl);
+    } else {
+      urlsToTry.add(PluginManagerService().currentActiveNode.appVersionUrl);
+      for (final n in PluginManagerService().allNodes) {
+        if (!urlsToTry.contains(n.appVersionUrl)) {
+          urlsToTry.add(n.appVersionUrl);
         }
-
-        return AppUpdateInfo(
-          latestVersion: latestVer,
-          minRequiredVersion: map['minRequiredVersion']?.toString() ?? '1.0.0',
-          releaseDate: map['releaseDate']?.toString() ?? '',
-          title: map['title']?.toString() ?? '发现百宝箱新版本',
-          releaseNotes: map['releaseNotes']?.toString() ?? '无更新日志说明',
-          hasUpdate: hasUpdate,
-          platformUpdate: platUpdate,
-        );
       }
-    } catch (e) {
-      debugPrint('检查客户端在线更新失败: $e');
+    }
+
+    for (final targetUrl in urlsToTry) {
+      try {
+        final response = await _dio.get(
+          targetUrl,
+          options: Options(receiveTimeout: const Duration(seconds: 8)),
+        );
+        if (response.statusCode == 200) {
+          final data = response.data is String ? jsonDecode(response.data) : response.data;
+          final map = data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data);
+
+          final latestVer = map['latestVersion']?.toString() ?? '1.0.0';
+          final hasUpdate = PluginManagerService.compareVersions(latestVer, PluginManagerService.currentAppVersion) > 0;
+
+          AppPlatformUpdate? platUpdate;
+          final platforms = map['platforms'] as Map?;
+          if (platforms != null) {
+            final platKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'universal');
+            if (platforms.containsKey(platKey)) {
+              platUpdate = AppPlatformUpdate.fromJson(Map<String, dynamic>.from(platforms[platKey]));
+            }
+          }
+
+          return AppUpdateInfo(
+            latestVersion: latestVer,
+            minRequiredVersion: map['minRequiredVersion']?.toString() ?? '1.0.0',
+            releaseDate: map['releaseDate']?.toString() ?? '',
+            title: map['title']?.toString() ?? '发现百宝箱新版本',
+            releaseNotes: map['releaseNotes']?.toString() ?? '无更新日志说明',
+            hasUpdate: hasUpdate,
+            platformUpdate: platUpdate,
+          );
+        }
+      } catch (e) {
+        debugPrint('从 $targetUrl 检查客户端在线更新失败: $e');
+      }
     }
     return null;
   }

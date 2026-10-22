@@ -8,6 +8,7 @@
 .DS_Store
 Thumbs.db
 migrate_working_dir/
+sample_offline_tool/
 
 # IntelliJ / Android Studio / VS Code
 *.iml
