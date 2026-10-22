@@ -1119,43 +1119,50 @@ class _PluginStorePageState extends State<PluginStorePage> {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(isMobile ? 12 : 16, 6, isMobile ? 12 : 16, 4),
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (val) {
-                        setState(() {
-                          _searchQuery = val;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: isMobile ? '搜索插件 (名称、简介、作者)...' : '搜索云端社区插件 (名称、简介、作者或分类)...',
-                        hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
-                        prefixIcon: const Icon(Icons.search, size: 20),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() {
-                                    _searchQuery = '';
-                                  });
-                                },
-                              )
-                            : null,
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: theme.colorScheme.primary),
+                    child: SizedBox(
+                      height: 38,
+                      child: TextField(
+                        controller: _searchController,
+                        style: const TextStyle(fontSize: 13),
+                        onChanged: (val) {
+                          setState(() {
+                            _searchQuery = val;
+                          });
+                        },
+                        decoration: InputDecoration(
+                          hintText: isMobile ? '搜索插件 (名称、简介、作者)...' : '搜索云端社区插件 (名称、简介、作者或分类)...',
+                          hintStyle: const TextStyle(fontSize: 12.5, color: Colors.grey),
+                          prefixIcon: const Icon(Icons.search, size: 18),
+                          prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 16),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      _searchQuery = '';
+                                    });
+                                  },
+                                )
+                              : null,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide(color: theme.colorScheme.primary),
+                          ),
                         ),
                       ),
                     ),
@@ -1173,47 +1180,68 @@ class _PluginStorePageState extends State<PluginStorePage> {
                       child: Row(
                         children: [
                           FilterChip(
-                            label: const Text('全部模块'),
+                            label: const Text('全部'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: const TextStyle(fontSize: 11.5),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             selected: _selectedScope == 'all',
                             onSelected: (_) => setState(() => _selectedScope = 'all'),
                           ),
                           const SizedBox(width: 6),
                           FilterChip(
-                            avatar: const Icon(Icons.verified, size: 14, color: Colors.blueAccent),
+                            avatar: const Icon(Icons.verified, size: 13, color: Colors.blueAccent),
                             label: const Text('官方认证'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: const TextStyle(fontSize: 11.5),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             selected: _selectedScope == 'official',
                             onSelected: (_) => setState(() => _selectedScope = 'official'),
                           ),
                           const SizedBox(width: 6),
                           FilterChip(
-                            avatar: const Icon(Icons.people, size: 14, color: Colors.teal),
+                            avatar: const Icon(Icons.people, size: 13, color: Colors.teal),
                             label: const Text('社区精选'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: const TextStyle(fontSize: 11.5),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             selected: _selectedScope == 'community',
                             onSelected: (_) => setState(() => _selectedScope = 'community'),
                           ),
-                          const SizedBox(width: 10),
-                          Container(width: 1, height: 18, color: Colors.grey.shade300),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8),
+                          Container(width: 1, height: 16, color: Colors.grey.shade300),
+                          const SizedBox(width: 8),
                           ChoiceChip(
-                            label: const Text('全部平台'),
+                            label: const Text('全部'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: const TextStyle(fontSize: 11),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             selected: _selectedPlatform == 'all',
                             onSelected: (_) => setState(() => _selectedPlatform = 'all'),
                           ),
                           const SizedBox(width: 6),
                           ChoiceChip(
                             label: const Text('🌐 通用'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: const TextStyle(fontSize: 11),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             selected: _selectedPlatform == 'universal',
                             onSelected: (_) => setState(() => _selectedPlatform = 'universal'),
                           ),
                           const SizedBox(width: 6),
                           ChoiceChip(
-                            label: const Text('🪟 Windows'),
+                            label: const Text('🪟 Win'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: const TextStyle(fontSize: 11),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             selected: _selectedPlatform == 'windows',
                             onSelected: (_) => setState(() => _selectedPlatform = 'windows'),
                           ),
                           const SizedBox(width: 6),
                           ChoiceChip(
-                            label: const Text('🤖 Android'),
+                            label: const Text('🤖 安卓'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: const TextStyle(fontSize: 11),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             selected: _selectedPlatform == 'android',
                             onSelected: (_) => setState(() => _selectedPlatform = 'android'),
                           ),
