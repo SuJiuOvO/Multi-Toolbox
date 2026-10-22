@@ -4,11 +4,17 @@ import 'package:flutter/material.dart';
 import 'models/plugin_manifest.dart';
 import 'pages/dynamic_tool_runner_page.dart';
 import 'pages/plugin_store_page.dart';
+import 'pages/settings_page.dart';
 import 'services/app_update_service.dart';
+import 'services/notification_service.dart';
 import 'services/plugin_manager_service.dart';
+import 'services/settings_service.dart';
+import 'theme/app_theme_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SettingsService().init();
+  await NotificationService().init();
   await PluginManagerService().init();
   runApp(const MultiToolboxApp());
 }
@@ -31,39 +37,38 @@ class MultiToolboxApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '多功能百宝箱 (动态插件化)',
-      scrollBehavior: const AppScrollBehavior(),
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2563EB),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        pageTransitionsTheme: const PageTransitionsTheme(
-          builders: {
-            TargetPlatform.android: ZoomPageTransitionsBuilder(),
-            TargetPlatform.windows: ZoomPageTransitionsBuilder(),
-          },
-        ),
-        fontFamilyFallback: const [
-          'Microsoft YaHei',
-          'PingFang SC',
-          'Noto Sans SC',
-          'sans-serif',
-        ],
-        textTheme: const TextTheme(
-          titleLarge: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0),
-          titleMedium: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0),
-          titleSmall: TextStyle(fontWeight: FontWeight.w500, letterSpacing: 0),
-          bodyLarge: TextStyle(fontWeight: FontWeight.normal, letterSpacing: 0),
-          bodyMedium: TextStyle(fontWeight: FontWeight.normal, letterSpacing: 0),
-          bodySmall: TextStyle(fontWeight: FontWeight.normal, letterSpacing: 0),
-          labelLarge: TextStyle(fontWeight: FontWeight.w500, letterSpacing: 0),
-        ),
-      ),
-      home: const ToolboxHomePage(),
+    return AnimatedBuilder(
+      animation: SettingsService(),
+      builder: (context, _) {
+        final currentThemeId = SettingsService().themeId;
+        final baseTheme = AppThemeManager.getThemeData(currentThemeId);
+
+        final finalTheme = baseTheme.copyWith(
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: ZoomPageTransitionsBuilder(),
+              TargetPlatform.windows: ZoomPageTransitionsBuilder(),
+            },
+          ),
+          textTheme: const TextTheme(
+            titleLarge: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0),
+            titleMedium: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0),
+            titleSmall: TextStyle(fontWeight: FontWeight.w500, letterSpacing: 0),
+            bodyLarge: TextStyle(fontWeight: FontWeight.normal, letterSpacing: 0),
+            bodyMedium: TextStyle(fontWeight: FontWeight.normal, letterSpacing: 0),
+            bodySmall: TextStyle(fontWeight: FontWeight.normal, letterSpacing: 0),
+            labelLarge: TextStyle(fontWeight: FontWeight.w500, letterSpacing: 0),
+          ),
+        );
+
+        return MaterialApp(
+          title: '多功能百宝箱 (动态插件化)',
+          scrollBehavior: const AppScrollBehavior(),
+          debugShowCheckedModeBanner: false,
+          theme: finalTheme,
+          home: const ToolboxHomePage(),
+        );
+      },
     );
   }
 }
@@ -89,6 +94,8 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
   @override
   void initState() {
     super.initState();
+    _showBanner = !SettingsService().bannerDismissedPermanently;
+    _isDeepSearch = SettingsService().deepSearchDefault;
     _refreshList();
   }
 
@@ -382,6 +389,98 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
     ).then((_) => _refreshList());
   }
 
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsPage()),
+    ).then((_) {
+      setState(() {
+        if (SettingsService().bannerDismissedPermanently) {
+          _showBanner = false;
+        }
+      });
+    });
+  }
+
+  Future<void> _handleDismissBanner() async {
+    final settings = SettingsService();
+    // 如果已经提示过（即后续再叉掉），直接关闭，不再给出任何提示
+    if (settings.bannerDismissPromptShown) {
+      setState(() => _showBanner = false);
+      return;
+    }
+
+    // 第一次叉掉：弹出永久关闭提示说明
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline_rounded, color: Colors.blueAccent),
+            SizedBox(width: 8),
+            Text('关闭提示说明', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: const Text(
+          '是否永久关闭此免重下安装说明横幅？\n\n'
+          '选择“永久关闭”后，以后打开软件将不再显示此提示。',
+          style: TextStyle(fontSize: 13.5, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'once'),
+            child: const Text('仅这次'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'forever'),
+            child: const Text('永久关闭'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == 'forever') {
+      await settings.setBannerDismissedPermanently(true);
+      await settings.setBannerDismissPromptShown(true);
+      setState(() => _showBanner = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已永久关闭提示说明，后续可在【设置】中重新开启。')),
+        );
+      }
+    } else if (choice == 'once') {
+      await settings.setBannerDismissPromptShown(true);
+      setState(() => _showBanner = false);
+      if (mounted) {
+        // 用户选择仅这次，再提示用户可以到设置中永久关闭提示说明
+        await showDialog(
+          context: context,
+          builder: (ctx2) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.blueAccent),
+                SizedBox(width: 8),
+                Text('提示', style: TextStyle(fontSize: 16)),
+              ],
+            ),
+            content: const Text(
+              '已为您关闭本次说明。\n\n'
+              '如果您以后不再需要看到此提示说明，可以随时在【设置】中开启或永久关闭此提示。',
+              style: TextStyle(fontSize: 13.5, height: 1.4),
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx2),
+                child: const Text('我知道了'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
   /// 全屏分类与平台筛选对话框
   void _showCategoryFullscreenDialog() {
     final allPlugins = _pluginManager.installedPlugins;
@@ -668,11 +767,18 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                   tooltip: '下载新工具 / 模块市场',
                   onPressed: _openStore,
                 ),
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: '系统设置与关于',
+                  onPressed: _openSettings,
+                ),
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert),
                   tooltip: '更多选项',
                   onSelected: (val) {
-                    if (val == 'install') {
+                    if (val == 'settings') {
+                      _openSettings();
+                    } else if (val == 'install') {
                       _pickAndInstallLocalPlugin();
                     } else if (val == 'update') {
                       _checkAppUpdate();
@@ -681,6 +787,16 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                     }
                   },
                   itemBuilder: (ctx) => [
+                    const PopupMenuItem(
+                      value: 'settings',
+                      child: Row(
+                        children: [
+                          Icon(Icons.settings_outlined, size: 18, color: Colors.blueAccent),
+                          SizedBox(width: 8),
+                          Text('系统设置与关于'),
+                        ],
+                      ),
+                    ),
                     const PopupMenuItem(
                       value: 'install',
                       child: Row(
@@ -727,6 +843,11 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                   label: const Text('功能中心 / 模块市场'),
                 ),
                 IconButton(
+                  tooltip: '系统设置与关于',
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: _openSettings,
+                ),
+                IconButton(
                   tooltip: '检查新版本更新',
                   icon: const Icon(Icons.system_update_alt_rounded),
                   onPressed: _checkAppUpdate,
@@ -741,8 +862,8 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
             ],
           ),
 
-          // 顶部横幅说明 (可关闭)
-          if (_showBanner)
+          // 顶部横幅说明 (可关闭，并支持永久关闭提示)
+          if (_showBanner && !SettingsService().bannerDismissedPermanently)
             SliverToBoxAdapter(
               child: Container(
                 width: double.infinity,
@@ -790,7 +911,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                     IconButton(
                       icon: const Icon(Icons.close, size: 18, color: Colors.grey),
                       tooltip: '关闭提示',
-                      onPressed: () => setState(() => _showBanner = false),
+                      onPressed: _handleDismissBanner,
                     ),
                   ],
                 ),

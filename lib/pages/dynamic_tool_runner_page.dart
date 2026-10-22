@@ -7,6 +7,8 @@ import 'package:open_filex/open_filex.dart';
 import '../models/plugin_manifest.dart';
 import '../services/tool_engine_service.dart';
 import '../services/android_office_bridge.dart';
+import '../services/notification_service.dart';
+import '../services/settings_service.dart';
 
 class DynamicToolRunnerPage extends StatefulWidget {
   final PluginManifest plugin;
@@ -500,6 +502,23 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       },
     );
 
+    // 发送任务处理完成系统通知（即使用户已退回主界面或将 App 放至后台）
+    if (res.success) {
+      NotificationService().showTaskNotification(
+        title: '【${widget.plugin.name}】处理完成',
+        body: res.message.isNotEmpty
+            ? res.message
+            : '输出文件已保存至: $outDir',
+        isSuccess: true,
+      );
+    } else {
+      NotificationService().showTaskNotification(
+        title: '【${widget.plugin.name}】处理失败',
+        body: res.message.isNotEmpty ? res.message : '处理过程中发生异常',
+        isSuccess: false,
+      );
+    }
+
     if (!mounted) return;
     setState(() {
       _isProcessing = false;
@@ -755,62 +774,99 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       ),
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.plugin.name,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17),
-        ),
-        actions: [
-          IconButton(
-            tooltip: '插件信息',
-            icon: const Icon(Icons.info_outline),
-            onPressed: () {
-              showAboutDialog(
-                context: context,
-                applicationName: widget.plugin.name,
-                applicationVersion: 'v${widget.plugin.version}',
-                children: [
-                  Text('作者: ${widget.plugin.author}'),
-                  const SizedBox(height: 8),
-                  Text(widget.plugin.description),
-                ],
-              );
-            },
+    final canPopDirectly = !_isProcessing || SettingsService().runInBackground;
+
+    return PopScope(
+      canPop: canPopDirectly,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) {
+          if (_isProcessing && SettingsService().runInBackground) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('【${widget.plugin.name}】正在后台继续处理，完成后将发送系统通知'),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+
+        final confirmExit = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('正在处理任务'),
+            content: const Text(
+              '当前任务尚未完成，此时返回将中止任务。是否确认返回？\n\n'
+              '提示：您可以在【设置】中开启“返回后保持后台处理”。',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认返回')),
+            ],
           ),
-        ],
-      ),
-      body: isMobile
-          ? SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+        );
+
+        if (confirmExit == true && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.plugin.name,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17),
+          ),
+          actions: [
+            IconButton(
+              tooltip: '插件信息',
+              icon: const Icon(Icons.info_outline),
+              onPressed: () {
+                showAboutDialog(
+                  context: context,
+                  applicationName: widget.plugin.name,
+                  applicationVersion: 'v${widget.plugin.version}',
+                  children: [
+                    Text('作者: ${widget.plugin.author}'),
+                    const SizedBox(height: 8),
+                    Text(widget.plugin.description),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+        body: isMobile
+            ? SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    formSection,
+                    const SizedBox(height: 24),
+                    resultSection,
+                  ],
+                ),
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  formSection,
-                  const SizedBox(height: 24),
-                  resultSection,
+                  Expanded(
+                    flex: 5,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: formSection,
+                    ),
+                  ),
+                  const VerticalDivider(width: 1),
+                  Expanded(
+                    flex: 4,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: resultSection,
+                    ),
+                  ),
                 ],
               ),
-            )
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: formSection,
-                  ),
-                ),
-                const VerticalDivider(width: 1),
-                Expanded(
-                  flex: 4,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: resultSection,
-                  ),
-                ),
-              ],
-            ),
+      ),
     );
   }
 
