@@ -589,7 +589,9 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final screenSize = MediaQuery.of(context).size;
+    final isMobile = screenSize.width < 600;
+    final isPortrait = screenSize.height > screenSize.width || screenSize.width < 500;
 
     // 过滤已安装插件
     final plugins = _pluginManager.installedPlugins.where((p) {
@@ -1059,9 +1061,9 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // 布局模式切换按钮：卡片排列（简单样式） vs 列表样式（原版详细）
+                  // 布局模式切换按钮：卡片排列（简单样式） vs 列表/详细卡片样式（原版响应式）
                   Tooltip(
-                    message: _isCompactGrid ? '切换至列表详情视图' : '切换至卡片精简视图',
+                    message: _isCompactGrid ? '切换至原版详细卡片视图' : '切换至精简网格卡片视图',
                     child: InkWell(
                       onTap: () => setState(() => _isCompactGrid = !_isCompactGrid),
                       borderRadius: BorderRadius.circular(8),
@@ -1075,7 +1077,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                           ),
                         ),
                         child: Icon(
-                          _isCompactGrid ? Icons.grid_view_rounded : Icons.view_agenda_outlined,
+                          _isCompactGrid ? Icons.view_agenda_outlined : Icons.grid_view_rounded,
                           size: 18,
                           color: _isCompactGrid ? Colors.blueAccent : Colors.black54,
                         ),
@@ -1237,8 +1239,8 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                 ),
               ),
             )
-          else
-            // 列表样式（原版详细卡片）
+          else if (isPortrait)
+            // 详细列表模式（竖屏比例下：自适应为纯单列列表）
             SliverPadding(
               padding: EdgeInsets.fromLTRB(
                 isMobile ? 12 : 20,
@@ -1251,7 +1253,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                   (ctx, index) {
                     final item = plugins[index];
                     return Card(
-                      margin: const EdgeInsets.only(bottom: 10),
+                      margin: const EdgeInsets.only(bottom: 8),
                       elevation: 1,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       clipBehavior: Clip.antiAlias,
@@ -1329,8 +1331,115 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                                   color: Colors.black87,
                                   height: 1.35,
                                 ),
-                                maxLines: isMobile ? 2 : 3,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  childCount: plugins.length,
+                ),
+              ),
+            )
+          else
+            // 详细卡片模式（横屏/Windows/平板横版比例下：多列卡片自适应网格，充分利用空间）
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 380,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  mainAxisExtent: 145,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (ctx, index) {
+                    final item = plugins[index];
+                    return Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => DynamicToolRunnerPage(plugin: item),
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 18,
+                                    backgroundColor: theme.colorScheme.primaryContainer,
+                                    child: Icon(_getIconData(item.icon),
+                                        size: 20, color: theme.colorScheme.primary),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item.name,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Row(
+                                          children: [
+                                            Text(
+                                              'v${item.version}',
+                                              style: const TextStyle(fontSize: 10.5, color: Colors.grey),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: _getPlatformBadgeColor(item).withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                item.platformBadgeText,
+                                                style: TextStyle(
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: _getPlatformBadgeColor(item),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Expanded(
+                                child: Text(
+                                  item.description,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black87,
+                                    height: 1.35,
+                                  ),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ],
                           ),
