@@ -91,19 +91,25 @@ class _SettingsPageState extends State<SettingsPage> {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFFE2E8F0),
+                  width: 1.2,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.25),
-                    blurRadius: 12,
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
                 ],
               ),
+              padding: const EdgeInsets.all(8),
               clipBehavior: Clip.antiAlias,
               child: Image.asset(
                 'assets/app_icon.png',
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => Container(
                   color: theme.colorScheme.primary,
                   child: const Icon(Icons.handyman_rounded, color: Colors.white, size: 36),
