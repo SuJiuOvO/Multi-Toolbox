@@ -72,15 +72,6 @@ class MultiToolboxApp extends StatelessWidget {
               TargetPlatform.windows: ZoomPageTransitionsBuilder(),
             },
           ),
-          textTheme: const TextTheme(
-            titleLarge: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0),
-            titleMedium: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0),
-            titleSmall: TextStyle(fontWeight: FontWeight.w500, letterSpacing: 0),
-            bodyLarge: TextStyle(fontWeight: FontWeight.normal, letterSpacing: 0),
-            bodyMedium: TextStyle(fontWeight: FontWeight.normal, letterSpacing: 0),
-            bodySmall: TextStyle(fontWeight: FontWeight.normal, letterSpacing: 0),
-            labelLarge: TextStyle(fontWeight: FontWeight.w500, letterSpacing: 0),
-          ),
         );
 
         return MaterialApp(

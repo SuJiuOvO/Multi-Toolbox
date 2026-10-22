@@ -555,6 +555,9 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textPrimary = theme.colorScheme.onSurface;
+    final textSecondary = theme.colorScheme.onSurfaceVariant;
     final isMobile = MediaQuery.of(context).size.width < 768;
 
     final formSection = Column(
@@ -563,8 +566,9 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF3F4F6),
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB)),
           ),
           child: Row(
             children: [
@@ -573,7 +577,11 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               Expanded(
                 child: Text(
                   widget.plugin.description,
-                  style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: textPrimary,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
@@ -584,10 +592,14 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Platform.isWindows ? Colors.blue.shade50 : Colors.green.shade50,
+              color: isDark
+                  ? (Platform.isWindows ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : const Color(0xFF064E3B).withValues(alpha: 0.3))
+                  : (Platform.isWindows ? Colors.blue.shade50 : Colors.green.shade50),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: Platform.isWindows ? Colors.blue.shade200 : Colors.green.shade200,
+                color: isDark
+                    ? (Platform.isWindows ? const Color(0xFF3B82F6) : const Color(0xFF10B981))
+                    : (Platform.isWindows ? Colors.blue.shade300 : Colors.green.shade300),
               ),
             ),
             child: Row(
@@ -595,7 +607,9 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 Icon(
                   Platform.isWindows ? Icons.desktop_windows : Icons.phone_android,
                   size: 18,
-                  color: Platform.isWindows ? Colors.blue.shade800 : Colors.green.shade800,
+                  color: isDark
+                      ? (Platform.isWindows ? const Color(0xFF93C5FD) : const Color(0xFF6EE7B7))
+                      : (Platform.isWindows ? Colors.blue.shade900 : Colors.green.shade900),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -605,7 +619,10 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                         : '🤖 Android 运行环境：Excel 支持【原生 WPS/Office 导出】与【本地离线轻量转换】；PPT 与 Word 调起手机 WPS 或 Office 导出，跳转前将显示详细操作指引。',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Platform.isWindows ? Colors.blue.shade900 : Colors.green.shade900,
+                      fontWeight: FontWeight.w500,
+                      color: isDark
+                          ? (Platform.isWindows ? const Color(0xFFDBEAFE) : const Color(0xFFD1FAE5))
+                          : (Platform.isWindows ? const Color(0xFF1E3A8A) : const Color(0xFF065F46)),
                     ),
                   ),
                 ),
@@ -614,7 +631,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           ),
           const SizedBox(height: 12),
         ],
-        ...widget.plugin.inputs.where(_isInputVisible).map((input) => _buildInputField(input)),
+        ...widget.plugin.inputs.where(_isInputVisible).map((input) => _buildInputField(input, context)),
         const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
@@ -638,15 +655,16 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           const SizedBox(height: 14),
           LinearProgressIndicator(value: _progress > 0 ? _progress : null),
           const SizedBox(height: 6),
-          Text(_statusText, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(_statusText, style: TextStyle(color: textSecondary, fontSize: 12)),
         ],
       ],
     );
 
     final resultSection = Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF9FAFB),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB)),
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -655,19 +673,22 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         children: [
           Text(
             '输出结果面板',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: 15),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: textPrimary),
           ),
           const SizedBox(height: 12),
           if (_result == null)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.output, size: 40, color: Colors.grey),
-                    SizedBox(height: 8),
-                    Text('选择文件并配置参数后点击开始', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                    Icon(Icons.output, size: 40, color: textSecondary.withValues(alpha: 0.5)),
+                    const SizedBox(height: 8),
+                    Text(
+                      '选择文件并配置参数后点击开始',
+                      style: TextStyle(color: textSecondary, fontSize: 13),
+                    ),
                   ],
                 ),
               ),
@@ -677,9 +698,14 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: _result!.success
-                    ? Colors.green.withValues(alpha: 0.15)
-                    : Colors.red.withValues(alpha: 0.15),
+                    ? (isDark ? const Color(0xFF064E3B).withValues(alpha: 0.3) : const Color(0xFFECFDF5))
+                    : (isDark ? const Color(0xFF7F1D1D).withValues(alpha: 0.3) : const Color(0xFFFEF2F2)),
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _result!.success
+                      ? (isDark ? const Color(0xFF10B981) : const Color(0xFFA7F3D0))
+                      : (isDark ? const Color(0xFFEF4444) : const Color(0xFFFECACA)),
+                ),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -687,13 +713,19 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                   Icon(
                     _result!.success ? Icons.check_circle : Icons.error,
                     size: 20,
-                    color: _result!.success ? Colors.green : Colors.red,
+                    color: _result!.success ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _result!.message,
-                      style: const TextStyle(fontSize: 13),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: _result!.success
+                            ? (isDark ? const Color(0xFFD1FAE5) : const Color(0xFF065F46))
+                            : (isDark ? const Color(0xFFFEE2E2) : const Color(0xFF991B1B)),
+                      ),
                     ),
                   ),
                 ],
@@ -706,11 +738,11 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 children: [
                   Text(
                     '生成的输出文件 (${_result!.outputFiles.length}):',
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textPrimary),
                   ),
                   Text(
                     '点击直接打开',
-                    style: TextStyle(fontSize: 12, color: theme.colorScheme.primary),
+                    style: TextStyle(fontSize: 12, color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -721,7 +753,11 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                     outPath.endsWith('.webp');
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
-                  elevation: 0.5,
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB)),
+                  ),
                   child: ListTile(
                     onTap: () => _openFile(outPath),
                     dense: true,
@@ -736,14 +772,14 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                               fit: BoxFit.cover,
                             ),
                           )
-                        : const Icon(Icons.insert_drive_file, color: Colors.blueAccent),
+                        : Icon(Icons.insert_drive_file, color: theme.colorScheme.primary),
                     title: Text(
                       p.basename(outPath),
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textPrimary),
                     ),
                     subtitle: Text(
                       outPath,
-                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      style: TextStyle(fontSize: 11, color: textSecondary),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -870,7 +906,14 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     );
   }
 
-  Widget _buildInputField(PluginInputDef input) {
+  Widget _buildInputField(PluginInputDef input, BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textPrimary = theme.colorScheme.onSurface;
+    final textSecondary = theme.colorScheme.onSurfaceVariant;
+    final inputBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final inputBorderColor = isDark ? const Color(0xFF475569) : const Color(0xFFD1D5DB);
+
     final curSubTool = _formValues['subTool']?.toString() ?? '';
     if (input.type == 'file_picker') {
       final currentFiles = (_formValues[input.id] is List)
@@ -883,7 +926,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           children: [
             Text(
               input.label,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
             ),
             const SizedBox(height: 8),
             InkWell(
@@ -892,13 +935,21 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.6)),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF3B82F6) : const Color(0xFF2563EB),
+                    width: 1.5,
+                  ),
                   borderRadius: BorderRadius.circular(10),
-                  color: Colors.blue.withValues(alpha: 0.04),
+                  color: isDark
+                      ? const Color(0xFF1E3A8A).withValues(alpha: 0.25)
+                      : const Color(0xFFEFF6FF),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.cloud_upload_outlined, color: Colors.blueAccent),
+                    Icon(
+                      Icons.cloud_upload_outlined,
+                      color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -906,7 +957,8 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                             ? '点击选择文件 (支持 ${input.allowedExtensions.join('/')})'
                             : '已选择 ${currentFiles.length} 个文件:\n${currentFiles.map((f) => p.basename(f)).take(2).join(', ')}${currentFiles.length > 2 ? " 等..." : ""}',
                         style: TextStyle(
-                          color: currentFiles.isEmpty ? Colors.grey : Colors.black87,
+                          color: currentFiles.isEmpty ? textSecondary : textPrimary,
+                          fontWeight: currentFiles.isEmpty ? FontWeight.normal : FontWeight.w600,
                           fontSize: 13,
                         ),
                       ),
@@ -920,19 +972,25 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
+                  color: isDark ? const Color(0xFF78350F).withValues(alpha: 0.3) : Colors.amber.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.shade200),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFFF59E0B) : Colors.amber.shade300,
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.info_outline, size: 18, color: Colors.amber.shade900),
+                    Icon(Icons.info_outline, size: 18, color: isDark ? const Color(0xFFFCD34D) : Colors.amber.shade900),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '💡 格式说明：DWG / DWF 为 Autodesk 专有二进制加密格式，无法直接无损解码。请在 AutoCAD / 中望CAD / 浩辰CAD 中使用快捷命令【DXFOUT】或【另存为 -> AutoCAD DXF (*.dxf)】，本工具支持 DXF 100% 全矢量无损转换！',
-                        style: TextStyle(fontSize: 12, color: Colors.amber.shade900, height: 1.4),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? const Color(0xFFFEF3C7) : const Color(0xFF78350F),
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ],
@@ -944,19 +1002,25 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF3B82F6) : Colors.blue.shade300,
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.desktop_windows, size: 18, color: Colors.blue.shade800),
+                    Icon(Icons.desktop_windows, size: 18, color: isDark ? const Color(0xFF93C5FD) : Colors.blue.shade800),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '💡 Windows 提示：本功能需电脑安装 Microsoft Office（PowerPoint、Word、Excel）或 WPS 工具。转换时将调用电脑本地原生办公套件进行 100% 格式无损导出为 PDF。',
-                        style: TextStyle(fontSize: 12, color: Colors.blue.shade900, height: 1.4),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? const Color(0xFFDBEAFE) : const Color(0xFF1E3A8A),
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ],
@@ -968,19 +1032,25 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: isDark ? const Color(0xFF064E3B).withValues(alpha: 0.3) : Colors.green.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.shade200),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF10B981) : Colors.green.shade300,
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.phone_android, size: 18, color: Colors.green.shade800),
+                    Icon(Icons.phone_android, size: 18, color: isDark ? const Color(0xFF6EE7B7) : Colors.green.shade800),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '💡 Android 官方高保真导出指引：将为您一键调用手机已安装的【WPS Office】或【Microsoft Office】导出。执行前将显示操作步骤与 WPS 会员权限说明。',
-                        style: TextStyle(fontSize: 12, color: Colors.green.shade900, height: 1.4),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? const Color(0xFFD1FAE5) : const Color(0xFF065F46),
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ],
@@ -992,19 +1062,25 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF3B82F6) : Colors.blue.shade300,
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.auto_fix_high, size: 18, color: Colors.blue.shade800),
+                    Icon(Icons.auto_fix_high, size: 18, color: isDark ? const Color(0xFF93C5FD) : Colors.blue.shade800),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '💡 本地离线智能排版引擎：无需第三方办公软件或 VIP 会员，直接在本地解析 PDF 文本，消除乱空格、修复折行断句，按中文排版规范生成含两字符首行缩进与 A4 版式的可编辑 Word 文档。',
-                        style: TextStyle(fontSize: 12, color: Colors.blue.shade900, height: 1.4),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? const Color(0xFFDBEAFE) : const Color(0xFF1E3A8A),
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ],
@@ -1016,19 +1092,25 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF3B82F6) : Colors.blue.shade300,
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.table_chart_outlined, size: 18, color: Colors.blue.shade800),
+                    Icon(Icons.table_chart_outlined, size: 18, color: isDark ? const Color(0xFF93C5FD) : Colors.blue.shade800),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '💡 纯本地轻量离线生成：无需依赖第三方办公软件，直接在本地解析 Excel 工作表数据，自动计算列宽并生成标准 A4 表格 PDF。',
-                        style: TextStyle(fontSize: 12, color: Colors.blue.shade900, height: 1.4),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? const Color(0xFFDBEAFE) : const Color(0xFF1E3A8A),
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ],
@@ -1050,11 +1132,11 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               children: [
                 Text(
                   input.label,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
                 ),
                 Text(
                   '${curVal.toInt()}',
-                  style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.blueAccent),
+                  style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.primary, fontSize: 15),
                 ),
               ],
             ),
@@ -1087,22 +1169,38 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           children: [
             Text(
               input.label,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
               initialValue: curVal,
               isExpanded: true,
+              dropdownColor: inputBg,
+              style: TextStyle(fontSize: 14, color: textPrimary, fontWeight: FontWeight.w600),
+              icon: Icon(Icons.arrow_drop_down, color: textPrimary),
               decoration: InputDecoration(
+                filled: true,
+                fillColor: inputBg,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: inputBorderColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: inputBorderColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+                ),
               ),
               items: availableOpts.map((opt) {
                 return DropdownMenuItem<String>(
                   value: opt.value,
                   child: Text(
                     opt.label,
-                    style: const TextStyle(fontSize: 14),
+                    style: TextStyle(fontSize: 14, color: textPrimary, fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
@@ -1125,15 +1223,29 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           children: [
             Text(
               input.label,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
             ),
             const SizedBox(height: 8),
             TextFormField(
               initialValue: (_formValues[input.id] ?? input.defaultValue)?.toString(),
               keyboardType: TextInputType.number,
+              style: TextStyle(fontSize: 14, color: textPrimary, fontWeight: FontWeight.w500),
               decoration: InputDecoration(
+                filled: true,
+                fillColor: inputBg,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: inputBorderColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: inputBorderColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+                ),
               ),
               onChanged: (val) {
                 _formValues[input.id] = int.tryParse(val) ?? val;
@@ -1150,15 +1262,30 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           children: [
             Text(
               input.label,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
             ),
             const SizedBox(height: 8),
             TextFormField(
               initialValue: (_formValues[input.id] ?? input.defaultValue)?.toString(),
               maxLines: input.type == 'textarea' ? 4 : 1,
+              style: TextStyle(fontSize: 14, color: textPrimary, fontWeight: FontWeight.w500),
               decoration: InputDecoration(
+                filled: true,
+                fillColor: inputBg,
+                hintStyle: TextStyle(color: textSecondary.withValues(alpha: 0.6)),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: inputBorderColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: inputBorderColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+                ),
                 hintText: input.label,
               ),
               onChanged: (val) {

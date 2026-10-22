@@ -109,7 +109,10 @@ class AppThemeManager {
         colorScheme: ColorScheme.dark(
           primary: primary,
           onPrimary: Colors.white,
+          primaryContainer: const Color(0xFF1E293B),
+          onPrimaryContainer: const Color(0xFFF8FAFC),
           secondary: const Color(0xFF38BDF8),
+          onSecondary: Colors.white,
           surface: cardBg,
           onSurface: const Color(0xFFF8FAFC), // 纯白高对比度文字
           onSurfaceVariant: const Color(0xFFCBD5E1), // 浅灰高对比度描述
@@ -124,6 +127,25 @@ class AppThemeManager {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
             side: const BorderSide(color: Color(0xFF334155), width: 1.0),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF1E293B),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          labelStyle: const TextStyle(color: Color(0xFFF8FAFC), fontWeight: FontWeight.bold, fontSize: 14),
+          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFF475569)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFF475569)),
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(10)),
+            borderSide: BorderSide(color: Color(0xFF818CF8), width: 1.5),
           ),
         ),
         appBarTheme: const AppBarTheme(
@@ -160,7 +182,10 @@ class AppThemeManager {
         colorScheme: ColorScheme.light(
           primary: primary,
           onPrimary: Colors.white,
+          primaryContainer: Colors.white.withValues(alpha: 0.85),
+          onPrimaryContainer: const Color(0xFF0F172A),
           secondary: const Color(0xFF0284C7),
+          onSecondary: Colors.white,
           surface: Colors.white.withValues(alpha: 0.78),
           onSurface: const Color(0xFF0F172A), // 纯黑高对比度
           onSurfaceVariant: const Color(0xFF334155), // 深灰高对比度
@@ -175,6 +200,25 @@ class AppThemeManager {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
             side: BorderSide(color: Colors.white.withValues(alpha: 0.9), width: 1.5),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.85),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          labelStyle: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 14),
+          hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.9)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.9)),
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(10)),
+            borderSide: BorderSide(color: Color(0xFF0284C7), width: 1.5),
           ),
         ),
         appBarTheme: AppBarTheme(
@@ -211,7 +255,12 @@ class AppThemeManager {
       colorScheme: ColorScheme.light(
         primary: primary,
         onPrimary: Colors.white,
+        primaryContainer: const Color(0xFFF3F4F6),
+        onPrimaryContainer: const Color(0xFF111827),
         secondary: secondary,
+        onSecondary: Colors.white,
+        secondaryContainer: secondary.withValues(alpha: 0.12),
+        onSecondaryContainer: secondary,
         surface: Colors.white,
         onSurface: const Color(0xFF111827), // 纯黑 Charcoal，锐利清晰！
         onSurfaceVariant: const Color(0xFF374151), // 深灰 Slate，文字高对比度！
@@ -226,6 +275,25 @@ class AppThemeManager {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.0),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        labelStyle: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.bold, fontSize: 14),
+        hintStyle: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(10)),
+          borderSide: BorderSide(color: accentBlue, width: 1.5),
         ),
       ),
       appBarTheme: AppBarTheme(
