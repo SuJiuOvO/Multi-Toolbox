@@ -17,6 +17,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart' as sf;
 import 'package:pdfrx/pdfrx.dart' as rx;
 import 'doc_converter_service.dart';
 import 'archive_universal_service.dart';
+import 'wasm_universal_service.dart';
 
 class ProcessingResult {
   final bool success;
@@ -38,6 +39,7 @@ class ToolEngineService {
     required Map<String, dynamic> params,
     required String outputDir,
     Function(double progress, String stage)? onProgress,
+    void Function(String line, bool isError)? onLog,
   }) async {
     try {
       final outDir = Directory(outputDir);
@@ -109,6 +111,15 @@ class ToolEngineService {
               onProgress: onProgress,
             );
           }
+        case 'wasm_runner':
+        case 'wasm_universal':
+          return await WasmUniversalService.execute(
+            formValues: params,
+            inputFiles: inputFiles,
+            outputDir: outputDir,
+            onProgress: onProgress,
+            onLog: onLog,
+          );
         default:
           return ProcessingResult(
             success: false,

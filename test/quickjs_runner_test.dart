@@ -165,6 +165,71 @@ void main() {
       }
     });
 
+    test('QuickJsBridgeService executes JS script invoking Toolbox.wasm', () async {
+      final outDir = Directory.systemTemp.createTempSync('qjs_wasm_out_');
+      try {
+        final manifest = PluginManifest(
+          id: 'test-js-wasm-plugin',
+          name: 'JS Wasm Plugin',
+          version: '1.0.0',
+          category: 'other',
+          description: 'A test plugin calling Wasm from JS',
+          icon: 'code',
+          author: 'Test Team',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ inputFiles, outputDir, params }) {
+                  Toolbox.log('Starting WASM execution from QuickJS sandbox...');
+                  
+                  const watCode = `
+                    (module
+                      (func (export "calc") (param i32 i32) (result i32)
+                        local.get 0
+                        local.get 1
+                        i32.mul
+                      )
+                    )
+                  `;
+                  
+                  const wasmRes = await Toolbox.wasm.call(watCode, 'calc', [7, 6]);
+                  Toolbox.log('WASM calc result:', wasmRes);
+                  
+                  const outFilePath = outputDir + '/wasm_calc.json';
+                  Toolbox.fs.writeFile(outFilePath, JSON.stringify(wasmRes));
+                  
+                  return { success: true, message: 'WASM multiplication returned: ' + wasmRes.result };
+                }
+              """
+            },
+          ),
+        );
+
+        final capturedLogs = <String>[];
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [],
+          outputDir: outDir.path,
+          onProgress: (pct, stage) {},
+          onLog: (line, isError) {
+            capturedLogs.add(line);
+          },
+        );
+
+        expect(result.success, true);
+        final reportFile = File('${outDir.path}/wasm_calc.json');
+        expect(reportFile.existsSync(), true);
+        expect(reportFile.readAsStringSync().contains('"result":[42]'), true);
+      } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
     test('PluginManifest correctly identifies QuickJS plugin and badges', () {
       final manifest = PluginManifest(
         id: 'js-markdown-formatter',

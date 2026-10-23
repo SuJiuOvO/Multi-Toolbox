@@ -8,6 +8,7 @@ import 'package:sync_http/sync_http.dart';
 import '../models/plugin_manifest.dart';
 import 'tool_engine_service.dart';
 import 'archive_universal_service.dart';
+import 'wasm_universal_service.dart';
 
 /// Android & 全平台 QuickJS 内存安全沙箱执行引擎与宿主桥接中枢 (Host Bridge)
 /// 负责为无原生依赖的社区动态 JavaScript 插件提供高性能运行环境，
@@ -145,6 +146,20 @@ class QuickJsBridgeService {
               'message': res.message,
               'outputFiles': res.outputFiles,
             };
+          } else if (action == 'wasm_inspect') {
+            final source = payload['source'];
+            final rep = await WasmUniversalService.inspect(source);
+            result = rep.toJson();
+          } else if (action == 'wasm_call') {
+            final source = payload['source'];
+            final funcName = payload['function']?.toString() ?? 'run';
+            final args = (payload['args'] as List?) ?? [];
+            final execRes = await WasmUniversalService.callFunction(
+              source: source,
+              functionName: funcName,
+              arguments: args,
+            );
+            result = execRes;
           } else {
             result = {'__error': '未知异步宿主动作: $action'};
           }
@@ -474,6 +489,18 @@ class QuickJsBridgeService {
         },
         compress: function(inputPaths, outputPath, format) {
           return __Toolbox_asyncCall('archive_compress', { inputPaths: inputPaths, outputPath: outputPath, format: format || 'zip' });
+        }
+      },
+      wasm: {
+        inspect: function(wasmSource) {
+          return __Toolbox_asyncCall('wasm_inspect', { source: wasmSource });
+        },
+        call: function(wasmSource, functionName, args) {
+          return __Toolbox_asyncCall('wasm_call', {
+            source: wasmSource,
+            function: functionName,
+            args: args || []
+          });
         }
       },
       http: {

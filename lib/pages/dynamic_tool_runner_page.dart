@@ -556,6 +556,12 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
             _statusText = stage;
           });
         },
+        onLog: (line, isError) {
+          if (!mounted) return;
+          setState(() {
+            _terminalLogs.add(TerminalLogEntry(text: line, isError: isError));
+          });
+        },
       );
     }
 
@@ -960,6 +966,21 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                   child: const Text(
                     '⚡ QuickJS 引擎',
                     style: TextStyle(fontSize: 10, color: Colors.teal, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+              if (widget.plugin.isWasmPlugin) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.deepOrange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.deepOrange.withValues(alpha: 0.4)),
+                  ),
+                  child: const Text(
+                    '🦀 Wasm 沙箱',
+                    style: TextStyle(fontSize: 10, color: Colors.deepOrange, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],

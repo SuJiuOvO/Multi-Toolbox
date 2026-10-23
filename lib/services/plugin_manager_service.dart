@@ -266,6 +266,7 @@ class PluginManagerService {
       'windows-media-downloader',
       'universal-data-codec',
       'universal-archive-extractor',
+      'universal-wasm-runner',
     ];
     for (final id in defaultPluginIds) {
       try {

@@ -1,0 +1,106 @@
+{
+  "id": "universal-wasm-runner",
+  "name": "WebAssembly 全能算力工坊",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "category": "other",
+  "platforms": [
+    "universal"
+  ],
+  "executionType": "wasm",
+  "description": "【WASM 跨平台高算力引擎】基于沙箱内嵌的 WebAssembly 微内核解释器与即时编译执行框架，支持在全隔离内存沙箱中直接加载并运行由 C/C++/Rust 编译的 .wasm 与 .wat 算力模块。提供高精度导出表逆向自省、函数调用传参及执行耗时纳秒级统计。跨 Android/Windows 全平台零依赖无缝运行。",
+  "icon": "memory",
+  "author": "Toolbox 算力实验室",
+  "engineType": "wasm",
+  "inputs": [
+    {
+      "id": "sourceMode",
+      "label": "WebAssembly 模块来源",
+      "type": "select",
+      "defaultValue": "demo",
+      "options": [
+        {
+          "label": "⚡ 内置高性能演示内核 (包含 add、递归 fib、square 算法)",
+          "value": "demo"
+        },
+        {
+          "label": "📂 自选外部 .wasm 二进制或 .wat 文本模块",
+          "value": "custom"
+        }
+      ]
+    },
+    {
+      "id": "wasmInput",
+      "label": "选择待执行的 WebAssembly 模块文件 (.wasm / .wat)",
+      "type": "file_picker",
+      "required": false,
+      "allowMultiple": false,
+      "allowedExtensions": [
+        "wasm",
+        "wat"
+      ],
+      "visibleIf": {
+        "field": "sourceMode",
+        "equals": "custom"
+      }
+    },
+    {
+      "id": "executionMode",
+      "label": "沙箱运行与分析模式",
+      "type": "select",
+      "defaultValue": "call_func",
+      "options": [
+        {
+          "label": "🚀 调用指定导出函数并执行计算 (Call Export)",
+          "value": "call_func"
+        },
+        {
+          "label": "🔍 逆向探测模块结构与导出表 (Inspect Imports/Exports)",
+          "value": "inspect"
+        }
+      ]
+    },
+    {
+      "id": "functionName",
+      "label": "待调用的导出函数名称 (例如 fib, add, square)",
+      "type": "text",
+      "defaultValue": "fib",
+      "required": false,
+      "visibleIf": {
+        "field": "executionMode",
+        "equals": "call_func"
+      }
+    },
+    {
+      "id": "functionArgs",
+      "label": "输入参数 (多个参数逗号分隔，如 10 或 15, 27)",
+      "type": "text",
+      "defaultValue": "10",
+      "required": false,
+      "visibleIf": {
+        "field": "executionMode",
+        "equals": "call_func"
+      }
+    },
+    {
+      "id": "exportJson",
+      "label": "生成并落盘详细分析与执行报告",
+      "type": "select",
+      "defaultValue": "yes",
+      "options": [
+        {
+          "label": "是，自动保存 wasm_report.json 详尽指标文件",
+          "value": "yes"
+        },
+        {
+          "label": "否，仅在终端控制台实时查看结果",
+          "value": "no"
+        }
+      ]
+    }
+  ],
+  "action": {
+    "handler": "wasm_universal",
+    "params": {}
+  }
+}

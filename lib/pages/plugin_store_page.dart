@@ -881,6 +881,10 @@ class _PluginStorePageState extends State<PluginStorePage> {
       case 'code':
       case 'terminal':
         return Icons.code_rounded;
+      case 'memory':
+      case 'wasm':
+      case 'cpu':
+        return Icons.memory_rounded;
       default:
         return Icons.extension;
     }

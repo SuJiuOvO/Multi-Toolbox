@@ -313,9 +313,18 @@ class PluginManifest {
         engineType == 'quickjs';
   }
 
+  /// 是否为 WebAssembly (Wasm) 模块插件 (跨平台沙箱直接执行 C/C++/Rust 字节码)
+  bool get isWasmPlugin {
+    return executionType == 'wasm' ||
+        engineType == 'wasm' ||
+        action?.handler == 'wasm_runner' ||
+        action?.handler == 'wasm_universal';
+  }
+
   /// 是否开启实时终端命令行回显控制台
   bool get hasTerminal {
     return isQuickJsPlugin ||
+        isWasmPlugin ||
         nativeRunner?.showTerminal == true ||
         executionType == 'native_executable' ||
         executionType == 'script';
@@ -328,6 +337,9 @@ class PluginManifest {
     }
     if (isQuickJsPlugin) {
       return '⚡ JS 动态插件';
+    }
+    if (isWasmPlugin) {
+      return '🦀 Wasm 算力沙箱';
     }
     if (lower.contains('windows') && !lower.contains('android') && !lower.contains('universal')) {
       return '🪟 Windows 专享';
