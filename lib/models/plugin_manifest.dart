@@ -300,15 +300,23 @@ class PluginManifest {
   bool get isWindowsExtension {
     return isWindowsOnly() && (
       executionType == 'native_executable' ||
-      executionType == 'script' ||
+      (executionType == 'script' && nativeRunner != null) ||
       nativeRunner != null ||
       category == 'win_ext'
     );
   }
 
+  /// 是否为 QuickJS 动态脚本插件 (沙箱执行，跨 Android/Windows 全平台热加载)
+  bool get isQuickJsPlugin {
+    return executionType == 'quickjs' ||
+        (executionType == 'script' && nativeRunner == null) ||
+        engineType == 'quickjs';
+  }
+
   /// 是否开启实时终端命令行回显控制台
   bool get hasTerminal {
-    return nativeRunner?.showTerminal == true ||
+    return isQuickJsPlugin ||
+        nativeRunner?.showTerminal == true ||
         executionType == 'native_executable' ||
         executionType == 'script';
   }
@@ -317,6 +325,9 @@ class PluginManifest {
     final lower = platforms.map((e) => e.toLowerCase()).toList();
     if (isWindowsExtension) {
       return '⚡ Win 开放扩展';
+    }
+    if (isQuickJsPlugin) {
+      return '⚡ JS 动态插件';
     }
     if (lower.contains('windows') && !lower.contains('android') && !lower.contains('universal')) {
       return '🪟 Windows 专享';

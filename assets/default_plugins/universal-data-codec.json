@@ -1,0 +1,52 @@
+{
+  "id": "universal-data-codec",
+  "name": "万能信息摘要与多重编解码",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "category": "text",
+  "platforms": [
+    "universal"
+  ],
+  "executionType": "quickjs",
+  "description": "【QuickJS 动态引擎首发】基于沙箱内嵌的高性能 JavaScript 运行时，支持对文本或数据进行实时 MD5、SHA256、Base64 编解码及词频统计。跨 Android/Windows 全平台热加载执行，无须更新客户端本体。",
+  "icon": "code",
+  "author": "Toolbox 动态脚本实验室",
+  "engineType": "quickjs",
+  "inputs": [
+    {
+      "id": "sourceText",
+      "label": "待处理文本内容 / 原始字符串",
+      "type": "text",
+      "defaultValue": "Hello Multi-Toolbox! Powered by QuickJS & Dart Host Bridge.",
+      "required": true
+    },
+    {
+      "id": "mode",
+      "label": "计算模式与算法",
+      "type": "select",
+      "defaultValue": "all",
+      "options": [
+        { "label": "⚡ 全量综合分析 (MD5 + SHA256 + Base64 + 文本统计)", "value": "all" },
+        { "label": "🔒 仅计算数字摘要 (MD5 与 SHA256)", "value": "hashes" },
+        { "label": "📦 Base64 编码转换", "value": "b64_enc" },
+        { "label": "🔓 Base64 解码还原", "value": "b64_dec" }
+      ]
+    },
+    {
+      "id": "exportJson",
+      "label": "是否将结果持久化落盘为文件",
+      "type": "select",
+      "defaultValue": "yes",
+      "options": [
+        { "label": "是，自动保存为 report.json 结果文件", "value": "yes" },
+        { "label": "否，仅在终端控制台实时查看", "value": "no" }
+      ]
+    }
+  ],
+  "action": {
+    "handler": "quickjs_eval",
+    "params": {
+      "script": "async function run({ inputFiles, outputDir, params }) {\n  const text = String(params.sourceText || '');\n  const mode = String(params.mode || 'all');\n  const exportFile = params.exportJson === 'yes';\n\n  Toolbox.log('【QuickJS 引擎】开始执行动态脚本任务...');\n  Toolbox.log('>>> 当前运行平台:', Toolbox.platform);\n  Toolbox.log('>>> 待处理文本长度:', text.length, '字符');\n  Toolbox.setProgress(0.2, '正在分析输入数据...');\n\n  let result = {\n    timestamp: new Date().toISOString(),\n    platform: Toolbox.platform,\n    inputLength: text.length\n  };\n\n  if (mode === 'b64_enc') {\n    Toolbox.setProgress(0.6, '正在执行 Base64 编码...');\n    result.base64 = Toolbox.crypto.base64Encode(text);\n    Toolbox.log('>>> Base64 编码结果:', result.base64);\n  } else if (mode === 'b64_dec') {\n    Toolbox.setProgress(0.6, '正在执行 Base64 解码...');\n    try {\n      result.decoded = Toolbox.crypto.base64Decode(text);\n      Toolbox.log('>>> Base64 解码结果:', result.decoded);\n    } catch (e) {\n      Toolbox.error('Base64 解码失败:', String(e));\n      return { success: false, message: 'Base64 解码失败，请输入合法的 Base64 字符串' };\n    }\n  } else {\n    Toolbox.setProgress(0.4, '正在计算安全散列摘要 (MD5 & SHA256)...');\n    const md5Val = Toolbox.crypto.md5(text);\n    const shaVal = Toolbox.crypto.sha256(text);\n    result.md5 = md5Val;\n    result.sha256 = shaVal;\n    Toolbox.log('>>> MD5 校验和:', md5Val);\n    Toolbox.log('>>> SHA-256 散列:', shaVal);\n\n    if (mode === 'all') {\n      Toolbox.setProgress(0.7, '正在统计文本结构与字数...');\n      result.base64 = Toolbox.crypto.base64Encode(text);\n      result.lines = text.split(/\\r?\\n/).length;\n      result.words = (text.match(/\\b\\w+\\b/g) || []).length;\n      Toolbox.log('>>> 总行数:', result.lines, '| 单词词数:', result.words);\n    }\n  }\n\n  if (exportFile) {\n    Toolbox.setProgress(0.9, '正在生成并落盘输出文件...');\n    const outPath = outputDir + '/codec_report.json';\n    Toolbox.fs.writeFile(outPath, JSON.stringify(result, null, 2));\n    Toolbox.log('>>> 报告文件已持久化落盘至:', outPath);\n  }\n\n  Toolbox.setProgress(1.0, '计算完成！');\n  return {\n    success: true,\n    message: 'QuickJS 脚本执行成功！已完成数据运算与格式化',\n    data: result\n  };\n}"
+    }
+  }
+}

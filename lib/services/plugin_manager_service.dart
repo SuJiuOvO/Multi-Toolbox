@@ -264,6 +264,7 @@ class PluginManagerService {
       'pdf-toolbox',
       'doc-converter',
       'windows-media-downloader',
+      'universal-data-codec',
     ];
     for (final id in defaultPluginIds) {
       try {

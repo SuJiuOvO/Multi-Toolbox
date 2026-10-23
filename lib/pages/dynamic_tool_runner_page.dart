@@ -7,6 +7,7 @@ import 'package:open_filex/open_filex.dart';
 import '../models/plugin_manifest.dart';
 import '../services/tool_engine_service.dart';
 import '../services/windows_extension_runner_service.dart';
+import '../services/quickjs_bridge_service.dart';
 import '../services/android_office_bridge.dart';
 import '../services/notification_service.dart';
 import '../services/settings_service.dart';
@@ -33,6 +34,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   void dispose() {
     if (_isProcessing) {
       WindowsExtensionRunnerService.killActiveProcess();
+      QuickJsBridgeService.killCurrentExecution();
     }
     super.dispose();
   }
@@ -521,6 +523,26 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           });
         },
       );
+    } else if (widget.plugin.isQuickJsPlugin) {
+      res = await QuickJsBridgeService.execute(
+        plugin: widget.plugin,
+        formValues: evaluatedParams,
+        inputFiles: effectiveInputFiles,
+        outputDir: outDir,
+        onProgress: (progress, stage) {
+          if (!mounted) return;
+          setState(() {
+            _progress = progress;
+            _statusText = stage;
+          });
+        },
+        onLog: (line, isError) {
+          if (!mounted) return;
+          setState(() {
+            _terminalLogs.add(TerminalLogEntry(text: line, isError: isError));
+          });
+        },
+      );
     } else {
       res = await ToolEngineService.execute(
         handler: widget.plugin.action?.handler ?? 'image_compress',
@@ -699,6 +721,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
             isRunning: _isProcessing,
             onStop: () {
               WindowsExtensionRunnerService.killActiveProcess();
+              QuickJsBridgeService.killCurrentExecution();
             },
             onClear: () {
               setState(() {
@@ -894,6 +917,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
 
         if (confirmExit == true && context.mounted) {
           WindowsExtensionRunnerService.killActiveProcess();
+          QuickJsBridgeService.killCurrentExecution();
           Navigator.of(context).pop();
         }
       },
@@ -921,6 +945,21 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                   child: const Text(
                     '⚡ Win 开放工坊',
                     style: TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+              if (widget.plugin.isQuickJsPlugin) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.teal.withValues(alpha: 0.4)),
+                  ),
+                  child: const Text(
+                    '⚡ QuickJS 引擎',
+                    style: TextStyle(fontSize: 10, color: Colors.teal, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],

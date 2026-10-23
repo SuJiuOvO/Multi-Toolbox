@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   ffmpeg_kit_flutter_new
+  flutter_js
   url_launcher_windows
 )
 
