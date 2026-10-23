@@ -64,7 +64,6 @@ dependencies:
   koni_rar: ^0.9.0
   koni_archive_core: ^0.9.0
   wasm_run: ^0.2.0+2
-  wasm_run_flutter: ^0.2.0+1
 dev_dependencies:
   flutter_test:
     sdk: flutter

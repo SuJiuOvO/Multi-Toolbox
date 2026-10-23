@@ -973,14 +973,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.0+2"
-  wasm_run_flutter:
-    dependency: "direct main"
-    description:
-      name: wasm_run_flutter
-      sha256: d62f3168f76ab2ca36021db2d9488a85101fbecbf06ca100e0c64d59184dd803
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.2.0+1"
   web:
     dependency: transitive
     description:
