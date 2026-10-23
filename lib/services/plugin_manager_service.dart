@@ -265,6 +265,7 @@ class PluginManagerService {
       'doc-converter',
       'windows-media-downloader',
       'universal-data-codec',
+      'universal-archive-extractor',
     ];
     for (final id in defaultPluginIds) {
       try {

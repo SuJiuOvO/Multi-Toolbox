@@ -874,6 +874,13 @@ class _PluginStorePageState extends State<PluginStorePage> {
       case 'watermark':
       case 'banana':
         return Icons.transform_outlined;
+      case 'folder_zip':
+      case 'zip':
+      case 'archive':
+        return Icons.folder_zip_outlined;
+      case 'code':
+      case 'terminal':
+        return Icons.code_rounded;
       default:
         return Icons.extension;
     }

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:sync_http/sync_http.dart';
 import '../models/plugin_manifest.dart';
 import 'tool_engine_service.dart';
+import 'archive_universal_service.dart';
 
 /// Android & 全平台 QuickJS 内存安全沙箱执行引擎与宿主桥接中枢 (Host Bridge)
 /// 负责为无原生依赖的社区动态 JavaScript 插件提供高性能运行环境，
@@ -103,6 +104,59 @@ class QuickJsBridgeService {
         jsRuntime.evaluate("window.__sync_result = $encoded;");
       });
 
+      // 注册双向异步桥接调度中枢 (Async Host Bridge)
+      jsRuntime.onMessage('ToolboxAsyncCall', (dynamic args) async {
+        if (args is! Map) return;
+        final callId = args['callId']?.toString() ?? '';
+        final action = args['action']?.toString() ?? '';
+        final payload = (args['payload'] as Map?) ?? {};
+
+        dynamic result;
+        try {
+          if (action == 'archive_extract') {
+            final archivePath = payload['archivePath']?.toString() ?? '';
+            final destDir = payload['outputDir']?.toString() ?? outputDir;
+            final pwd = payload['password']?.toString();
+            final res = await ArchiveUniversalService.extract(
+              archivePath: archivePath,
+              outputDir: destDir,
+              password: pwd,
+              onProgress: (p, s) => onProgress(p, s),
+              onLog: (l, e) => onLog(l, e),
+            );
+            result = {
+              'success': res.success,
+              'message': res.message,
+              'outputFiles': res.outputFiles,
+            };
+          } else if (action == 'archive_compress') {
+            final inputPaths = (payload['inputPaths'] as List?)?.map((e) => e.toString()).toList() ?? [];
+            final outPath = payload['outputPath']?.toString() ?? p.join(outputDir, 'archive.zip');
+            final format = payload['format']?.toString() ?? 'zip';
+            final res = await ArchiveUniversalService.compress(
+              inputPaths: inputPaths,
+              outputPath: outPath,
+              format: format,
+              onProgress: (p, s) => onProgress(p, s),
+              onLog: (l, e) => onLog(l, e),
+            );
+            result = {
+              'success': res.success,
+              'message': res.message,
+              'outputFiles': res.outputFiles,
+            };
+          } else {
+            result = {'__error': '未知异步宿主动作: $action'};
+          }
+        } catch (e) {
+          result = {'__error': e.toString()};
+        }
+
+        final encoded = jsonEncode(result);
+        jsRuntime.evaluate("window.__resolveAsyncCall('$callId', $encoded);");
+        jsRuntime.executePendingJob();
+      });
+
       // 4. 注入 Host Bridge 宿主 API (Toolbox.*) 与全局环境
       onProgress(0.15, '正在装载宿主能力接口...');
       final bootstrapScript = _buildBootstrapScript(
@@ -117,30 +171,48 @@ class QuickJsBridgeService {
       onLog('>>> 开始执行 JavaScript 逻辑...', false);
 
       final wrappedRunner = """
+      window.__runFinished = false;
+      window.__runResult = null;
+
       (async function() {
         try {
           $scriptSource
           ;
           if (typeof run === 'function') {
-            return await run({
+            window.__runResult = await run({
               inputFiles: Toolbox.env.inputFiles,
               outputDir: Toolbox.env.outputDir,
               params: Toolbox.env.params
             });
+          } else {
+            window.__runResult = { success: true, message: '执行完成' };
           }
-          return { success: true, message: '执行完成' };
         } catch(err) {
-          return { success: false, message: (err && err.stack) ? err.stack : String(err) };
+          window.__runResult = { success: false, message: (err && err.stack) ? err.stack : String(err) };
+        } finally {
+          window.__runFinished = true;
         }
       })();
       """;
 
-      final evalResult = jsRuntime.evaluate(wrappedRunner);
+      jsRuntime.evaluate(wrappedRunner);
+
+      // 循环等待 JS 异步任务完成
+      while (!_wasCancelled) {
+        final check = jsRuntime.evaluate("window.__runFinished === true");
+        if (check.stringResult == 'true') {
+          break;
+        }
+        await Future.delayed(const Duration(milliseconds: 20));
+        jsRuntime.executePendingJob();
+      }
 
       if (_wasCancelled) {
         onLog('>>> 任务已被用户手动中止', true);
         return ProcessingResult(success: false, message: '任务已被用户手动中止');
       }
+
+      final finalResult = jsRuntime.evaluate("JSON.stringify(window.__runResult)");
 
       onProgress(0.9, '正在校验产物...');
 
@@ -151,13 +223,25 @@ class QuickJsBridgeService {
       bool isSuccess = true;
       String message = '脚本执行完成';
 
-      if (evalResult.isError) {
+      if (finalResult.isError) {
         isSuccess = false;
-        message = 'JavaScript 执行异常: ${evalResult.stringResult}';
+        message = 'JavaScript 执行异常: ${finalResult.stringResult}';
         onLog('>>> $message', true);
       } else {
-        onLog('>>> 脚本执行返回: ${evalResult.stringResult}', false);
-        if (generatedFiles.isNotEmpty) {
+        onLog('>>> 脚本执行返回: ${finalResult.stringResult}', false);
+        try {
+          final decoded = jsonDecode(finalResult.stringResult);
+          if (decoded is Map) {
+            if (decoded['success'] == false) {
+              isSuccess = false;
+            }
+            if (decoded['message'] != null) {
+              message = decoded['message'].toString();
+            }
+          }
+        } catch (_) {}
+
+        if (generatedFiles.isNotEmpty && isSuccess) {
           message = '处理成功！共生成 ${generatedFiles.length} 个输出文件';
         }
       }
@@ -301,6 +385,27 @@ class QuickJsBridgeService {
     var window = this;
     var global = this;
 
+    window.__pendingAsyncCalls = {};
+    window.__resolveAsyncCall = function(callId, result) {
+      if (window.__pendingAsyncCalls[callId]) {
+        var handler = window.__pendingAsyncCalls[callId];
+        delete window.__pendingAsyncCalls[callId];
+        if (result && result.__error) {
+          handler.reject(new Error(result.__error));
+        } else {
+          handler.resolve(result);
+        }
+      }
+    };
+
+    function __Toolbox_asyncCall(action, payload) {
+      return new Promise(function(resolve, reject) {
+        var callId = 'call_' + Math.random().toString(36).substring(2);
+        window.__pendingAsyncCalls[callId] = { resolve: resolve, reject: reject };
+        sendMessage('ToolboxAsyncCall', JSON.stringify({ callId: callId, action: action, payload: payload || {} }));
+      });
+    }
+
     function __Toolbox_syncCall(action, payload) {
       window.__sync_result = undefined;
       sendMessage('ToolboxSync', JSON.stringify({ action: action, payload: payload || {} }));
@@ -361,6 +466,14 @@ class QuickJsBridgeService {
         },
         base64Decode: function(text) {
           return __Toolbox_syncCall('crypto_b64decode', { text: text });
+        }
+      },
+      archive: {
+        extract: function(archivePath, outputDir, password) {
+          return __Toolbox_asyncCall('archive_extract', { archivePath: archivePath, outputDir: outputDir, password: password });
+        },
+        compress: function(inputPaths, outputPath, format) {
+          return __Toolbox_asyncCall('archive_compress', { inputPaths: inputPaths, outputPath: outputPath, format: format || 'zip' });
         }
       },
       http: {

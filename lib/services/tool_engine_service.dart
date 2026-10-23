@@ -16,6 +16,7 @@ import 'package:qr_code_dart_decoder/qr_code_dart_decoder.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart' as sf;
 import 'package:pdfrx/pdfrx.dart' as rx;
 import 'doc_converter_service.dart';
+import 'archive_universal_service.dart';
 
 class ProcessingResult {
   final bool success;
@@ -77,6 +78,37 @@ class ToolEngineService {
             'params': params,
             'outputDir': outputDir,
           }, onProgress);
+        case 'archive_universal':
+          final mode = params['archiveMode']?.toString() ?? 'extract';
+          if (mode == 'compress') {
+            if (inputFiles.isEmpty) {
+              return ProcessingResult(success: false, message: '请至少选择一个待打包的文件或目录');
+            }
+            final format = params['compressFormat']?.toString() ?? 'zip';
+            final customName = params['outputArchiveName']?.toString().trim();
+            final defaultExt = format == 'tar.gz' ? 'tar.gz' : 'zip';
+            final archiveFileName = (customName != null && customName.isNotEmpty)
+                ? (customName.endsWith('.$defaultExt') ? customName : '$customName.$defaultExt')
+                : 'archive.$defaultExt';
+            final outputPath = p.join(outputDir, archiveFileName);
+            return await ArchiveUniversalService.compress(
+              inputPaths: inputFiles,
+              outputPath: outputPath,
+              format: format,
+              onProgress: onProgress,
+            );
+          } else {
+            if (inputFiles.isEmpty) {
+              return ProcessingResult(success: false, message: '请至少选择一个压缩包文件');
+            }
+            final pwd = params['archivePassword']?.toString().trim() ?? params['password']?.toString().trim();
+            return await ArchiveUniversalService.extract(
+              archivePath: inputFiles.first,
+              outputDir: outputDir,
+              password: (pwd != null && pwd.isNotEmpty) ? pwd : null,
+              onProgress: onProgress,
+            );
+          }
         default:
           return ProcessingResult(
             success: false,

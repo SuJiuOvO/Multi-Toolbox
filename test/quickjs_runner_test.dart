@@ -98,6 +98,73 @@ void main() {
       }
     });
 
+    test('QuickJsBridgeService executes JS script invoking Toolbox.archive', () async {
+      final tempDir = Directory.systemTemp.createTempSync('qjs_archive_');
+      final outDir = Directory.systemTemp.createTempSync('qjs_archive_out_');
+
+      try {
+        // Create an input file
+        final srcFile = File('${tempDir.path}/secret_doc.txt');
+        srcFile.writeAsStringSync('Highly classified document content for 7z/zip test');
+
+        final manifest = PluginManifest(
+          id: 'test-js-archive-plugin',
+          name: 'JS Archive Plugin',
+          version: '1.0.0',
+          category: 'other',
+          description: 'A test plugin powered by QuickJS and archive bridge',
+          icon: 'archive',
+          author: 'Test Team',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ inputFiles, outputDir, params }) {
+                  Toolbox.log('Starting compression via Toolbox.archive...');
+                  const zipPath = outputDir + '/packaged.zip';
+                  const compResult = await Toolbox.archive.compress(inputFiles, zipPath, 'zip');
+                  Toolbox.log('Compress result:', compResult);
+                  
+                  const extractDir = outputDir + '/unpacked';
+                  Toolbox.log('Starting extraction via Toolbox.archive...');
+                  const extResult = await Toolbox.archive.extract(zipPath, extractDir);
+                  Toolbox.log('Extract result:', extResult);
+                  
+                  return { success: true, message: 'Archive compress and extract done' };
+                }
+              """
+            },
+          ),
+        );
+
+        final capturedLogs = <String>[];
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [srcFile.path],
+          outputDir: outDir.path,
+          onProgress: (pct, stage) {},
+          onLog: (line, isError) {
+            capturedLogs.add(line);
+          },
+        );
+
+        expect(result.success, true);
+        final zipFile = File('${outDir.path}/packaged.zip');
+        expect(zipFile.existsSync(), true);
+
+        final extractedFile = File('${outDir.path}/unpacked/secret_doc.txt');
+        expect(extractedFile.existsSync(), true);
+        expect(extractedFile.readAsStringSync(), 'Highly classified document content for 7z/zip test');
+      } finally {
+        if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
     test('PluginManifest correctly identifies QuickJS plugin and badges', () {
       final manifest = PluginManifest(
         id: 'js-markdown-formatter',
