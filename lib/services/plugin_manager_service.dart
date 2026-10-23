@@ -263,6 +263,7 @@ class PluginManagerService {
       'livephoto-toolbox',
       'pdf-toolbox',
       'doc-converter',
+      'windows-media-downloader',
     ];
     for (final id in defaultPluginIds) {
       try {

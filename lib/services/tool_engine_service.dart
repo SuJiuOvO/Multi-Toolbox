@@ -67,6 +67,9 @@ class ToolEngineService {
           return await _handleLivePhotoToolbox(inputFiles, params, outputDir, onProgress);
         case 'pdf_toolbox':
           return await _handlePdfToolbox(inputFiles, params, outputDir, onProgress);
+        case 'gemini_banana_watermark':
+          if (inputFiles.isEmpty) return ProcessingResult(success: false, message: '请至少选择一个输入文件');
+          return await _handleGeminiBananaWatermark(inputFiles, params, outputDir, onProgress);
         case 'doc_converter':
           return await DocConverterService.execute({
             'subTool': params['subTool'],
@@ -269,7 +272,337 @@ class ToolEngineService {
   }
 
   // =========================================================================
-  // 3. 修改证件照底色 (参考 HivisionIDPhotos 架构规范)
+  // =========================================================================
+  // 2.5 Gemini-Banana 无损去水印 (参考 Reverse Alpha Blending 逆向解算算法)
+  //    - 基于数学公式逆向代数解算：Original = (Watermarked - alpha * 255) / (1 - alpha)
+  //    - 内置标定 48x48 与 96x96 (含 2026/Gemini 3.x 新规格) Alpha Map 矩阵
+  //    - 智能多尺度皮尔逊相关系数 (Pearson Correlation) 自动峰值锚点检测
+  //    - 涵盖 1K(64px/32px边距) 与 2K/4K(192px边距) 自动适配
+  //    - 边缘暗色轮廓残差融合平滑净化，彻底清除浅色背景边缘黑边暗环
+  //    - 纯 Dart 内存级处理，跨平台零原生依赖，无损保留全图画质与色彩空间
+  // =========================================================================
+  static const String _alpha48ZlibB64 =
+      'eNqVVrt24kAMlTQuOFuZju0mf5HtcrZyOvMHTpftho504s+j18zYDptDlICxuaPH1QtCBBF/Q33pG1wKqpD/J/+cyMGOhAALGp+YMxCgHyKKa8J2AORWPpNpx4l50quCgFKyQ8lPmTMYusw+YGG+Gtp8Uf1uRE5X/e69f87M6pDYBINBSuETAlXlDQ04K34JL81OUp96gB5IGKQjm4ymAKvm0C8iKowptGPo6pnPaLoT4eqMukNYH5FeVP3NIiA0VeJ88giMQ4tC9YL9KTkuS/NC4SlYMhrMMX0A+MJNnuWZEErkdBIFK6LAuFMzY4fz9STMCNQz7SmAWgNKM+FYVnguB4wsG1wDjezWDP/jjSy1dBp+lSi5OfNOZtOTmj+1jD2Mmb/I3PAeL7XCwcPClfqVvI+erTQkw2Itn5OHusdzOQ4tl9gL8/nK/5O/WnHWBuAEEeaFv5Eyeh6sBkTG831c920e3R/r1oXve74lKlsV5+nKD0qZ8lD4R3L5Ib5gnh4+cp2yVXKeH0Ev2flR+p3P230qvZmPrWWtw8byve7djMBNH+7k488G7TkmGC/3XSmn1jEN71XxfteXA27wGE226pcwcNPrLKPEkDaBevUrnPTAbYOfcRi8MqWcKSxRimpFfNs1l442G7tW/imm+6Djy5r012Xtkta9YhQ/SGZNrw9lPaHT8ve6XEfQ76y7fHDaVInJGDPvucNfbDpD+B4hrjNhs2/pxej7K5YU1EnXxWzl5o32N4XKDc4Xi36rmuY62mwTQUPs8HXi4djU9+Vb8TVOpK4C3jxTfVHjZupWmOdb8pCV/Ry78Su+BmPs2Mb9MHJ8V0Nf5RUP3Td/+sr82vsJdxG7BXXGakXuhdKnsOe/LLb1HHuplrbkoJRqD9x6fX0CPE6dwg==';
+
+  static const String _alpha96LegacyZlibB64 =
+      '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';
+
+  static const String _alpha96NewZlibB64 =
+      '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';
+
+  static Uint8List? _cachedAlpha48;
+  static Uint8List? _cachedAlpha96Legacy;
+  static Uint8List? _cachedAlpha96New;
+
+  static Uint8List _getGeminiAlphaMap(int logoSize, {bool is2026Variant = true}) {
+    if (logoSize == 48) {
+      _cachedAlpha48 ??= Uint8List.fromList(zlib.decode(base64Decode(_alpha48ZlibB64)));
+      return _cachedAlpha48!;
+    } else if (is2026Variant) {
+      _cachedAlpha96New ??= Uint8List.fromList(zlib.decode(base64Decode(_alpha96NewZlibB64)));
+      return _cachedAlpha96New!;
+    } else {
+      _cachedAlpha96Legacy ??= Uint8List.fromList(zlib.decode(base64Decode(_alpha96LegacyZlibB64)));
+      return _cachedAlpha96Legacy!;
+    }
+  }
+
+  static Future<ProcessingResult> _handleGeminiBananaWatermark(
+    List<String> files,
+    Map<String, dynamic> params,
+    String outputDir,
+    Function(double, String)? onProgress,
+  ) async {
+    final detectMode = params['detectMode']?.toString() ?? 'auto';
+    final customLogoSizeVal = params['customLogoSize'];
+    final customLogoSize = (customLogoSizeVal is num ? customLogoSizeVal.toInt() : int.tryParse(customLogoSizeVal?.toString() ?? '96')) ?? 96;
+    final customMarginRightVal = params['customMarginRight'];
+    final customMarginRight = (customMarginRightVal is num ? customMarginRightVal.toInt() : int.tryParse(customMarginRightVal?.toString() ?? '64')) ?? 64;
+    final customMarginBottomVal = params['customMarginBottom'];
+    final customMarginBottom = (customMarginBottomVal is num ? customMarginBottomVal.toInt() : int.tryParse(customMarginBottomVal?.toString() ?? '64')) ?? 64;
+    final format = params['format']?.toString() ?? 'keep_original';
+
+    const double maxAlpha = 0.99;
+    const double logoValue = 255.0;
+
+    final results = <String>[];
+    int processedCount = 0;
+
+    for (int i = 0; i < files.length; i++) {
+      final filePath = files[i];
+      final file = File(filePath);
+      if (!file.existsSync()) continue;
+
+      onProgress?.call(
+        i / files.length,
+        '正在去除水印 (${i + 1}/${files.length}): ${p.basename(filePath)}',
+      );
+
+      final originalBytes = await file.readAsBytes();
+      final decoded = img.decodeImage(originalBytes);
+      if (decoded == null) continue;
+
+      img.Image image = decoded;
+
+      int logoSize = 96;
+      int marginRight = 64;
+      int marginBottom = 64;
+      Uint8List alphaMap = _getGeminiAlphaMap(96, is2026Variant: true);
+
+      if (detectMode == 'gemini_2k') {
+        logoSize = 96;
+        marginRight = 192;
+        marginBottom = 192;
+        alphaMap = _getGeminiAlphaMap(96, is2026Variant: true);
+      } else if (detectMode == 'force_48') {
+        logoSize = 48;
+        marginRight = 32;
+        marginBottom = 32;
+        alphaMap = _getGeminiAlphaMap(48);
+      } else if (detectMode == 'force_96') {
+        logoSize = 96;
+        marginRight = 64;
+        marginBottom = 64;
+        alphaMap = _getGeminiAlphaMap(96, is2026Variant: true);
+      } else if (detectMode == 'custom') {
+        logoSize = customLogoSize == 48 ? 48 : 96;
+        marginRight = customMarginRight;
+        marginBottom = customMarginBottom;
+        alphaMap = _getGeminiAlphaMap(logoSize, is2026Variant: true);
+      } else {
+        // auto 模式：采用多尺度多规格候选 + 皮尔逊相关度自动测定
+        final alpha96New = _getGeminiAlphaMap(96, is2026Variant: true);
+        final alpha96Legacy = _getGeminiAlphaMap(96, is2026Variant: false);
+        final alpha48 = _getGeminiAlphaMap(48);
+
+        final candidates = [
+          {'size': 96, 'mr': 192, 'mb': 192, 'map': alpha96New},
+          {'size': 96, 'mr': 64, 'mb': 64, 'map': alpha96New},
+          {'size': 96, 'mr': 64, 'mb': 64, 'map': alpha96Legacy},
+          {'size': 48, 'mr': 32, 'mb': 32, 'map': alpha48},
+          {'size': 48, 'mr': 96, 'mb': 96, 'map': alpha48},
+        ];
+
+        double bestCorr = -1.0;
+        int bestIdx = -1;
+
+        for (int cIdx = 0; cIdx < candidates.length; cIdx++) {
+          final cand = candidates[cIdx];
+          final sz = cand['size'] as int;
+          final mr = cand['mr'] as int;
+          final mb = cand['mb'] as int;
+          final map = cand['map'] as Uint8List;
+
+          final sx = image.width - mr - sz;
+          final sy = image.height - mb - sz;
+          if (sx < 0 || sy < 0 || sx + sz > image.width || sy + sz > image.height) continue;
+
+          double sumX = 0, sumY = 0, sumXX = 0, sumYY = 0, sumXY = 0;
+          final n = sz * sz;
+          for (int r = 0; r < sz; r++) {
+            final rowOff = r * sz;
+            for (int c = 0; c < sz; c++) {
+              final pixel = image.getPixel(sx + c, sy + r);
+              final br = (pixel.r + pixel.g + pixel.b) / 3.0;
+              final a = map[rowOff + c] / 255.0;
+              sumX += br; sumY += a;
+              sumXX += br * br; sumYY += a * a;
+              sumXY += br * a;
+            }
+          }
+          final vx = sumXX - (sumX * sumX) / n;
+          final vy = sumYY - (sumY * sumY) / n;
+          if (vx > 0 && vy > 0) {
+            final corr = (sumXY - (sumX * sumY) / n) / sqrt(vx * vy);
+            if (corr > bestCorr) {
+              bestCorr = corr;
+              bestIdx = cIdx;
+            }
+          }
+        }
+
+        if (bestIdx >= 0 && bestCorr >= 0.20) {
+          final cand = candidates[bestIdx];
+          logoSize = cand['size'] as int;
+          marginRight = cand['mr'] as int;
+          marginBottom = cand['mb'] as int;
+          alphaMap = cand['map'] as Uint8List;
+        } else {
+          // 启发式分辨率回退
+          if (image.width >= 1500 || image.height >= 1500) {
+            logoSize = 96;
+            marginRight = 192;
+            marginBottom = 192;
+            alphaMap = alpha96New;
+          } else if (image.width > 1024 && image.height > 1024) {
+            logoSize = 96;
+            marginRight = 64;
+            marginBottom = 64;
+            alphaMap = alpha96New;
+          } else {
+            logoSize = 48;
+            marginRight = 32;
+            marginBottom = 32;
+            alphaMap = alpha48;
+          }
+        }
+      }
+
+      // 精确峰值微调 (防裁剪导致边距微移)
+      int startX = image.width - marginRight - logoSize;
+      int startY = image.height - marginBottom - logoSize;
+
+      double peakCorr = -1.0;
+      int peakSx = startX;
+      int peakSy = startY;
+
+      for (int dy = -8; dy <= 8; dy++) {
+        for (int dx = -8; dx <= 8; dx++) {
+          final curSx = startX + dx;
+          final curSy = startY + dy;
+          if (curSx < 0 || curSy < 0 || curSx + logoSize > image.width || curSy + logoSize > image.height) continue;
+          double sumX = 0, sumY = 0, sumXX = 0, sumYY = 0, sumXY = 0;
+          final n = logoSize * logoSize;
+          for (int r = 0; r < logoSize; r++) {
+            final rowOff = r * logoSize;
+            for (int c = 0; c < logoSize; c++) {
+              final pixel = image.getPixel(curSx + c, curSy + r);
+              final br = (pixel.r + pixel.g + pixel.b) / 3.0;
+              final a = alphaMap[rowOff + c] / 255.0;
+              sumX += br; sumY += a;
+              sumXX += br * br; sumYY += a * a;
+              sumXY += br * a;
+            }
+          }
+          final vx = sumXX - (sumX * sumX) / n;
+          final vy = sumYY - (sumY * sumY) / n;
+          if (vx > 0 && vy > 0) {
+            final corr = (sumXY - (sumX * sumY) / n) / sqrt(vx * vy);
+            if (corr > peakCorr) {
+              peakCorr = corr;
+              peakSx = curSx;
+              peakSy = curSy;
+            }
+          }
+        }
+      }
+
+      if (peakCorr > 0.15) {
+        startX = peakSx;
+        startY = peakSy;
+      }
+
+      if (startX >= 0 && startY >= 0 && startX + logoSize <= image.width && startY + logoSize <= image.height) {
+        // 1. 逆向代数解算 (Reverse Alpha Blending)
+        for (int row = 0; row < logoSize; row++) {
+          final y = startY + row;
+          final rowOff = row * logoSize;
+          for (int col = 0; col < logoSize; col++) {
+            final x = startX + col;
+            final a = (alphaMap[rowOff + col] / 255.0).clamp(0.0, maxAlpha);
+            if (a < 0.003) continue;
+
+            final oneMinusAlpha = 1.0 - a;
+            final pixel = image.getPixel(x, y);
+            final rOrig = ((pixel.r - a * logoValue) / oneMinusAlpha).round().clamp(0, 255);
+            final gOrig = ((pixel.g - a * logoValue) / oneMinusAlpha).round().clamp(0, 255);
+            final bOrig = ((pixel.b - a * logoValue) / oneMinusAlpha).round().clamp(0, 255);
+            image.setPixelRgba(x, y, rOrig, gOrig, bOrig, pixel.a);
+          }
+        }
+
+        // 2. 轮廓边界净化平滑 (彻底消除亮白背景边缘微弱暗环残留)
+        final copyImg = image.clone();
+        for (int row = 0; row < logoSize; row++) {
+          final y = startY + row;
+          final rowOff = row * logoSize;
+          for (int col = 0; col < logoSize; col++) {
+            final x = startX + col;
+            final a = alphaMap[rowOff + col] / 255.0;
+            if (a >= 0.002 && a <= 0.12) {
+              final samplesR = <int>[];
+              final samplesG = <int>[];
+              final samplesB = <int>[];
+
+              for (int dy = -3; dy <= 3; dy++) {
+                for (int dx = -3; dx <= 3; dx++) {
+                  if (dx == 0 && dy == 0) continue;
+                  final ny = y + dy;
+                  final nx = x + dx;
+                  final nr = row + dy;
+                  final nc = col + dx;
+                  if (nr >= 0 && nr < logoSize && nc >= 0 && nc < logoSize) {
+                    if (alphaMap[nr * logoSize + nc] / 255.0 < 0.002) {
+                      final np = copyImg.getPixel(nx, ny);
+                      samplesR.add(np.r.toInt());
+                      samplesG.add(np.g.toInt());
+                      samplesB.add(np.b.toInt());
+                    }
+                  } else if (ny >= 0 && ny < image.height && nx >= 0 && nx < image.width) {
+                    final np = copyImg.getPixel(nx, ny);
+                    samplesR.add(np.r.toInt());
+                    samplesG.add(np.g.toInt());
+                    samplesB.add(np.b.toInt());
+                  }
+                }
+              }
+
+              if (samplesR.isNotEmpty) {
+                final avgR = (samplesR.reduce((a, b) => a + b) / samplesR.length).round();
+                final avgG = (samplesG.reduce((a, b) => a + b) / samplesG.length).round();
+                final avgB = (samplesB.reduce((a, b) => a + b) / samplesB.length).round();
+                const blendW = 0.95;
+                final cur = image.getPixel(x, y);
+                final resR = (cur.r * (1 - blendW) + avgR * blendW).round().clamp(0, 255);
+                final resG = (cur.g * (1 - blendW) + avgG * blendW).round().clamp(0, 255);
+                final resB = (cur.b * (1 - blendW) + avgB * blendW).round().clamp(0, 255);
+                image.setPixelRgba(x, y, resR, resG, resB, cur.a);
+              }
+            }
+          }
+        }
+      }
+
+      // 导出处理结果
+      String ext = p.extension(filePath).toLowerCase();
+      String targetExt = ext;
+      if (format == 'webp') {
+        targetExt = '.webp';
+      } else if (format == 'jpg' || format == 'jpeg') {
+        targetExt = '.jpg';
+      } else if (format == 'png') {
+        targetExt = '.png';
+      }
+
+      Uint8List encoded;
+      if (targetExt == '.webp') {
+        final encoder = img.WebPEncoder(lossless: true);
+        encoded = Uint8List.fromList(encoder.encode(image));
+      } else if (targetExt == '.jpg' || targetExt == '.jpeg') {
+        encoded = Uint8List.fromList(img.encodeJpg(image, quality: 98));
+      } else {
+        encoded = Uint8List.fromList(img.encodePng(image, level: 6));
+      }
+
+      final outName = 'nowm_${p.basenameWithoutExtension(filePath)}$targetExt';
+      final outPath = p.join(outputDir, outName);
+      await File(outPath).writeAsBytes(encoded);
+      results.add(outPath);
+      processedCount++;
+    }
+
+    onProgress?.call(1.0, '去水印完成，已保存 $processedCount 张图像');
+
+    return ProcessingResult(
+      success: processedCount > 0,
+      message: processedCount > 0
+          ? '成功无损去除 $processedCount 张图片中的 Gemini 水印'
+          : '未能处理选中的图片文件',
+      outputFiles: results,
+    );
+  }
+
+    // 3. 修改证件照底色 (参考 HivisionIDPhotos 架构规范)
   //    - 多点四角自适应背景色彩空间采样
   //    - 双重梯度色彩泛洪 + 距离场计算连续 Alpha 通道 (0.0~1.0)
   //    - 边缘去溢色/色边净化 (Color Decontamination): 彻底消除蓝底/红底发丝残存反光

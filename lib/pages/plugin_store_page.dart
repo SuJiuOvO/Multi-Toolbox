@@ -644,6 +644,15 @@ class _PluginStorePageState extends State<PluginStorePage> {
                         visualDensity: VisualDensity.compact,
                         padding: EdgeInsets.zero,
                       ),
+                    if (item.isWindowsExtension)
+                      Chip(
+                        avatar: const Icon(Icons.bolt, size: 14, color: Colors.amber),
+                        label: const Text('⚡ Win 开放工坊'),
+                        backgroundColor: Colors.amber.withValues(alpha: 0.1),
+                        labelStyle: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -862,6 +871,8 @@ class _PluginStorePageState extends State<PluginStorePage> {
         return Icons.picture_as_pdf_outlined;
       case 'doc_converter':
       case 'transform':
+      case 'watermark':
+      case 'banana':
         return Icons.transform_outlined;
       default:
         return Icons.extension;
@@ -883,6 +894,7 @@ class _PluginStorePageState extends State<PluginStorePage> {
     final filteredPlugins = _pluginManager.remotePlugins.where((p) {
       if (_selectedScope == 'official' && !p.isOfficial) return false;
       if (_selectedScope == 'community' && p.isOfficial) return false;
+      if (_selectedScope == 'win_ext' && !p.isWindowsExtension) return false;
       if (_selectedPlatform != 'all') {
         if (_selectedPlatform == 'universal' && !p.platforms.contains('universal')) {
           return false;
@@ -1207,6 +1219,16 @@ class _PluginStorePageState extends State<PluginStorePage> {
                             selected: _selectedScope == 'community',
                             onSelected: (_) => setState(() => _selectedScope = 'community'),
                           ),
+                          const SizedBox(width: 6),
+                          FilterChip(
+                            avatar: const Icon(Icons.bolt, size: 14, color: Colors.amber),
+                            label: const Text('⚡ Win 开放工坊'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: const TextStyle(fontSize: 11.5),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            selected: _selectedScope == 'win_ext',
+                            onSelected: (_) => setState(() => _selectedScope = 'win_ext'),
+                          ),
                           const SizedBox(width: 8),
                           Container(width: 1, height: 16, color: Colors.grey.shade300),
                           const SizedBox(width: 8),
@@ -1351,6 +1373,25 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                                     ),
                                                   ),
                                                 ),
+                                                if (item.isWindowsExtension) ...[
+                                                  const SizedBox(width: 4),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.amber.withValues(alpha: 0.15),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                                                    ),
+                                                    child: const Text(
+                                                      '⚡ 开放工坊',
+                                                      style: TextStyle(
+                                                        fontSize: 9.5,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.amber,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ],
                                             ),
                                             const SizedBox(height: 2),

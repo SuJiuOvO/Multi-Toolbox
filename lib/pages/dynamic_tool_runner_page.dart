@@ -6,9 +6,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import '../models/plugin_manifest.dart';
 import '../services/tool_engine_service.dart';
+import '../services/windows_extension_runner_service.dart';
 import '../services/android_office_bridge.dart';
 import '../services/notification_service.dart';
 import '../services/settings_service.dart';
+import 'terminal_log_viewer.dart';
 
 class DynamicToolRunnerPage extends StatefulWidget {
   final PluginManifest plugin;
@@ -25,6 +27,15 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   double _progress = 0.0;
   String _statusText = '';
   ProcessingResult? _result;
+  final List<TerminalLogEntry> _terminalLogs = [];
+
+  @override
+  void dispose() {
+    if (_isProcessing) {
+      WindowsExtensionRunnerService.killActiveProcess();
+    }
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -449,6 +460,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       _progress = 0.0;
       _statusText = '准备开始处理...';
       _result = null;
+      _terminalLogs.clear();
     });
 
     Directory? baseDir;
@@ -488,19 +500,42 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       }
     }
 
-    final res = await ToolEngineService.execute(
-      handler: widget.plugin.action?.handler ?? 'image_compress',
-      inputFiles: effectiveInputFiles,
-      params: evaluatedParams,
-      outputDir: outDir,
-      onProgress: (progress, stage) {
-        if (!mounted) return;
-        setState(() {
-          _progress = progress;
-          _statusText = stage;
-        });
-      },
-    );
+    final ProcessingResult res;
+    if (widget.plugin.isWindowsExtension || widget.plugin.nativeRunner != null) {
+      res = await WindowsExtensionRunnerService.execute(
+        plugin: widget.plugin,
+        formValues: evaluatedParams,
+        inputFiles: effectiveInputFiles,
+        outputDir: outDir,
+        onProgress: (progress, stage) {
+          if (!mounted) return;
+          setState(() {
+            _progress = progress;
+            _statusText = stage;
+          });
+        },
+        onLog: (line, isError) {
+          if (!mounted) return;
+          setState(() {
+            _terminalLogs.add(TerminalLogEntry(text: line, isError: isError));
+          });
+        },
+      );
+    } else {
+      res = await ToolEngineService.execute(
+        handler: widget.plugin.action?.handler ?? 'image_compress',
+        inputFiles: effectiveInputFiles,
+        params: evaluatedParams,
+        outputDir: outDir,
+        onProgress: (progress, stage) {
+          if (!mounted) return;
+          setState(() {
+            _progress = progress;
+            _statusText = stage;
+          });
+        },
+      );
+    }
 
     // 发送任务处理完成系统通知（即使用户已退回主界面或将 App 放至后台）
     if (res.success) {
@@ -656,6 +691,21 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           LinearProgressIndicator(value: _progress > 0 ? _progress : null),
           const SizedBox(height: 6),
           Text(_statusText, style: TextStyle(color: textSecondary, fontSize: 12)),
+        ],
+        if (widget.plugin.hasTerminal || _terminalLogs.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          TerminalLogViewer(
+            logs: _terminalLogs,
+            isRunning: _isProcessing,
+            onStop: () {
+              WindowsExtensionRunnerService.killActiveProcess();
+            },
+            onClear: () {
+              setState(() {
+                _terminalLogs.clear();
+              });
+            },
+          ),
         ],
       ],
     );
@@ -843,14 +893,38 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         );
 
         if (confirmExit == true && context.mounted) {
+          WindowsExtensionRunnerService.killActiveProcess();
           Navigator.of(context).pop();
         }
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            widget.plugin.name,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  widget.plugin.name,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (widget.plugin.isWindowsExtension) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.blue.withValues(alpha: 0.4)),
+                  ),
+                  child: const Text(
+                    '⚡ Win 开放工坊',
+                    style: TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ],
           ),
           actions: [
             IconButton(

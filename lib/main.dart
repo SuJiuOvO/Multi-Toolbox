@@ -388,6 +388,8 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
         return Icons.picture_as_pdf_outlined;
       case 'doc_converter':
       case 'transform':
+      case 'watermark':
+      case 'banana':
         return Icons.transform_outlined;
       default:
         return Icons.extension;
@@ -1601,6 +1603,25 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                                               ),
                                             ),
                                           ),
+                                          if (item.isWindowsExtension) ...[
+                                            const SizedBox(width: 4),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: Colors.amber.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: Colors.amber.withValues(alpha: 0.3), width: 0.5),
+                                              ),
+                                              child: const Text(
+                                                '⚡ 开放工坊',
+                                                style: TextStyle(
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.amber,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ],
                                       ),
                                     ],
@@ -1714,6 +1735,25 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                                               ),
                                             ),
                                           ),
+                                          if (item.isWindowsExtension) ...[
+                                            const SizedBox(width: 4),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: Colors.amber.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: Colors.amber.withValues(alpha: 0.3), width: 0.5),
+                                              ),
+                                              child: const Text(
+                                                '⚡ 开放工坊',
+                                                style: TextStyle(
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.amber,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ],
                                       ),
                                     ],
