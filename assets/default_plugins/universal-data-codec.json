@@ -9,7 +9,12 @@
   ],
   "executionType": "quickjs",
   "description": "【QuickJS 动态引擎首发】基于沙箱内嵌的高性能 JavaScript 运行时，支持对文本或数据进行实时 MD5、SHA256、Base64 编解码及词频统计。跨 Android/Windows 全平台热加载执行，无须更新客户端本体。",
-  "icon": "code",
+  "icon": {
+    "type": "image",
+    "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAKklEQVR4nOzOMQ0AAAACIGf/0MbwgQQ0Z82ZgICAgICAgICAgICAgIDAAAAA//+82z9mAAAABklEQVQDACReAEH+yyG7AAAAAElFTkSuQmCC",
+    "maxPixels": 512,
+    "maxSizeBytes": 524288
+  },
   "author": "Toolbox 动态脚本实验室",
   "engineType": "quickjs",
   "inputs": [

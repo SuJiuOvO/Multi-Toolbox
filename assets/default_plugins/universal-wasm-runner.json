@@ -9,7 +9,10 @@
   ],
   "executionType": "wasm",
   "description": "【WASM 跨平台高算力引擎】基于沙箱内嵌的 WebAssembly 微内核解释器与即时编译执行框架，支持在全隔离内存沙箱中直接加载并运行由 C/C++/Rust 编译的 .wasm 与 .wat 算力模块。提供高精度导出表逆向自省、函数调用传参及执行耗时纳秒级统计。跨 Android/Windows 全平台零依赖无缝运行。",
-  "icon": "memory",
+  "icon": {
+    "type": "code",
+    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"3\" fill=\"#6366F1\"/><path fill=\"#FFFFFF\" d=\"M7 11h2v5H7zm8-4h2v9h-2zm-4 2h2v7h-2z\"/></svg>"
+  },
   "author": "Toolbox 算力实验室",
   "engineType": "wasm",
   "inputs": [

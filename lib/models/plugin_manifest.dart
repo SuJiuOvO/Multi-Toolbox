@@ -237,6 +237,112 @@ class PluginNativeRunnerDef {
   };
 }
 
+/// 功能模块图标定义 (支持图片限制尺寸与大小、代码渲染矢量SVG，以及系统默认图标降级)
+class PluginIconDef {
+  /// 默认最大支持图片文件大小：512 KB
+  static const int defaultMaxSizeBytes = 512 * 1024;
+
+  /// 默认最大支持像素宽高：512 x 512
+  static const int defaultMaxPixels = 512;
+
+  final String type; // 'image', 'code', 'material', 'default'
+  final String? data; // base64 / 文件路径 / 网络URL / SVG矢量代码 / Material图标名
+  final int maxSizeBytes;
+  final int maxPixels;
+
+  const PluginIconDef({
+    required this.type,
+    this.data,
+    this.maxSizeBytes = defaultMaxSizeBytes,
+    this.maxPixels = defaultMaxPixels,
+  });
+
+  /// 是否为图片模式 (Base64 / 本地文件 / 网络URL)
+  bool get isImage => type == 'image';
+
+  /// 是否为代码渲染模式 (SVG 矢量代码)
+  bool get isCode => type == 'code';
+
+  /// 是否为系统/Material 图标关键词
+  bool get isMaterial => type == 'material';
+
+  /// 是否未提供任何图标或强制默认
+  bool get isDefault => type == 'default' || data == null || data!.trim().isEmpty;
+
+  factory PluginIconDef.fromRaw(dynamic raw, {String fallbackIcon = 'extension'}) {
+    if (raw == null) {
+      return PluginIconDef(type: 'material', data: fallbackIcon);
+    }
+    if (raw is String) {
+      final str = raw.trim();
+      if (str.isEmpty) {
+        return PluginIconDef(type: 'material', data: fallbackIcon);
+      }
+      // SVG 代码特征
+      if (str.startsWith('<svg') || str.contains('xmlns="http://www.w3.org/2000/svg"')) {
+        return PluginIconDef(type: 'code', data: str);
+      }
+      // 图片特征
+      if (str.startsWith('data:image/') ||
+          str.startsWith('http://') ||
+          str.startsWith('https://') ||
+          str.toLowerCase().endsWith('.png') ||
+          str.toLowerCase().endsWith('.jpg') ||
+          str.toLowerCase().endsWith('.jpeg') ||
+          str.toLowerCase().endsWith('.webp') ||
+          str.toLowerCase().endsWith('.gif') ||
+          str.toLowerCase().endsWith('.bmp')) {
+        return PluginIconDef(type: 'image', data: str);
+      }
+      // 默认为 Material 图标关键词
+      return PluginIconDef(type: 'material', data: str);
+    }
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      final rawType = map['type']?.toString().toLowerCase().trim() ?? '';
+      final data = map['data']?.toString() ??
+          map['code']?.toString() ??
+          map['content']?.toString() ??
+          map['url']?.toString() ??
+          map['path']?.toString() ??
+          map['value']?.toString();
+      final maxSizeBytes = (map['maxSizeBytes'] as num?)?.toInt() ??
+          (map['maxSize'] as num?)?.toInt() ??
+          defaultMaxSizeBytes;
+      final maxPixels = (map['maxPixels'] as num?)?.toInt() ??
+          (map['maxPixel'] as num?)?.toInt() ??
+          defaultMaxPixels;
+
+      final type = switch (rawType) {
+        'image' || 'img' || 'bitmap' || 'file' || 'url' => 'image',
+        'code' || 'svg' || 'xml' => 'code',
+        'material' || 'icon' => 'material',
+        'default' => 'default',
+        _ => (data != null && (data.startsWith('<svg') || data.contains('<svg')))
+            ? 'code'
+            : (data != null && (data.startsWith('data:image/') || data.startsWith('http') || data.endsWith('.png')))
+                ? 'image'
+                : 'material',
+      };
+
+      return PluginIconDef(
+        type: type,
+        data: data ?? fallbackIcon,
+        maxSizeBytes: maxSizeBytes,
+        maxPixels: maxPixels,
+      );
+    }
+    return PluginIconDef(type: 'material', data: fallbackIcon);
+  }
+
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    if (data != null) 'data': data,
+    'maxSizeBytes': maxSizeBytes,
+    'maxPixels': maxPixels,
+  };
+}
+
 /// 插件本地/远程实体
 class PluginManifest {
   final String id;
@@ -246,6 +352,7 @@ class PluginManifest {
   final String category; // image, media, text, other, win_ext
   final String description;
   final String icon;
+  final PluginIconDef? iconDef;
   final String author;
   final String engineType; // native_image, media_pipeline, webview, native_executable, script
   final String executionType; // 'internal' | 'native_executable' | 'script' | 'quickjs'
@@ -272,6 +379,7 @@ class PluginManifest {
     required this.category,
     required this.description,
     required this.icon,
+    this.iconDef,
     required this.author,
     required this.engineType,
     this.executionType = 'internal',
@@ -288,6 +396,8 @@ class PluginManifest {
     this.isUpdateAvailable = false,
     this.localDir,
   });
+
+  PluginIconDef get effectiveIconDef => iconDef ?? PluginIconDef.fromRaw(icon);
 
   bool isSupportedOnCurrentPlatform() {
     if (platforms.isEmpty || platforms.contains('universal')) return true;
@@ -363,6 +473,9 @@ class PluginManifest {
   factory PluginManifest.fromJson(Map<String, dynamic> json, {bool isRemote = false}) {
     var rawInputs = json['inputs'] as List?;
     var rawPlatforms = json['platforms'] as List?;
+    final rawIcon = json['icon'] ?? json['iconDef'];
+    final iconDef = PluginIconDef.fromRaw(rawIcon);
+    final iconString = rawIcon is String ? rawIcon : (iconDef.data ?? 'extension');
     return PluginManifest(
       id: json['id'] ?? '',
       name: json['name'] ?? '',
@@ -370,7 +483,8 @@ class PluginManifest {
       minAppVersion: json['minAppVersion']?.toString() ?? '1.0.0',
       category: json['category'] ?? 'other',
       description: json['description'] ?? '',
-      icon: json['icon'] ?? 'extension',
+      icon: iconString,
+      iconDef: iconDef,
       author: json['author'] ?? 'Unknown',
       engineType: json['engineType'] ?? 'custom',
       executionType: json['executionType']?.toString() ??

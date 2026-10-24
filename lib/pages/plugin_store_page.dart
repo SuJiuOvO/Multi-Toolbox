@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 import '../models/plugin_manifest.dart';
+import '../widgets/plugin_icon_widget.dart';
 import '../services/app_update_service.dart';
 import '../services/plugin_manager_service.dart';
 
@@ -532,7 +533,7 @@ class _PluginStorePageState extends State<PluginStorePage> {
             CircleAvatar(
               radius: 20,
               backgroundColor: theme.colorScheme.primaryContainer,
-              child: Icon(_getIconData(item.icon), size: 22, color: theme.colorScheme.primary),
+              child: PluginIconWidget(manifest: item, size: 22, color: theme.colorScheme.primary),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -848,47 +849,6 @@ class _PluginStorePageState extends State<PluginStorePage> {
     }
   }
 
-  IconData _getIconData(String iconName) {
-    switch (iconName) {
-      case 'compress':
-        return Icons.compress;
-      case 'aspect_ratio':
-        return Icons.aspect_ratio;
-      case 'badge':
-        return Icons.badge;
-      case 'movie':
-        return Icons.movie_creation_outlined;
-      case 'qr_code':
-        return Icons.qr_code_2_rounded;
-      case 'download':
-        return Icons.download_for_offline_outlined;
-      case 'gif':
-        return Icons.gif_box_outlined;
-      case 'motion_photo':
-      case 'live_photo':
-        return Icons.motion_photos_on_outlined;
-      case 'pdf':
-        return Icons.picture_as_pdf_outlined;
-      case 'doc_converter':
-      case 'transform':
-      case 'watermark':
-      case 'banana':
-        return Icons.transform_outlined;
-      case 'folder_zip':
-      case 'zip':
-      case 'archive':
-        return Icons.folder_zip_outlined;
-      case 'code':
-      case 'terminal':
-        return Icons.code_rounded;
-      case 'memory':
-      case 'wasm':
-      case 'cpu':
-        return Icons.memory_rounded;
-      default:
-        return Icons.extension;
-    }
-  }
 
   void _openCommunityRepo(String url) async {
     try {
@@ -1291,8 +1251,11 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                       CircleAvatar(
                                         radius: isMobile ? 18 : 20,
                                         backgroundColor: theme.colorScheme.primaryContainer,
-                                        child: Icon(_getIconData(item.icon),
-                                            size: isMobile ? 20 : 22, color: theme.colorScheme.primary),
+                                        child: PluginIconWidget(
+                                          manifest: item,
+                                          size: isMobile ? 20 : 22,
+                                          color: theme.colorScheme.primary,
+                                        ),
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(

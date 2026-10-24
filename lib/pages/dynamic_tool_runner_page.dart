@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import '../models/plugin_manifest.dart';
+import '../widgets/plugin_icon_widget.dart';
 import '../services/tool_engine_service.dart';
 import '../services/windows_extension_runner_service.dart';
 import '../services/quickjs_bridge_service.dart';
@@ -932,6 +933,12 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              PluginIconWidget(
+                manifest: widget.plugin,
+                size: 20,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
               Flexible(
                 child: Text(
                   widget.plugin.name,

@@ -5,7 +5,10 @@
   "minAppVersion": "1.0.0",
   "category": "image",
   "description": "基于工业级逆向 Alpha 混合数学解算算法（Reverse Alpha Blending），完美无损擦除 Google Gemini、Nano Banana、Imagen 3 等 AI 生图右下角半透明四角星光水印。通过数学逆解逐像素精准恢复被遮挡的原始底色，拒绝任何破坏画质的模糊涂抹与 AI 虚构填补。全平台通用、零云端依赖、离线秒级批量完成。",
-  "icon": "watermark",
+  "icon": {
+    "type": "code",
+    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path fill=\"#F59E0B\" d=\"M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6z\"/></svg>"
+  },
   "author": "SuJiu & Community",
   "engineType": "native_image",
   "platforms": [
