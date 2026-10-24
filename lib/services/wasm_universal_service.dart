@@ -112,6 +112,11 @@ class WasmUniversalService {
 )
 ''';
 
+  /// 内置预编译好的纯正 WASM 二进制字节码 (包含 add、递归 fib、square 算法，零等待、零编译)
+  static final Uint8List builtinDemoWasmBytes = Uint8List.fromList([
+    0, 97, 115, 109, 1, 0, 0, 0, 1, 12, 2, 96, 2, 127, 127, 1, 127, 96, 1, 127, 1, 127, 3, 4, 3, 0, 1, 1, 7, 22, 3, 3, 97, 100, 100, 0, 0, 3, 102, 105, 98, 0, 1, 6, 115, 113, 117, 97, 114, 101, 0, 2, 10, 46, 3, 7, 0, 32, 0, 32, 1, 106, 11, 28, 0, 32, 0, 65, 2, 72, 4, 127, 32, 0, 5, 32, 0, 65, 1, 107, 16, 1, 32, 0, 65, 2, 107, 16, 1, 106, 11, 11, 7, 0, 32, 0, 32, 0, 108, 11, 0, 26, 4, 110, 97, 109, 101, 1, 19, 3, 0, 3, 97, 100, 100, 1, 3, 102, 105, 98, 2, 6, 115, 113, 117, 97, 114, 101
+  ]);
+
   /// 确保底座宿主 Native 库 (`wasm_run_dart.dll` / `libwasm_run_dart.so`) 绑定就绪
   static Future<void> ensureInitialized() async {
     if (_initialized) return;
@@ -131,21 +136,33 @@ class WasmUniversalService {
         try {
           await WasmRunLibrary.setUp(lib: ExternalLibrary.open('libwasm_run_dart.so'));
         } catch (_) {
-          await WasmRunLibrary.setUp();
+          try {
+            await WasmRunLibrary.setUp(lib: ExternalLibrary.process(iKnowHowToUseIt: true));
+          } catch (_) {
+            await WasmRunLibrary.setUp();
+          }
         }
       } else {
         await WasmRunLibrary.setUp();
       }
       _initialized = true;
     } catch (e) {
+      if (e.toString().contains('already configured') || e.toString().contains('already initialized')) {
+        _initialized = true;
+        return;
+      }
       debugPrint('WasmUniversalService 初始化注意: $e');
-      _initialized = true;
+      throw Exception('WebAssembly (WASM) 底层运行时初始化失败: $e');
     }
   }
 
   /// 将可能为 `.wat` 文本或 `.wasm` 二进制的数据标准化解析为二进制字节流
   static Future<Uint8List> resolveBytes(dynamic source) async {
-    await ensureInitialized();
+    // 1. 如果传入的是内置演示 WAT 代码，直接返回预编译好的 WASM 二进制字节流，零等待、零依赖
+    if (source == builtinDemoWat || source == 'builtin' || source == null) {
+      return builtinDemoWasmBytes;
+    }
+
     if (source is Uint8List) {
       // 检查是否为 WASM 魔数 (\0asm = 0x00, 0x61, 0x73, 0x6d)
       if (source.length >= 4 &&
@@ -155,20 +172,35 @@ class WasmUniversalService {
           source[3] == 0x6d) {
         return source;
       }
-      // 否则尝试当做 WAT 文本解析
       final text = utf8.decode(source, allowMalformed: true);
+      if (text.trim() == builtinDemoWat.trim()) {
+        return builtinDemoWasmBytes;
+      }
+      await ensureInitialized();
       return await parseWatFormat(wat: text);
     } else if (source is String) {
+      if (source.trim() == builtinDemoWat.trim()) {
+        return builtinDemoWasmBytes;
+      }
       final file = File(source);
       if (file.existsSync()) {
         final bytes = file.readAsBytesSync();
+        if (bytes.length >= 4 &&
+            bytes[0] == 0x00 &&
+            bytes[1] == 0x61 &&
+            bytes[2] == 0x73 &&
+            bytes[3] == 0x6d) {
+          return bytes;
+        }
         if (source.toLowerCase().endsWith('.wat')) {
           final text = file.readAsStringSync();
+          await ensureInitialized();
           return await parseWatFormat(wat: text);
         }
         return bytes;
       }
       // 纯字符串作为 WAT 源码即时编译
+      await ensureInitialized();
       return await parseWatFormat(wat: source);
     }
     throw ArgumentError('未知的 WASM 源码类型: $source');

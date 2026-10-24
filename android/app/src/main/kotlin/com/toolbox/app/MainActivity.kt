@@ -11,6 +11,16 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
+    companion object {
+        init {
+            try {
+                System.loadLibrary("wasm_run_dart")
+            } catch (e: Throwable) {
+                android.util.Log.w("MainActivity", "Preload wasm_run_dart warning: $e")
+            }
+        }
+    }
+
     private val CHANNEL = "com.toolbox.app/office_bridge"
 
     private val wpsPackages = listOf(
