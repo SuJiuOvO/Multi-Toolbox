@@ -183,7 +183,8 @@ flutter build apk --release
 Multi-Toolbox 的插件市场生态完全开放，欢迎向社区官方注册表贡献您的实用工具：
 
 - **官方社区仓库**：[SuJiuOvO/Toolbox-Community-Registry](https://github.com/SuJiuOvO/Toolbox-Community-Registry)
-- **提交方式**：Fork 社区仓库，在 `registry/` 目录下添加您的功能清单与依赖，提交 Pull Request 即可自动完成合入与多节点同步分发。
+- **功能模块开发技术文档**：详见 [docs/PLUGIN_DEVELOPMENT_GUIDE.md](docs/PLUGIN_DEVELOPMENT_GUIDE.md)，完整涵盖四大沙箱运行时（Wasm/QuickJS/Windows/内置）、Manifest v2.0 规范、高精度图标系统与 3 大端到端实战开发教程。
+- **提交流程**：Fork 社区仓库，在 `plugins/<id>/` 目录下添加您的模块，使用 `python tools/build_registry.py` 完成自动化校验与打包，提交 Pull Request 即可自动触发多镜像节点（Gitee / CDN / GitHub）同步分发。
 
 ---
 
