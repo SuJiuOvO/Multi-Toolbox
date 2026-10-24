@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
@@ -22,8 +23,7 @@ class _PluginStorePageState extends State<PluginStorePage> {
   String? _downloadingPluginId;
   double _downloadProgress = 0.0;
   String _downloadStatus = '';
-  String _selectedPlatform = 'all';
-  String _selectedScope = 'all'; // 'all', 'official', 'community', 'installed'
+  String _selectedScope = 'all'; // 'all', 'official', 'community', 'win_ext'
   Map<String, int> _nodePingResults = {};
   bool _isPingingNodes = false;
 
@@ -711,7 +711,17 @@ class _PluginStorePageState extends State<PluginStorePage> {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('关闭'),
           ),
-          if (!isSupportedLocally)
+          if (item.isInstalled && !item.isUpdateAvailable)
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _uninstallPlugin(item);
+              },
+              icon: const Icon(Icons.delete_outline, size: 16),
+              label: const Text('卸载该模块'),
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+            )
+          else if (!isSupportedLocally)
             OutlinedButton(
               onPressed: null,
               child: const Text('当前操作系统不兼容'),
@@ -729,16 +739,6 @@ class _PluginStorePageState extends State<PluginStorePage> {
                 );
               },
               child: const Text('版本不兼容，无法安装'),
-            )
-          else if (item.isInstalled && !item.isUpdateAvailable)
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _uninstallPlugin(item);
-              },
-              icon: const Icon(Icons.delete_outline, size: 16),
-              label: const Text('卸载该模块'),
-              style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
             )
           else if (item.isUpdateAvailable)
             FilledButton.icon(
@@ -903,24 +903,11 @@ class _PluginStorePageState extends State<PluginStorePage> {
     final activeNode = _pluginManager.currentActiveNode;
 
     final filteredPlugins = _pluginManager.remotePlugins.where((p) {
+      // 严格只预置和展示适配当前操作系统平台的功能模块
+      if (!p.isSupportedOnCurrentPlatform()) return false;
       if (_selectedScope == 'official' && !p.isOfficial) return false;
       if (_selectedScope == 'community' && p.isOfficial) return false;
       if (_selectedScope == 'win_ext' && !p.isWindowsExtension) return false;
-      if (_selectedPlatform != 'all') {
-        if (_selectedPlatform == 'universal' && !p.platforms.contains('universal')) {
-          return false;
-        }
-        if (_selectedPlatform == 'windows' &&
-            !p.platforms.contains('windows') &&
-            !p.platforms.contains('universal')) {
-          return false;
-        }
-        if (_selectedPlatform == 'android' &&
-            !p.platforms.contains('android') &&
-            !p.platforms.contains('universal')) {
-          return false;
-        }
-      }
       if (_searchQuery.trim().isNotEmpty) {
         final q = _searchQuery.trim().toLowerCase();
         final nameMatch = p.name.toLowerCase().contains(q);
@@ -1230,54 +1217,18 @@ class _PluginStorePageState extends State<PluginStorePage> {
                             selected: _selectedScope == 'community',
                             onSelected: (_) => setState(() => _selectedScope = 'community'),
                           ),
-                          const SizedBox(width: 6),
-                          FilterChip(
-                            avatar: const Icon(Icons.bolt, size: 14, color: Colors.amber),
-                            label: const Text('⚡ Win 开放工坊'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11.5),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            selected: _selectedScope == 'win_ext',
-                            onSelected: (_) => setState(() => _selectedScope = 'win_ext'),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(width: 1, height: 16, color: Colors.grey.shade300),
-                          const SizedBox(width: 8),
-                          ChoiceChip(
-                            label: const Text('全部'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            selected: _selectedPlatform == 'all',
-                            onSelected: (_) => setState(() => _selectedPlatform = 'all'),
-                          ),
-                          const SizedBox(width: 6),
-                          ChoiceChip(
-                            label: const Text('🌐 通用'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            selected: _selectedPlatform == 'universal',
-                            onSelected: (_) => setState(() => _selectedPlatform = 'universal'),
-                          ),
-                          const SizedBox(width: 6),
-                          ChoiceChip(
-                            label: const Text('🪟 Win'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            selected: _selectedPlatform == 'windows',
-                            onSelected: (_) => setState(() => _selectedPlatform = 'windows'),
-                          ),
-                          const SizedBox(width: 6),
-                          ChoiceChip(
-                            label: const Text('🤖 安卓'),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            selected: _selectedPlatform == 'android',
-                            onSelected: (_) => setState(() => _selectedPlatform = 'android'),
-                          ),
+                          if (Platform.isWindows) ...[
+                            const SizedBox(width: 6),
+                            FilterChip(
+                              avatar: const Icon(Icons.bolt, size: 14, color: Colors.amber),
+                              label: const Text('⚡ Win 开放工坊'),
+                              visualDensity: VisualDensity.compact,
+                              labelStyle: const TextStyle(fontSize: 11.5),
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              selected: _selectedScope == 'win_ext',
+                              onSelected: (_) => setState(() => _selectedScope = 'win_ext'),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1467,7 +1418,18 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                         ),
                                       ),
                                       const SizedBox(width: 8),
-                                      if (!isSupportedLocally)
+                                      if (item.isInstalled && !item.isUpdateAvailable)
+                                        OutlinedButton(
+                                          onPressed: isAnyBusy ? null : () => _uninstallPlugin(item),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: Colors.redAccent,
+                                            side: const BorderSide(color: Colors.redAccent),
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            visualDensity: VisualDensity.compact,
+                                          ),
+                                          child: const Text('已安装 (卸载)', style: TextStyle(fontSize: 12)),
+                                        )
+                                      else if (!isSupportedLocally)
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                           decoration: BoxDecoration(
@@ -1493,17 +1455,6 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                             visualDensity: VisualDensity.compact,
                                           ),
                                           child: const Text('客户端版本过低', style: TextStyle(fontSize: 12)),
-                                        )
-                                      else if (item.isInstalled && !item.isUpdateAvailable)
-                                        OutlinedButton(
-                                          onPressed: isAnyBusy ? null : () => _uninstallPlugin(item),
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: Colors.redAccent,
-                                            side: const BorderSide(color: Colors.redAccent),
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            visualDensity: VisualDensity.compact,
-                                          ),
-                                          child: const Text('已安装 (卸载)', style: TextStyle(fontSize: 12)),
                                         )
                                       else if (item.isUpdateAvailable)
                                         FilledButton(

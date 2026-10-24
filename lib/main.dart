@@ -14,9 +14,9 @@ import 'theme/app_theme_manager.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. 本地轻量偏好读取（带防超时保护，绝不阻塞应用启动）
+  // 1. 本地轻量偏好读取（必须完整执行，确保用户设置与横幅状态准确落盘）
   try {
-    await SettingsService().init().timeout(const Duration(milliseconds: 1000));
+    await SettingsService().init();
   } catch (e) {
     debugPrint('SettingsService init fallback: $e');
   }
@@ -100,20 +100,30 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
   String _searchQuery = '';
   bool _isDeepSearch = false;
   String _selectedCategory = 'all';
-  String _selectedPlatform = 'all';
   bool _showBanner = true;
   bool _isCompactGrid = true;
 
   @override
   void initState() {
     super.initState();
+    SettingsService().addListener(_onSettingsChanged);
     _showBanner = !SettingsService().bannerDismissedPermanently;
     _isDeepSearch = SettingsService().deepSearchDefault;
     _refreshList();
   }
 
+  void _onSettingsChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (SettingsService().bannerDismissedPermanently) {
+        _showBanner = false;
+      }
+    });
+  }
+
   @override
   void dispose() {
+    SettingsService().removeListener(_onSettingsChanged);
     _searchController.dispose();
     super.dispose();
   }
@@ -508,9 +518,10 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
     }
   }
 
-  /// 全屏分类与平台筛选对话框
+  /// 全屏分类筛选对话框
   void _showCategoryFullscreenDialog() {
-    final allPlugins = _pluginManager.installedPlugins;
+    // 仅统计适配当前平台的可用插件
+    final allPlugins = _pluginManager.installedPlugins.where((p) => p.isSupportedOnCurrentPlatform()).toList();
 
     // 统计各分类数量
     final Map<String, int> categoryCounts = {
@@ -525,13 +536,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
       }
     }
 
-    // 统计各平台数量
-    final int countUniversal = allPlugins.where((p) => p.platforms.contains('universal')).length;
-    final int countWindows = allPlugins.where((p) => p.platforms.contains('windows') || p.platforms.contains('universal')).length;
-    final int countAndroid = allPlugins.where((p) => p.platforms.contains('android') || p.platforms.contains('universal')).length;
-
     String tempCategory = _selectedCategory;
-    String tempPlatform = _selectedPlatform;
 
     showDialog(
       context: context,
@@ -544,15 +549,14 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
             actionsPadding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
             title: Row(
               children: [
-                const Icon(Icons.tune_rounded, color: Colors.blueAccent, size: 20),
+                const Icon(Icons.category_outlined, color: Colors.blueAccent, size: 20),
                 const SizedBox(width: 8),
-                const Text('分类与平台筛选', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text('全部工具业务分类', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: () {
                     setDialogState(() {
                       tempCategory = 'all';
-                      tempPlatform = 'all';
                     });
                   },
                   icon: const Icon(Icons.refresh, size: 14),
@@ -571,7 +575,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('功能业务分类：', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const Text('选择功能分类：', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,
@@ -611,39 +615,6 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                                 )),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    const Text('目标运行平台：', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        _buildFilterChoiceItem(
-                          label: '全部 (${allPlugins.length})',
-                          icon: Icons.devices,
-                          selected: tempPlatform == 'all',
-                          onTap: () => setDialogState(() => tempPlatform = 'all'),
-                        ),
-                        _buildFilterChoiceItem(
-                          label: '全平台通用 ($countUniversal)',
-                          icon: Icons.public,
-                          selected: tempPlatform == 'universal',
-                          onTap: () => setDialogState(() => tempPlatform = 'universal'),
-                        ),
-                        _buildFilterChoiceItem(
-                          label: 'Windows 专享 ($countWindows)',
-                          icon: Icons.window,
-                          selected: tempPlatform == 'windows',
-                          onTap: () => setDialogState(() => tempPlatform = 'windows'),
-                        ),
-                        _buildFilterChoiceItem(
-                          label: 'Android 专享 ($countAndroid)',
-                          icon: Icons.android,
-                          selected: tempPlatform == 'android',
-                          onTap: () => setDialogState(() => tempPlatform = 'android'),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),
@@ -657,11 +628,10 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                 onPressed: () {
                   setState(() {
                     _selectedCategory = tempCategory;
-                    _selectedPlatform = tempPlatform;
                   });
                   Navigator.pop(ctx);
                 },
-                child: const Text('应用筛选'),
+                child: const Text('应用分类'),
               ),
             ],
           );
@@ -849,25 +819,13 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
     final textPrimary = theme.colorScheme.onSurface;
     final textSecondary = theme.colorScheme.onSurfaceVariant;
 
-    // 过滤已安装插件
+    // 过滤已安装插件（严格只展示适配当前操作系统平台的功能）
     final plugins = _pluginManager.installedPlugins.where((p) {
-      if (_selectedCategory != 'all' && p.category != _selectedCategory) {
+      if (!p.isSupportedOnCurrentPlatform()) {
         return false;
       }
-      if (_selectedPlatform != 'all') {
-        if (_selectedPlatform == 'universal' && !p.platforms.contains('universal')) {
-          return false;
-        }
-        if (_selectedPlatform == 'windows' &&
-            !p.platforms.contains('windows') &&
-            !p.platforms.contains('universal')) {
-          return false;
-        }
-        if (_selectedPlatform == 'android' &&
-            !p.platforms.contains('android') &&
-            !p.platforms.contains('universal')) {
-          return false;
-        }
+      if (_selectedCategory != 'all' && p.category != _selectedCategory) {
+        return false;
       }
 
       // 关键词搜索（普通搜索 vs 深度搜索）
@@ -1270,83 +1228,9 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // 全屏展开筛选按钮（仅保留小图标，无冗余文字）
+                  // 排列模式切换按钮：精简卡片 vs 原版详细列表
                   Tooltip(
-                    message: '全屏分类与平台筛选',
-                    child: InkWell(
-                      onTap: _showCategoryFullscreenDialog,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppThemeManager.accentBlue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppThemeManager.accentBlue.withValues(alpha: 0.3)),
-                        ),
-                        child: const Icon(Icons.tune_rounded, size: 18, color: AppThemeManager.accentBlue),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 平台架构筛选 Chip + 布局切换按钮（卡片精简 vs 列表详情）
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: 2),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      child: Row(
-                        children: [
-                          _buildFilterChip(
-                            label: '全部',
-                            selected: _selectedPlatform == 'all',
-                            onSelected: () => setState(() => _selectedPlatform == 'all'),
-                            theme: theme,
-                            isDark: isDark,
-                            textPrimary: textPrimary,
-                          ),
-                          const SizedBox(width: 6),
-                          _buildFilterChip(
-                            label: '🌐 通用',
-                            selected: _selectedPlatform == 'universal',
-                            onSelected: () => setState(() => _selectedPlatform == 'universal'),
-                            theme: theme,
-                            isDark: isDark,
-                            textPrimary: textPrimary,
-                          ),
-                          const SizedBox(width: 6),
-                          _buildFilterChip(
-                            label: '🪟 Win',
-                            selected: _selectedPlatform == 'windows',
-                            onSelected: () => setState(() => _selectedPlatform == 'windows'),
-                            theme: theme,
-                            isDark: isDark,
-                            textPrimary: textPrimary,
-                          ),
-                          const SizedBox(width: 6),
-                          _buildFilterChip(
-                            label: '🤖 安卓',
-                            selected: _selectedPlatform == 'android',
-                            onSelected: () => setState(() => _selectedPlatform == 'android'),
-                            theme: theme,
-                            isDark: isDark,
-                            textPrimary: textPrimary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // 布局模式切换按钮：卡片排列（简单样式） vs 列表/详细卡片样式（原版响应式）
-                  Tooltip(
-                    message: _isCompactGrid ? '切换至原版详细卡片视图' : '切换至精简网格卡片视图',
+                    message: _isCompactGrid ? '切换至详细列表视图' : '切换至精简卡片视图',
                     child: InkWell(
                       onTap: () => setState(() => _isCompactGrid = !_isCompactGrid),
                       borderRadius: BorderRadius.circular(8),
@@ -1371,11 +1255,29 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  // 全屏展开分类筛选按钮
+                  Tooltip(
+                    message: '展开全部工具分类',
+                    child: InkWell(
+                      onTap: _showCategoryFullscreenDialog,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppThemeManager.accentBlue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppThemeManager.accentBlue.withValues(alpha: 0.3)),
+                        ),
+                        child: const Icon(Icons.tune_rounded, size: 18, color: AppThemeManager.accentBlue),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 4)),
+          const SliverToBoxAdapter(child: SizedBox(height: 6)),
 
           // 工具列表（卡片紧凑视图 vs 列表详情视图）
           if (plugins.isEmpty)
@@ -1392,7 +1294,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                       Text(
                         _searchQuery.isNotEmpty
                             ? '未搜索到匹配 “$_searchQuery” 的功能模块'
-                            : '当前分类或平台筛选下暂无已安装的工具',
+                            : '当前分类下暂无已安装的工具',
                         style: TextStyle(color: textSecondary, fontSize: 15),
                       ),
                       const SizedBox(height: 12),
@@ -1400,15 +1302,13 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (_searchQuery.isNotEmpty ||
-                              _selectedCategory != 'all' ||
-                              _selectedPlatform != 'all')
+                              _selectedCategory != 'all')
                             OutlinedButton.icon(
                               onPressed: () {
                                 setState(() {
                                   _searchController.clear();
                                   _searchQuery = '';
                                   _selectedCategory = 'all';
-                                  _selectedPlatform = 'all';
                                 });
                               },
                               icon: const Icon(Icons.clear_all, size: 16),

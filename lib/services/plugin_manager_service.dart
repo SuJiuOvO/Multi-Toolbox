@@ -241,6 +241,15 @@ class PluginManagerService {
             final jsonMap = jsonDecode(jsonStr);
             final plugin = PluginManifest.fromJson(jsonMap, isRemote: false);
             plugin.localDir = dir.path;
+
+            // 平台适配检查：若本地残留的插件不兼容当前操作系统平台（如安卓端残留的 windows-media-downloader），自动清理并排除
+            if (!plugin.isSupportedOnCurrentPlatform()) {
+              try {
+                dir.deleteSync(recursive: true);
+              } catch (_) {}
+              continue;
+            }
+
             loaded.add(plugin);
           } catch (e) {
             debugPrint('解析本地插件失败: ${dir.path}, 错误: $e');
@@ -273,6 +282,12 @@ class PluginManagerService {
         final assetData = await rootBundle.loadString('assets/default_plugins/$id.json');
         final jsonMap = jsonDecode(assetData);
         final assetPlugin = PluginManifest.fromJson(jsonMap, isRemote: false);
+
+        // 平台适配检查：若预置功能不兼容当前操作系统，严禁安装预置！
+        if (!assetPlugin.isSupportedOnCurrentPlatform()) {
+          continue;
+        }
+
         final targetDir = Directory(p.join(_pluginsDirectory!.path, id));
         if (!targetDir.existsSync()) {
           targetDir.createSync(recursive: true);

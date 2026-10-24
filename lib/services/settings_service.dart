@@ -31,50 +31,66 @@ class SettingsService extends ChangeNotifier {
   bool get bannerDismissPromptShown => _bannerDismissPromptShown;
   bool get deepSearchDefault => _deepSearchDefault;
 
+  /// 确保 SharedPreferences 实例已初始化，避免任何冷启动或并发时的 null 忽略
+  Future<SharedPreferences> _getPrefs() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
+  }
+
   Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
-    _themeId = _prefs?.getString(_keyThemeId) ?? 'minimal_clean';
-    _runInBackground = _prefs?.getBool(_keyRunInBackground) ?? true;
-    _notifyOnComplete = _prefs?.getBool(_keyNotifyOnComplete) ?? true;
-    _bannerDismissedPermanently = _prefs?.getBool(_keyBannerDismissedPermanently) ?? false;
-    _bannerDismissPromptShown = _prefs?.getBool(_keyBannerDismissPromptShown) ?? false;
-    _deepSearchDefault = _prefs?.getBool(_keyDeepSearchDefault) ?? false;
-    notifyListeners();
+    try {
+      final prefs = await _getPrefs();
+      _themeId = prefs.getString(_keyThemeId) ?? 'minimal_clean';
+      _runInBackground = prefs.getBool(_keyRunInBackground) ?? true;
+      _notifyOnComplete = prefs.getBool(_keyNotifyOnComplete) ?? true;
+      _bannerDismissedPermanently = prefs.getBool(_keyBannerDismissedPermanently) ?? false;
+      _bannerDismissPromptShown = prefs.getBool(_keyBannerDismissPromptShown) ?? false;
+      _deepSearchDefault = prefs.getBool(_keyDeepSearchDefault) ?? false;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('SettingsService.init error: $e');
+    }
   }
 
   Future<void> setThemeId(String id) async {
     _themeId = id;
-    await _prefs?.setString(_keyThemeId, id);
+    final prefs = await _getPrefs();
+    await prefs.setString(_keyThemeId, id);
     notifyListeners();
   }
 
   Future<void> setRunInBackground(bool value) async {
     _runInBackground = value;
-    await _prefs?.setBool(_keyRunInBackground, value);
+    final prefs = await _getPrefs();
+    await prefs.setBool(_keyRunInBackground, value);
     notifyListeners();
   }
 
   Future<void> setNotifyOnComplete(bool value) async {
     _notifyOnComplete = value;
-    await _prefs?.setBool(_keyNotifyOnComplete, value);
+    final prefs = await _getPrefs();
+    await prefs.setBool(_keyNotifyOnComplete, value);
     notifyListeners();
   }
 
   Future<void> setBannerDismissedPermanently(bool value) async {
     _bannerDismissedPermanently = value;
-    await _prefs?.setBool(_keyBannerDismissedPermanently, value);
+    final prefs = await _getPrefs();
+    await prefs.setBool(_keyBannerDismissedPermanently, value);
     notifyListeners();
   }
 
   Future<void> setBannerDismissPromptShown(bool value) async {
     _bannerDismissPromptShown = value;
-    await _prefs?.setBool(_keyBannerDismissPromptShown, value);
+    final prefs = await _getPrefs();
+    await prefs.setBool(_keyBannerDismissPromptShown, value);
     notifyListeners();
   }
 
   Future<void> setDeepSearchDefault(bool value) async {
     _deepSearchDefault = value;
-    await _prefs?.setBool(_keyDeepSearchDefault, value);
+    final prefs = await _getPrefs();
+    await prefs.setBool(_keyDeepSearchDefault, value);
     notifyListeners();
   }
 }
