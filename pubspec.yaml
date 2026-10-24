@@ -125,7 +125,7 @@ hooks:
   user_defines:
     wasm_run:
       buildMode: local
-      localPath: wasm_run_dart.dll
+      localPath: native_binaries/wasm_run/
 
 dependency_overrides:
   flutter_rust_bridge: 2.12.0
