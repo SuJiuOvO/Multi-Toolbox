@@ -115,9 +115,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
   void _onSettingsChanged() {
     if (!mounted) return;
     setState(() {
-      if (SettingsService().bannerDismissedPermanently) {
-        _showBanner = false;
-      }
+      _showBanner = !SettingsService().bannerDismissedPermanently;
     });
   }
 
@@ -441,17 +439,11 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
 
   Future<void> _handleDismissBanner() async {
     final settings = SettingsService();
-    // 如果已经提示过（即后续再叉掉），直接关闭，不再给出任何提示
-    if (settings.bannerDismissPromptShown) {
-      setState(() => _showBanner = false);
-      return;
-    }
 
-    // 第一次叉掉：弹出永久关闭提示说明
     final choice = await showDialog<String>(
       context: context,
-      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
             Icon(Icons.help_outline_rounded, color: Colors.blueAccent),
@@ -460,16 +452,18 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
           ],
         ),
         content: const Text(
-          '是否永久关闭此免重下安装说明横幅？\n\n'
-          '选择“永久关闭”后，以后打开软件将不再显示此提示。',
-          style: TextStyle(fontSize: 13.5, height: 1.4),
+          '请选择关闭方式：\n\n'
+          '• 永久关闭：以后启动软件不再显示此提示（可在【设置】中随时恢复）\n'
+          '• 仅本次关闭：仅隐藏本次，下次启动仍会显示',
+          style: TextStyle(fontSize: 13.5, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, 'once'),
-            child: const Text('仅这次'),
+            child: const Text('仅本次关闭'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.blueAccent),
             onPressed: () => Navigator.pop(ctx, 'forever'),
             child: const Text('永久关闭'),
           ),
@@ -479,42 +473,14 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
 
     if (choice == 'forever') {
       await settings.setBannerDismissedPermanently(true);
-      await settings.setBannerDismissPromptShown(true);
       setState(() => _showBanner = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已永久关闭提示说明，后续可在【设置】中重新开启。')),
+          const SnackBar(content: Text('已永久关闭提示说明，后续可在【设置】中随时重新开启。')),
         );
       }
     } else if (choice == 'once') {
-      await settings.setBannerDismissPromptShown(true);
       setState(() => _showBanner = false);
-      if (mounted) {
-        // 用户选择仅这次，再提示用户可以到设置中永久关闭提示说明
-        await showDialog(
-          context: context,
-          builder: (ctx2) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blueAccent),
-                SizedBox(width: 8),
-                Text('提示', style: TextStyle(fontSize: 16)),
-              ],
-            ),
-            content: const Text(
-              '已为您关闭本次说明。\n\n'
-              '如果您以后不再需要看到此提示说明，可以随时在【设置】中开启或永久关闭此提示。',
-              style: TextStyle(fontSize: 13.5, height: 1.4),
-            ),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx2),
-                child: const Text('我知道了'),
-              ),
-            ],
-          ),
-        );
-      }
     }
   }
 
