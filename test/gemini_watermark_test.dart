@@ -61,7 +61,10 @@ void main() {
       // 2. 模拟真实 Google Gemini 正向加水印过程 (48x48, 边距 32px)
       //    Watermarked = alpha * 255 + (1 - alpha) * Original
       final watermarked = img.decodePng(await File(inputPath).readAsBytes())!;
-      final alpha48Bytes = File('../community_registry_repo/plugins/gemini-banana-watermark/assets/bg_48.png');
+      File alpha48Bytes = File('test/assets/bg_48.png');
+      if (!alpha48Bytes.existsSync()) {
+        alpha48Bytes = File('../community_registry_repo/plugins/gemini-banana-watermark/assets/bg_48.png');
+      }
       expect(alpha48Bytes.existsSync(), isTrue);
       final alpha48Img = img.decodePng(alpha48Bytes.readAsBytesSync())!;
 
@@ -138,7 +141,10 @@ void main() {
       }
 
       // 2. 模拟 96x96 水印 (边距 64px)
-      final alpha96File = File('../community_registry_repo/plugins/gemini-banana-watermark/assets/bg_96.png');
+      File alpha96File = File('test/assets/bg_96.png');
+      if (!alpha96File.existsSync()) {
+        alpha96File = File('../community_registry_repo/plugins/gemini-banana-watermark/assets/bg_96.png');
+      }
       expect(alpha96File.existsSync(), isTrue);
       final alpha96Img = img.decodePng(alpha96File.readAsBytesSync())!;
 
