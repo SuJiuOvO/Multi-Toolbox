@@ -294,6 +294,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
         type: FileType.custom,
         allowedExtensions: ['json', 'zip'],
         dialogTitle: '选择本地插件文件 (.json 或 .zip 安装包)',
+        lockParentWindow: true,
       );
 
       if (result == null || result.files.isEmpty) return;

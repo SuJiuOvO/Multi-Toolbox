@@ -66,6 +66,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       allowMultiple: input.allowMultiple,
       type: input.allowedExtensions.isNotEmpty ? FileType.custom : FileType.any,
       allowedExtensions: input.allowedExtensions.isNotEmpty ? input.allowedExtensions : null,
+      lockParentWindow: true,
     );
 
     if (res != null && res.paths.isNotEmpty) {

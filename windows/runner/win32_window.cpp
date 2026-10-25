@@ -179,6 +179,25 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_CLOSE: {
+      DWORD current_pid = ::GetCurrentProcessId();
+      ::EnumWindows([](HWND top_hwnd, LPARAM lparam) -> BOOL {
+        DWORD pid = 0;
+        ::GetWindowThreadProcessId(top_hwnd, &pid);
+        if (pid == static_cast<DWORD>(lparam)) {
+          wchar_t class_name[256];
+          if (::GetClassName(top_hwnd, class_name, 256) > 0) {
+            if (wcscmp(class_name, L"#32770") == 0) {
+              ::PostMessage(top_hwnd, WM_COMMAND, MAKEWPARAM(IDCANCEL, BN_CLICKED), 0);
+              ::PostMessage(top_hwnd, WM_CLOSE, 0, 0);
+            }
+          }
+        }
+        return TRUE;
+      }, static_cast<LPARAM>(current_pid));
+      break;
+    }
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
