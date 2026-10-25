@@ -15,7 +15,13 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": true,
-      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"]
+      "allowedExtensions": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp"
+      ]
     },
     {
       "id": "quality",
@@ -32,10 +38,22 @@
       "type": "select",
       "defaultValue": "keep_original",
       "options": [
-        {"label": "保持原图格式 (PNG自动启用量化减小体积)", "value": "keep_original"},
-        {"label": "转换为 WebP (极力推荐，体积最小)", "value": "webp"},
-        {"label": "转换为 JPEG", "value": "jpg"},
-        {"label": "转换为 PNG (无损/调色板)", "value": "png"}
+        {
+          "label": "保持原图格式 (PNG自动启用量化减小体积)",
+          "value": "keep_original"
+        },
+        {
+          "label": "转换为 WebP (极力推荐，体积最小)",
+          "value": "webp"
+        },
+        {
+          "label": "转换为 JPEG",
+          "value": "jpg"
+        },
+        {
+          "label": "转换为 PNG (无损/调色板)",
+          "value": "png"
+        }
       ]
     },
     {
@@ -44,10 +62,22 @@
       "type": "select",
       "defaultValue": "0",
       "options": [
-        {"label": "保持原图分辨率不变", "value": "0"},
-        {"label": "最长边限制为 2560 px (适合 2K/4K 减重)", "value": "2560"},
-        {"label": "最长边限制为 1920 px (适合网络传输/网页)", "value": "1920"},
-        {"label": "最长边限制为 1280 px (适合移动端/极速分享)", "value": "1280"}
+        {
+          "label": "保持原图分辨率不变",
+          "value": "0"
+        },
+        {
+          "label": "最长边限制为 2560 px (适合 2K/4K 减重)",
+          "value": "2560"
+        },
+        {
+          "label": "最长边限制为 1920 px (适合网络传输/网页)",
+          "value": "1920"
+        },
+        {
+          "label": "最长边限制为 1280 px (适合移动端/极速分享)",
+          "value": "1280"
+        }
       ]
     }
   ],

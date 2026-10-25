@@ -1,6 +1,6 @@
 {
   "id": "gif-toolbox",
-  "name": "GIF 动图制作与解析",
+  "name": "GIF 动图工坊",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
   "category": "media",
@@ -15,9 +15,18 @@
       "type": "select",
       "defaultValue": "images_to_gif",
       "options": [
-        {"label": "🖼️ 多图合成动图 (Images to GIF)", "value": "images_to_gif"},
-        {"label": "🎬 视频转换动图 (Video to GIF)", "value": "video_to_gif"},
-        {"label": "🔍 动图逐帧解析 (GIF Frame Extractor)", "value": "extract_frames"}
+        {
+          "label": "🖼️ 多图合成动图 (Images to GIF)",
+          "value": "images_to_gif"
+        },
+        {
+          "label": "🎬 视频转换动图 (Video to GIF)",
+          "value": "video_to_gif"
+        },
+        {
+          "label": "🔍 动图逐帧解析 (GIF Frame Extractor)",
+          "value": "extract_frames"
+        }
       ]
     },
     {
@@ -26,7 +35,13 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": true,
-      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"],
+      "allowedExtensions": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp"
+      ],
       "visibleIf": {
         "field": "mode",
         "equals": "images_to_gif"
@@ -51,10 +66,22 @@
       "type": "select",
       "defaultValue": 0,
       "options": [
-        {"label": "保持原图尺寸 (原始分辨率)", "value": 0},
-        {"label": "320 px (表情包/微缩尺寸)", "value": 320},
-        {"label": "480 px (标准适中推荐)", "value": 480},
-        {"label": "640 px (高清宽屏)", "value": 640}
+        {
+          "label": "保持原图尺寸 (原始分辨率)",
+          "value": 0
+        },
+        {
+          "label": "320 px (表情包/微缩尺寸)",
+          "value": 320
+        },
+        {
+          "label": "480 px (标准适中推荐)",
+          "value": 480
+        },
+        {
+          "label": "640 px (高清宽屏)",
+          "value": 640
+        }
       ],
       "visibleIf": {
         "field": "mode",
@@ -67,8 +94,14 @@
       "type": "select",
       "defaultValue": 0,
       "options": [
-        {"label": "无限循环播放 (默认推荐)", "value": 0},
-        {"label": "仅播放一次后停止", "value": 1}
+        {
+          "label": "无限循环播放 (默认推荐)",
+          "value": 0
+        },
+        {
+          "label": "仅播放一次后停止",
+          "value": 1
+        }
       ],
       "visibleIf": {
         "field": "mode",
@@ -81,7 +114,14 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["mp4", "mov", "mkv", "avi", "flv", "webm"],
+      "allowedExtensions": [
+        "mp4",
+        "mov",
+        "mkv",
+        "avi",
+        "flv",
+        "webm"
+      ],
       "visibleIf": {
         "field": "mode",
         "equals": "video_to_gif"
@@ -130,10 +170,22 @@
       "type": "select",
       "defaultValue": 480,
       "options": [
-        {"label": "320 px (小体积/快速加载)", "value": 320},
-        {"label": "480 px (标准平衡/推荐)", "value": 480},
-        {"label": "640 px (清晰质感)", "value": 640},
-        {"label": "800 px (超清大图)", "value": 800}
+        {
+          "label": "320 px (小体积/快速加载)",
+          "value": 320
+        },
+        {
+          "label": "480 px (标准平衡/推荐)",
+          "value": 480
+        },
+        {
+          "label": "640 px (清晰质感)",
+          "value": 640
+        },
+        {
+          "label": "800 px (超清大图)",
+          "value": 800
+        }
       ],
       "visibleIf": {
         "field": "mode",
@@ -146,7 +198,9 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["gif"],
+      "allowedExtensions": [
+        "gif"
+      ],
       "visibleIf": {
         "field": "mode",
         "equals": "extract_frames"
@@ -158,8 +212,14 @@
       "type": "select",
       "defaultValue": "png",
       "options": [
-        {"label": "PNG (无损透明度保留)", "value": "png"},
-        {"label": "JPG (轻量化高压缩)", "value": "jpg"}
+        {
+          "label": "PNG (无损透明度保留)",
+          "value": "png"
+        },
+        {
+          "label": "JPG (轻量化高压缩)",
+          "value": "jpg"
+        }
       ],
       "visibleIf": {
         "field": "mode",
@@ -172,8 +232,14 @@
       "type": "select",
       "defaultValue": "true",
       "options": [
-        {"label": "同时生成 ZIP 压缩包与散列帧文件", "value": "true"},
-        {"label": "仅生成独立散列帧图片", "value": "false"}
+        {
+          "label": "同时生成 ZIP 压缩包与散列帧文件",
+          "value": "true"
+        },
+        {
+          "label": "仅生成独立散列帧图片",
+          "value": "false"
+        }
       ],
       "visibleIf": {
         "field": "mode",

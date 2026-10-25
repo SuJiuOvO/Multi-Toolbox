@@ -1,6 +1,6 @@
 {
   "id": "downloader-toolbox",
-  "name": "多线程分块下载器",
+  "name": "多线程下载",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
   "category": "network",

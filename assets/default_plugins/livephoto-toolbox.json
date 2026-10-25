@@ -1,6 +1,6 @@
 {
   "id": "livephoto-toolbox",
-  "name": "实况照片制作与解析",
+  "name": "实况照片工坊",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
   "category": "media",
@@ -15,9 +15,18 @@
       "type": "select",
       "defaultValue": "image_video_to_live",
       "options": [
-        {"label": "📸 封面图 + 短视频合流制作 (Image + Video)", "value": "image_video_to_live"},
-        {"label": "🎬 视频一键提炼实况照片 (Video to Live Photo)", "value": "video_to_live"},
-        {"label": "🔍 实况照片解析与分离 (Extract Motion Photo)", "value": "extract_live_photo"}
+        {
+          "label": "📸 封面图 + 短视频合流制作 (Image + Video)",
+          "value": "image_video_to_live"
+        },
+        {
+          "label": "🎬 视频一键提炼实况照片 (Video to Live Photo)",
+          "value": "video_to_live"
+        },
+        {
+          "label": "🔍 实况照片解析与分离 (Extract Motion Photo)",
+          "value": "extract_live_photo"
+        }
       ]
     },
     {
@@ -26,7 +35,13 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"],
+      "allowedExtensions": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp"
+      ],
       "visibleIf": {
         "field": "mode",
         "equals": "image_video_to_live"
@@ -38,7 +53,13 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["mp4", "mov", "mkv", "avi", "webm"],
+      "allowedExtensions": [
+        "mp4",
+        "mov",
+        "mkv",
+        "avi",
+        "webm"
+      ],
       "visibleIf": {
         "field": "mode",
         "equals": "image_video_to_live"
@@ -50,7 +71,13 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["mp4", "mov", "mkv", "avi", "webm"],
+      "allowedExtensions": [
+        "mp4",
+        "mov",
+        "mkv",
+        "avi",
+        "webm"
+      ],
       "visibleIf": {
         "field": "mode",
         "equals": "video_to_live"
@@ -86,7 +113,10 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["jpg", "jpeg"],
+      "allowedExtensions": [
+        "jpg",
+        "jpeg"
+      ],
       "visibleIf": {
         "field": "mode",
         "equals": "extract_live_photo"
@@ -98,14 +128,29 @@
       "type": "select",
       "defaultValue": "android_motion_photo",
       "options": [
-        {"label": "Android Motion Photo (推荐：单张.jpg，Google/小米/三星相册即按即动)", "value": "android_motion_photo"},
-        {"label": "iOS Live Photo 兼容配对包 (同名 JPG+MOV，生成 ZIP)", "value": "ios_live_photo"},
-        {"label": "双格式同步输出 (Android 单文件 + iOS 配对包)", "value": "both"}
+        {
+          "label": "Android Motion Photo (推荐：单张.jpg，Google/小米/三星相册即按即动)",
+          "value": "android_motion_photo"
+        },
+        {
+          "label": "iOS Live Photo 兼容配对包 (同名 JPG+MOV，生成 ZIP)",
+          "value": "ios_live_photo"
+        },
+        {
+          "label": "双格式同步输出 (Android 单文件 + iOS 配对包)",
+          "value": "both"
+        }
       ],
       "visibleIf": {
         "field": "mode",
-        "in": ["image_video_to_live", "video_to_live"],
-        "inValues": ["image_video_to_live", "video_to_live"]
+        "in": [
+          "image_video_to_live",
+          "video_to_live"
+        ],
+        "inValues": [
+          "image_video_to_live",
+          "video_to_live"
+        ]
       }
     }
   ],

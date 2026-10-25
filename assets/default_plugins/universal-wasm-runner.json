@@ -1,6 +1,6 @@
 {
   "id": "universal-wasm-runner",
-  "name": "WebAssembly 全能算力工坊",
+  "name": "Wasm 算力工坊",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
   "category": "other",

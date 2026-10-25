@@ -7,6 +7,8 @@ import 'package:open_filex/open_filex.dart';
 import '../models/plugin_manifest.dart';
 import '../widgets/plugin_icon_widget.dart';
 import '../services/tool_engine_service.dart';
+import '../services/background_task_runner.dart';
+import '../services/media_engine_service.dart';
 import '../services/windows_extension_runner_service.dart';
 import '../services/quickjs_bridge_service.dart';
 import '../services/android_office_bridge.dart';
@@ -33,9 +35,11 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
 
   @override
   void dispose() {
-    if (_isProcessing) {
+    if (_isProcessing && !SettingsService().runInBackground) {
       WindowsExtensionRunnerService.killActiveProcess();
       QuickJsBridgeService.killCurrentExecution();
+      BackgroundTaskRunner.cancelActive();
+      MediaEngineService.cancelActive();
     }
     super.dispose();
   }
@@ -545,7 +549,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         },
       );
     } else {
-      res = await ToolEngineService.execute(
+      res = await BackgroundTaskRunner.execute(
         handler: widget.plugin.action?.handler ?? 'image_compress',
         inputFiles: effectiveInputFiles,
         params: evaluatedParams,
@@ -717,9 +721,35 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         ),
         if (_isProcessing) ...[
           const SizedBox(height: 14),
-          LinearProgressIndicator(value: _progress > 0 ? _progress : null),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              minHeight: 7,
+              value: _progress > 0 ? _progress.clamp(0.0, 1.0) : null,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text(_statusText, style: TextStyle(color: textSecondary, fontSize: 12)),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _statusText,
+                  style: TextStyle(color: textSecondary, fontSize: 12),
+                ),
+              ),
+              if (_progress > 0) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '${(_progress * 100).clamp(0, 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    color: theme.colorScheme.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
         if (widget.plugin.hasTerminal || _terminalLogs.isNotEmpty) ...[
           const SizedBox(height: 16),
@@ -729,6 +759,8 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
             onStop: () {
               WindowsExtensionRunnerService.killActiveProcess();
               QuickJsBridgeService.killCurrentExecution();
+              BackgroundTaskRunner.cancelActive();
+              MediaEngineService.cancelActive();
             },
             onClear: () {
               setState(() {
@@ -925,6 +957,8 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         if (confirmExit == true && context.mounted) {
           WindowsExtensionRunnerService.killActiveProcess();
           QuickJsBridgeService.killCurrentExecution();
+          BackgroundTaskRunner.cancelActive();
+          MediaEngineService.cancelActive();
           Navigator.of(context).pop();
         }
       },

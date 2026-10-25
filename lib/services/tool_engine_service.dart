@@ -7,8 +7,6 @@ import 'dart:ui' as ui;
 import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:qr/qr.dart';
@@ -18,6 +16,7 @@ import 'package:pdfrx/pdfrx.dart' as rx;
 import 'doc_converter_service.dart';
 import 'archive_universal_service.dart';
 import 'wasm_universal_service.dart';
+import 'media_engine_service.dart';
 
 class ProcessingResult {
   final bool success;
@@ -93,11 +92,18 @@ class ToolEngineService {
                 ? (customName.endsWith('.$defaultExt') ? customName : '$customName.$defaultExt')
                 : 'archive.$defaultExt';
             final outputPath = p.join(outputDir, archiveFileName);
+            final splitRaw = params['splitSizeMb'];
+            final splitSizeMb = (splitRaw is num
+                    ? splitRaw.toInt()
+                    : int.tryParse(splitRaw?.toString() ?? '0')) ??
+                0;
             return await ArchiveUniversalService.compress(
               inputPaths: inputFiles,
               outputPath: outputPath,
               format: format,
+              splitSizeMb: splitSizeMb,
               onProgress: onProgress,
+              onLog: onLog,
             );
           } else {
             if (inputFiles.isEmpty) {
@@ -109,6 +115,7 @@ class ToolEngineService {
               outputDir: outputDir,
               password: (pwd != null && pwd.isNotEmpty) ? pwd : null,
               onProgress: onProgress,
+              onLog: onLog,
             );
           }
         case 'wasm_runner':
@@ -928,292 +935,14 @@ class ToolEngineService {
     String outputDir,
     Function(double, String)? onProgress,
   ) async {
-    final filePath = files.first;
-    final op = (params['op'] ?? params['operation'])?.toString() ?? 'compress_video';
-    final preset = params['preset']?.toString() ?? 'normal';
-    onProgress?.call(0.05, '正在准备音视频处理指令...');
-
-    // ---------- 构建命令参数 ----------
-    String outName = 'media_${DateTime.now().millisecondsSinceEpoch}.mp4';
-    List<String> ffmpegArgs = [];
-
-    if (op == 'extract_audio' || op == 'extract_audio_copy') {
-      outName = 'extracted_${p.basenameWithoutExtension(filePath)}.aac';
-      ffmpegArgs = [
-        '-y', '-i', filePath,
-        '-vn',
-        '-c:a', 'copy',
-        p.join(outputDir, outName),
-      ];
-    } else if (op == 'extract_audio_mp3') {
-      outName = 'extracted_${p.basenameWithoutExtension(filePath)}.mp3';
-      ffmpegArgs = [
-        '-y', '-i', filePath,
-        '-vn',
-        '-c:a', 'libmp3lame',
-        '-q:a', '2',
-        '-threads', '0',
-        p.join(outputDir, outName),
-      ];
-    } else if (op == 'compress_video') {
-      outName = 'compressed_${p.basenameWithoutExtension(filePath)}.mp4';
-      if (preset == 'extreme') {
-        ffmpegArgs = [
-          '-y', '-i', filePath,
-          '-vf', "scale=-2:'min(720,ih)',fps=30",
-          '-c:v', 'libx264',
-          '-preset', 'veryfast',
-          '-crf', '28',
-          '-c:a', 'aac',
-          '-b:a', '96k',
-          '-movflags', '+faststart',
-          '-threads', '0',
-          p.join(outputDir, outName),
-        ];
-      } else if (preset == 'high_quality') {
-        ffmpegArgs = [
-          '-y', '-i', filePath,
-          '-c:v', 'libx264',
-          '-preset', 'fast',
-          '-crf', '22',
-          '-c:a', 'aac',
-          '-b:a', '192k',
-          '-movflags', '+faststart',
-          '-threads', '0',
-          p.join(outputDir, outName),
-        ];
-      } else {
-        ffmpegArgs = [
-          '-y', '-i', filePath,
-          '-c:v', 'libx264',
-          '-preset', 'veryfast',
-          '-crf', '26',
-          '-c:a', 'aac',
-          '-b:a', '128k',
-          '-movflags', '+faststart',
-          '-threads', '0',
-          p.join(outputDir, outName),
-        ];
-      }
-    } else if (op == 'reverse_video') {
-      outName = 'reversed_${p.basenameWithoutExtension(filePath)}.mp4';
-      ffmpegArgs = [
-        '-y', '-i', filePath,
-        '-vf', "scale=-2:'min(720,ih)',fps=30,reverse",
-        '-af', 'areverse',
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-c:a', 'aac',
-        '-threads', '0',
-        p.join(outputDir, outName),
-      ];
-    } else if (op == 'to_mp4') {
-      outName = 'converted_${p.basenameWithoutExtension(filePath)}.mp4';
-      ffmpegArgs = [
-        '-y', '-i', filePath,
-        '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '23',
-        '-c:a', 'aac',
-        '-b:a', '160k',
-        '-movflags', '+faststart',
-        '-threads', '0',
-        p.join(outputDir, outName),
-      ];
-    } else if (op == 'audio_convert') {
-      final targetFmt = params['format']?.toString() ?? 'mp3';
-      if (targetFmt == 'wav') {
-        outName = 'converted_${p.basenameWithoutExtension(filePath)}.wav';
-        ffmpegArgs = [
-          '-y', '-i', filePath,
-          '-c:a', 'pcm_s16le',
-          p.join(outputDir, outName),
-        ];
-      } else if (targetFmt == 'aac') {
-        outName = 'converted_${p.basenameWithoutExtension(filePath)}.aac';
-        ffmpegArgs = [
-          '-y', '-i', filePath,
-          '-c:a', 'aac',
-          '-b:a', '192k',
-          p.join(outputDir, outName),
-        ];
-      } else {
-        outName = 'converted_${p.basenameWithoutExtension(filePath)}.mp3';
-        ffmpegArgs = [
-          '-y', '-i', filePath,
-          '-c:a', 'libmp3lame',
-          '-q:a', '2',
-          '-threads', '0',
-          p.join(outputDir, outName),
-        ];
-      }
-    }
-
-    final outPath = p.join(outputDir, outName);
-    final sw = Stopwatch()..start();
-
-    // ========================================================
-    // 分支 1: Android 平台 (使用内置 NDK FFmpeg 动态库)
-    // ========================================================
-    if (Platform.isAndroid) {
-      onProgress?.call(0.20, '正在通过 Android 原生内置 FFmpeg 核心处理...');
-      final session = await FFmpegKit.executeWithArguments(ffmpegArgs);
-      sw.stop();
-      final returnCode = await session.getReturnCode();
-
-      if (ReturnCode.isSuccess(returnCode) && File(outPath).existsSync()) {
-        final outSize = File(outPath).lengthSync();
-        onProgress?.call(1.0, '任务完成！总耗时 ${sw.elapsed.inSeconds} 秒');
-        return ProcessingResult(
-          success: true,
-          message: '任务完成 (耗时 ${sw.elapsed.inSeconds} 秒)！\n输出文件: $outName\n最终大小: ${(outSize / 1024).toStringAsFixed(1)} KB',
-          outputFiles: [outPath],
-        );
-      } else {
-        // 音频直拷失败时自动回退转码
-        if (op == 'extract_audio' || op == 'extract_audio_copy') {
-          onProgress?.call(0.30, '流直拷模式不兼容，切换为高质量 MP3 提取...');
-          outName = 'extracted_${p.basenameWithoutExtension(filePath)}.mp3';
-          final outPath2 = p.join(outputDir, outName);
-          final fallbackArgs = [
-            '-y', '-i', filePath,
-            '-vn',
-            '-c:a', 'libmp3lame',
-            '-q:a', '2',
-            '-threads', '0',
-            outPath2,
-          ];
-          sw.reset(); sw.start();
-          final session2 = await FFmpegKit.executeWithArguments(fallbackArgs);
-          sw.stop();
-          final returnCode2 = await session2.getReturnCode();
-          if (ReturnCode.isSuccess(returnCode2) && File(outPath2).existsSync()) {
-            final outSize = File(outPath2).lengthSync();
-            onProgress?.call(1.0, '处理完成！总耗时 ${sw.elapsed.inSeconds} 秒');
-            return ProcessingResult(
-              success: true,
-              message: '任务完成 (耗时 ${sw.elapsed.inSeconds} 秒)！\n输出文件: $outName\n最终大小: ${(outSize / 1024).toStringAsFixed(1)} KB',
-              outputFiles: [outPath2],
-            );
-          }
-        }
-
-        final logs = await session.getAllLogsAsString();
-        return ProcessingResult(
-          success: false,
-          message: 'FFmpeg 处理失败 (ReturnCode: $returnCode)\n$logs',
-        );
-      }
-    }
-
-    // ========================================================
-    // 分支 2: Windows 桌面端 (智能寻检系统级 FFmpeg 进程)
-    // ========================================================
-    onProgress?.call(0.10, '正在检测系统 FFmpeg 编解码引擎...');
-    String? ffmpegPath;
-    final exeDir = p.dirname(Platform.resolvedExecutable);
-    final candidates = <String>[
-      p.join(exeDir, 'ffmpeg.exe'),
-      p.join(exeDir, 'bin', 'ffmpeg.exe'),
-      'ffmpeg',
-    ];
-    final home = Platform.environment['USERPROFILE'] ?? '';
-    if (home.isNotEmpty) {
-      candidates.add(p.join(home, r'AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe'));
-      final sdkDir = Directory(p.join(home, r'AppData\Local\Microsoft\WinGet\Packages'));
-      if (sdkDir.existsSync()) {
-        try {
-          for (var sub in sdkDir.listSync(recursive: false)) {
-            if (sub is Directory && sub.path.toLowerCase().contains('ffmpeg')) {
-              try {
-                sub.listSync(recursive: true)
-                    .whereType<File>()
-                    .where((f) => p.basename(f.path).toLowerCase() == 'ffmpeg.exe')
-                    .take(1)
-                    .forEach((f) => candidates.add(f.path));
-              } catch (_) {}
-            }
-          }
-        } catch (_) {}
-      }
-    }
-
-    for (final cand in candidates) {
-      try {
-        final res = await Process.run(cand, ['-version']);
-        if (res.exitCode == 0) {
-          ffmpegPath = cand;
-          break;
-        }
-      } catch (_) {}
-    }
-
-    if (ffmpegPath == null) {
-      return ProcessingResult(
-        success: false,
-        message: '未在系统路径或程序目录中找到有效 FFmpeg。\n若下载的是极简便携包，可在 Windows PowerShell 中运行:\nwinget install Gyan.FFmpeg.Essentials\n安装后重启软件；或直接下载自带 FFmpeg 的完整便携包。',
-      );
-    }
-
-    onProgress?.call(0.20, '已就绪 FFmpeg 核心，正在启动音视频处理管道...');
-    final process = await Process.start(ffmpegPath, ffmpegArgs);
-
-    final stderrBuf = StringBuffer();
-    process.stdout.drain<void>();
-    process.stderr.transform(const SystemEncoding().decoder).listen((data) {
-      stderrBuf.write(data);
-      if (data.contains('time=')) {
-        onProgress?.call(0.60, '正在转码处理中 (${sw.elapsed.inSeconds}s)...');
-      }
-    });
-
-    final exitCode = await process.exitCode;
-    sw.stop();
-
-    if (exitCode == 0 && File(outPath).existsSync()) {
-      final outSize = File(outPath).lengthSync();
-      onProgress?.call(1.0, '任务完成！总耗时 ${sw.elapsed.inSeconds} 秒');
-      return ProcessingResult(
-        success: true,
-        message: '处理完成 (耗时 ${sw.elapsed.inSeconds} 秒)！\n输出文件: $outName\n最终大小: ${(outSize / 1024).toStringAsFixed(1)} KB',
-        outputFiles: [outPath],
-      );
-    } else {
-      if (op == 'extract_audio' || op == 'extract_audio_copy') {
-        onProgress?.call(0.30, '流直拷未识别到独立音轨，自动回退至高质量 MP3 提取...');
-        outName = 'extracted_${p.basenameWithoutExtension(filePath)}.mp3';
-        final outPath2 = p.join(outputDir, outName);
-        final fallbackArgs = [
-          '-y', '-i', filePath,
-          '-vn',
-          '-c:a', 'libmp3lame',
-          '-q:a', '2',
-          '-threads', '0',
-          outPath2,
-        ];
-        sw.reset(); sw.start();
-        final process2 = await Process.start(ffmpegPath, fallbackArgs);
-        process2.stdout.drain<void>();
-        process2.stderr.drain<void>();
-        final exitCode2 = await process2.exitCode;
-        sw.stop();
-
-        if (exitCode2 == 0 && File(outPath2).existsSync()) {
-          final outSize = File(outPath2).lengthSync();
-          onProgress?.call(1.0, '回退处理完成！耗时 ${sw.elapsed.inSeconds} 秒');
-          return ProcessingResult(
-            success: true,
-            message: '处理完成 (耗时 ${sw.elapsed.inSeconds} 秒)！\n输出文件: $outName\n最终大小: ${(outSize / 1024).toStringAsFixed(1)} KB',
-            outputFiles: [outPath2],
-          );
-        }
-      }
-
-      return ProcessingResult(
-        success: false,
-        message: 'FFmpeg 处理失败 (退出码: $exitCode)\n${stderrBuf.toString().split('\n').where((l) => l.toLowerCase().contains('error') || l.toLowerCase().contains('invalid')).take(5).join('\n')}',
-      );
-    }
+    // 实际处理逻辑位于 MediaEngineService：
+    // 硬件编码优先 (NVENC/QSV/AMF/MediaCodec)、真实进度与预计剩余时间、软编线程限制、可取消。
+    return MediaEngineService.processMedia(
+      inputPath: files.first,
+      params: params,
+      outputDir: outputDir,
+      onProgress: onProgress == null ? null : (p, s) => onProgress(p, s),
+    );
   }
 
   // =========================================================================
@@ -1567,123 +1296,18 @@ class ToolEngineService {
   // =========================================================================
   // FFmpeg 跨平台执行助手 (Android 内置原生 NDK / Windows 动态进程)
   // =========================================================================
-  static String? _cachedFfmpegPath;
-
-  static Future<String?> _findWindowsFfmpeg() async {
-    if (_cachedFfmpegPath != null && File(_cachedFfmpegPath!).existsSync()) {
-      return _cachedFfmpegPath;
-    }
-
-    final exeDir = p.dirname(Platform.resolvedExecutable);
-    final candidates = <String>[
-      p.join(exeDir, 'ffmpeg.exe'),
-      p.join(exeDir, 'bin', 'ffmpeg.exe'),
-      'ffmpeg',
-    ];
-    final home = Platform.environment['USERPROFILE'] ?? '';
-    if (home.isNotEmpty) {
-      candidates.add(p.join(home, r'AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe'));
-      final sdkDir = Directory(p.join(home, r'AppData\Local\Microsoft\WinGet\Packages'));
-      if (sdkDir.existsSync()) {
-        try {
-          for (var sub in sdkDir.listSync(recursive: false)) {
-            if (sub is Directory && sub.path.toLowerCase().contains('ffmpeg')) {
-              try {
-                sub
-                    .listSync(recursive: true)
-                    .whereType<File>()
-                    .where((f) => p.basename(f.path).toLowerCase() == 'ffmpeg.exe')
-                    .take(1)
-                    .forEach((f) => candidates.add(f.path));
-              } catch (_) {}
-            }
-          }
-        } catch (_) {}
-      }
-    }
-
-    for (final cand in candidates) {
-      try {
-        final res = await Process.run(cand, ['-version']);
-        if (res.exitCode == 0) {
-          _cachedFfmpegPath = cand;
-          return cand;
-        }
-      } catch (_) {}
-    }
-    return null;
-  }
-
   static Future<ProcessingResult> _executeFFmpegCommand({
     required List<String> ffmpegArgs,
     required String outPath,
     required String successTitle,
     Function(double, String)? onProgress,
-  }) async {
-    final sw = Stopwatch()..start();
-    final outName = p.basename(outPath);
-
-    if (Platform.isAndroid) {
-      onProgress?.call(0.20, '正在通过 Android 原生内置 FFmpeg 核心处理...');
-      final session = await FFmpegKit.executeWithArguments(ffmpegArgs);
-      sw.stop();
-      final returnCode = await session.getReturnCode();
-
-      if (ReturnCode.isSuccess(returnCode) && File(outPath).existsSync()) {
-        final outSize = File(outPath).lengthSync();
-        onProgress?.call(1.0, '$successTitle！总耗时 ${sw.elapsed.inSeconds} 秒');
-        return ProcessingResult(
-          success: true,
-          message: '$successTitle (耗时 ${sw.elapsed.inSeconds} 秒)！\n输出文件: $outName\n最终大小: ${(outSize / 1024).toStringAsFixed(1)} KB',
-          outputFiles: [outPath],
-        );
-      } else {
-        final logs = await session.getAllLogsAsString();
-        return ProcessingResult(
-          success: false,
-          message: 'FFmpeg 处理失败 (ReturnCode: $returnCode)\n$logs',
-        );
-      }
-    }
-
-    // Windows 平台
-    onProgress?.call(0.10, '正在检测系统 FFmpeg 编解码引擎...');
-    final ffmpegPath = await _findWindowsFfmpeg();
-    if (ffmpegPath == null) {
-      return ProcessingResult(
-        success: false,
-        message: '未在系统路径或程序目录中找到有效 FFmpeg。\n若下载的是极简便携包，可在 Windows PowerShell 中运行:\nwinget install Gyan.FFmpeg.Essentials\n安装后重启软件；或直接下载自带 FFmpeg 的完整便携包。',
-      );
-    }
-
-    onProgress?.call(0.20, '已就绪 FFmpeg 核心，正在启动处理管道...');
-    final process = await Process.start(ffmpegPath, ffmpegArgs);
-    final stderrBuf = StringBuffer();
-    process.stdout.drain<void>();
-    process.stderr.transform(const SystemEncoding().decoder).listen((data) {
-      stderrBuf.write(data);
-      if (data.contains('time=') || data.contains('frame=')) {
-        onProgress?.call(0.60, '正在转码处理中 (${sw.elapsed.inSeconds}s)...');
-      }
-    });
-
-    final exitCode = await process.exitCode;
-    sw.stop();
-
-    if (exitCode == 0 && File(outPath).existsSync()) {
-      final outSize = File(outPath).lengthSync();
-      onProgress?.call(1.0, '$successTitle！总耗时 ${sw.elapsed.inSeconds} 秒');
-      return ProcessingResult(
-        success: true,
-        message: '$successTitle (耗时 ${sw.elapsed.inSeconds} 秒)！\n输出文件: $outName\n最终大小: ${(outSize / 1024).toStringAsFixed(1)} KB',
-        outputFiles: [outPath],
-      );
-    } else {
-      return ProcessingResult(
-        success: false,
-        message: 'FFmpeg 处理失败 (退出码: $exitCode)\n${stderrBuf.toString().split('\n').where((l) => l.toLowerCase().contains('error') || l.toLowerCase().contains('invalid')).take(5).join('\n')}',
-      );
-    }
+  }) {
+    return MediaEngineService.runCommand(
+      args: ffmpegArgs,
+      outPath: outPath,
+      successTitle: successTitle,
+      onProgress: onProgress == null ? null : (p, s) => onProgress(p, s),
+    );
   }
 
   // =========================================================================

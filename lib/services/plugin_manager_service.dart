@@ -276,6 +276,7 @@ class PluginManagerService {
       'universal-data-codec',
       'universal-archive-extractor',
       'universal-wasm-runner',
+      'gemini-banana-watermark',
     ];
     for (final id in defaultPluginIds) {
       try {

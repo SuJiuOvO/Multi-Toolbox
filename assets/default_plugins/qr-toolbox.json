@@ -1,6 +1,6 @@
 {
   "id": "qr-toolbox",
-  "name": "二维码制作与识别",
+  "name": "二维码工坊",
   "version": "1.1.0",
   "minAppVersion": "1.0.0",
   "category": "utility",
@@ -15,8 +15,14 @@
       "type": "select",
       "defaultValue": "generate",
       "options": [
-        {"label": "✨ 制作生成二维码", "value": "generate"},
-        {"label": "🔍 识别解析已有二维码", "value": "decode"}
+        {
+          "label": "✨ 制作生成二维码",
+          "value": "generate"
+        },
+        {
+          "label": "🔍 识别解析已有二维码",
+          "value": "decode"
+        }
       ]
     },
     {
@@ -36,10 +42,22 @@
       "type": "select",
       "defaultValue": "M",
       "options": [
-        {"label": "等级 L (7% 容错率 - 适合超长字符/高密度)", "value": "L"},
-        {"label": "等级 M (15% 容错率 - 行业标准推荐)", "value": "M"},
-        {"label": "等级 Q (25% 容错率 - 适合户外/轻度污损)", "value": "Q"},
-        {"label": "等级 H (30% 容错率 - 最高防损/适合实体印制)", "value": "H"}
+        {
+          "label": "等级 L (7% 容错率 - 适合超长字符/高密度)",
+          "value": "L"
+        },
+        {
+          "label": "等级 M (15% 容错率 - 行业标准推荐)",
+          "value": "M"
+        },
+        {
+          "label": "等级 Q (25% 容错率 - 适合户外/轻度污损)",
+          "value": "Q"
+        },
+        {
+          "label": "等级 H (30% 容错率 - 最高防损/适合实体印制)",
+          "value": "H"
+        }
       ],
       "visibleIf": {
         "field": "mode",
@@ -65,7 +83,13 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"],
+      "allowedExtensions": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp"
+      ],
       "visibleIf": {
         "field": "mode",
         "equals": "decode"

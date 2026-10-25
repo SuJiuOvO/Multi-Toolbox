@@ -30,7 +30,7 @@ void main() {
       final manifest = PluginManifest.fromJson(jsonMap);
 
       expect(manifest.id, 'gemini-banana-watermark');
-      expect(manifest.name, 'Gemini-Banana 无损去水印');
+      expect(manifest.name, 'Gemini 去水印');
       expect(manifest.category, 'image');
       expect(manifest.engineType, 'native_image');
       expect(manifest.isSupportedOnCurrentPlatform(), isTrue);

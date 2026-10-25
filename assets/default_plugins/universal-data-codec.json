@@ -1,6 +1,6 @@
 {
   "id": "universal-data-codec",
-  "name": "万能信息摘要与多重编解码",
+  "name": "编码与哈希",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
   "category": "text",
@@ -10,10 +10,8 @@
   "executionType": "quickjs",
   "description": "【QuickJS 动态引擎首发】基于沙箱内嵌的高性能 JavaScript 运行时，支持对文本或数据进行实时 MD5、SHA256、Base64 编解码及词频统计。跨 Android/Windows 全平台热加载执行，无须更新客户端本体。",
   "icon": {
-    "type": "image",
-    "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAKklEQVR4nOzOMQ0AAAACIGf/0MbwgQQ0Z82ZgICAgICAgICAgICAgIDAAAAA//+82z9mAAAABklEQVQDACReAEH+yyG7AAAAAElFTkSuQmCC",
-    "maxPixels": 512,
-    "maxSizeBytes": 524288
+    "type": "code",
+    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"2\" width=\"20\" height=\"20\" rx=\"5\" fill=\"#0D9488\"/><path fill=\"#FFFFFF\" d=\"M9.5 6.5L11 7l-2 10-1.5-.5 2-10zm5 0L16 7l-2 10-1.5-.5 2-10zM6 9.5h12v1.8H6V9.5zm-.5 3.8h12v1.8h-12v-1.8z\"/></svg>"
   },
   "author": "Toolbox 动态脚本实验室",
   "engineType": "quickjs",
@@ -31,10 +29,22 @@
       "type": "select",
       "defaultValue": "all",
       "options": [
-        { "label": "⚡ 全量综合分析 (MD5 + SHA256 + Base64 + 文本统计)", "value": "all" },
-        { "label": "🔒 仅计算数字摘要 (MD5 与 SHA256)", "value": "hashes" },
-        { "label": "📦 Base64 编码转换", "value": "b64_enc" },
-        { "label": "🔓 Base64 解码还原", "value": "b64_dec" }
+        {
+          "label": "⚡ 全量综合分析 (MD5 + SHA256 + Base64 + 文本统计)",
+          "value": "all"
+        },
+        {
+          "label": "🔒 仅计算数字摘要 (MD5 与 SHA256)",
+          "value": "hashes"
+        },
+        {
+          "label": "📦 Base64 编码转换",
+          "value": "b64_enc"
+        },
+        {
+          "label": "🔓 Base64 解码还原",
+          "value": "b64_dec"
+        }
       ]
     },
     {
@@ -43,8 +53,14 @@
       "type": "select",
       "defaultValue": "yes",
       "options": [
-        { "label": "是，自动保存为 report.json 结果文件", "value": "yes" },
-        { "label": "否，仅在终端控制台实时查看", "value": "no" }
+        {
+          "label": "是，自动保存为 report.json 结果文件",
+          "value": "yes"
+        },
+        {
+          "label": "否，仅在终端控制台实时查看",
+          "value": "no"
+        }
       ]
     }
   ],

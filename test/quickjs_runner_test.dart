@@ -171,7 +171,7 @@ void main() {
         final zipFile = File('${outDir.path}/packaged.zip');
         expect(zipFile.existsSync(), true);
 
-        final extractedFile = File('${outDir.path}/unpacked/secret_doc.txt');
+        final extractedFile = File('${outDir.path}/unpacked/packaged/secret_doc.txt');
         expect(extractedFile.existsSync(), true);
         expect(extractedFile.readAsStringSync(), 'Highly classified document content for 7z/zip test');
       } finally {

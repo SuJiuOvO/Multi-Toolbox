@@ -274,6 +274,18 @@ class _PluginIconWidgetState extends State<PluginIconWidget> {
         return null; // 超出像素分辨率限制，安全降级
       }
 
+      // 检查是否为全透明空白无效图片，若无任何可见像素则自动降级为默认功能图标
+      bool hasVisiblePixel = false;
+      for (final pixel in decoded) {
+        if (pixel.a > 15) {
+          hasVisiblePixel = true;
+          break;
+        }
+      }
+      if (!hasVisiblePixel) {
+        return null;
+      }
+
       return rawBytes;
     } catch (_) {
       return null;

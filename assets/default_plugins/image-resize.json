@@ -1,6 +1,6 @@
 {
   "id": "image-resize",
-  "name": "图片修改尺寸",
+  "name": "图片尺寸修改",
   "version": "1.1.0",
   "minAppVersion": "1.0.0",
   "category": "image",
@@ -15,7 +15,13 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": true,
-      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"]
+      "allowedExtensions": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp"
+      ]
     },
     {
       "id": "resizeMode",
@@ -23,10 +29,22 @@
       "type": "select",
       "defaultValue": "scale",
       "options": [
-        {"label": "按比例缩放 (百分比)", "value": "scale"},
-        {"label": "锁定宽度 (自适应高度)", "value": "fit_width"},
-        {"label": "锁定高度 (自适应宽度)", "value": "fit_height"},
-        {"label": "指定固定宽高 (拉伸)", "value": "fixed"}
+        {
+          "label": "按比例缩放 (百分比)",
+          "value": "scale"
+        },
+        {
+          "label": "锁定宽度 (自适应高度)",
+          "value": "fit_width"
+        },
+        {
+          "label": "锁定高度 (自适应宽度)",
+          "value": "fit_height"
+        },
+        {
+          "label": "指定固定宽高 (拉伸)",
+          "value": "fixed"
+        }
       ]
     },
     {

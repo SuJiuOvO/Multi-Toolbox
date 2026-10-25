@@ -1,6 +1,6 @@
 {
   "id": "windows-media-downloader",
-  "name": "Windows 流式抓取与下载器",
+  "name": "Win 媒体下载",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
   "category": "win_ext",

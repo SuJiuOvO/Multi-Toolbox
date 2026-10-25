@@ -1,6 +1,6 @@
 {
   "id": "id-photo-bg",
-  "name": "修改证件照底色",
+  "name": "证件照换底",
   "version": "1.1.0",
   "minAppVersion": "1.0.0",
   "category": "image",
@@ -15,7 +15,12 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["jpg", "jpeg", "png", "webp"]
+      "allowedExtensions": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp"
+      ]
     },
     {
       "id": "bgColor",
@@ -23,10 +28,22 @@
       "type": "select",
       "defaultValue": "white",
       "options": [
-        {"label": "标准白底 (#FFFFFF 常用考试/工作证)", "value": "white"},
-        {"label": "标准红底 (#D81E1E 婚姻登记/社保证)", "value": "red"},
-        {"label": "标准蓝底 (#438EDB 毕业证/职业资格证)", "value": "blue"},
-        {"label": "职业灰底 (#EEEEEE 简历/商务照)", "value": "gray"}
+        {
+          "label": "标准白底 (#FFFFFF 常用考试/工作证)",
+          "value": "white"
+        },
+        {
+          "label": "标准红底 (#D81E1E 婚姻登记/社保证)",
+          "value": "red"
+        },
+        {
+          "label": "标准蓝底 (#438EDB 毕业证/职业资格证)",
+          "value": "blue"
+        },
+        {
+          "label": "职业灰底 (#EEEEEE 简历/商务照)",
+          "value": "gray"
+        }
       ]
     },
     {
@@ -35,10 +52,22 @@
       "type": "select",
       "defaultValue": "keep",
       "options": [
-        {"label": "保持原图尺寸 (仅换底色)", "value": "keep"},
-        {"label": "一寸 (295 x 413 px, 比例居中裁剪)", "value": "1_inch"},
-        {"label": "小二寸 (413 x 531 px, 护照/签证)", "value": "small_2_inch"},
-        {"label": "二寸 (413 x 626 px, 毕业照/标准二寸)", "value": "2_inch"}
+        {
+          "label": "保持原图尺寸 (仅换底色)",
+          "value": "keep"
+        },
+        {
+          "label": "一寸 (295 x 413 px, 比例居中裁剪)",
+          "value": "1_inch"
+        },
+        {
+          "label": "小二寸 (413 x 531 px, 护照/签证)",
+          "value": "small_2_inch"
+        },
+        {
+          "label": "二寸 (413 x 626 px, 毕业照/标准二寸)",
+          "value": "2_inch"
+        }
       ]
     },
     {

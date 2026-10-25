@@ -1,10 +1,12 @@
 {
   "id": "doc-converter",
-  "name": "万能文档互转中心",
+  "name": "文档格式互转",
   "version": "2.3.0",
   "minAppVersion": "1.0.0",
   "category": "document",
-  "platforms": ["universal"],
+  "platforms": [
+    "universal"
+  ],
   "description": "支持图片转PPT、PPT转长图/图片、CAD(DXF)矢量转PDF、PPT转PDF、PDF转PPT、Excel转PDF、Markdown转PDF、TXT转Word、Word转PDF、PDF转可编辑Word等各大格式互转。Windows端调用Office/WPS原生引擎实现100%保真导出与Word反向重构；Android端支持调用手机WPS/Office跳转导出并提供详细步骤指引，同时保留离线轻量引擎。",
   "icon": "doc_converter",
   "author": "Toolbox Team",
@@ -16,23 +18,125 @@
       "type": "select",
       "defaultValue": "images_to_pptx",
       "options": [
-        {"label": "🖼️ 图片批量转 PPT (全平台通用)", "value": "images_to_pptx", "platforms": ["universal"]},
-        {"label": "📷 PPT 转图片 / 拼长图 (Windows 原生 Office · 100%保真)", "value": "pptx_to_images", "platforms": ["windows"]},
-        {"label": "📷 PPT 转图片 / 长图 (调起手机 WPS / Office 导出 · 官方保真)", "value": "pptx_to_images_android_office", "platforms": ["android"]},
-        {"label": "📐 CAD(DXF) 矢量转 PDF (全平台通用)", "value": "cad_to_pdf", "platforms": ["universal"]},
-        {"label": "📽️ PDF 转 PPT 演示文稿 (全平台通用)", "value": "pdf_to_pptx", "platforms": ["universal"]},
-        {"label": "📝 Markdown 文档转 PDF (全平台通用)", "value": "markdown_to_pdf", "platforms": ["universal"]},
-        {"label": "📄 TXT 纯文本转 Word (全平台通用)", "value": "txt_to_docx", "platforms": ["universal"]},
-        {"label": "✏️ PDF 转可编辑 Word (需 Windows 安装 Office/WPS · 完整格式重构)", "value": "pdf_to_docx", "platforms": ["windows"]},
-        {"label": "✏️ PDF 转 Word (调起手机 WPS / Office 导出 · 官方高保真)", "value": "pdf_to_docx_android_office", "platforms": ["android"]},
-        {"label": "✏️ PDF 转 Word (本地离线排版引擎 · 智能清洗段落与排版)", "value": "pdf_to_docx_android_light", "platforms": ["android"]},
-        {"label": "📑 PPT 转 PDF (需 Windows 安装 Office/WPS · 100%保真)", "value": "pptx_to_pdf", "platforms": ["windows"]},
-        {"label": "📘 Word 转 PDF (需 Windows 安装 Office/WPS · 100%保真)", "value": "docx_to_pdf", "platforms": ["windows"]},
-        {"label": "📊 Excel 转 PDF (需 Windows 安装 Office/WPS · 100%保真)", "value": "excel_to_pdf", "platforms": ["windows"]},
-        {"label": "📑 PPT 转 PDF (调起手机 WPS / Office 导出)", "value": "pptx_to_pdf_android", "platforms": ["android"]},
-        {"label": "📘 Word 转 PDF (调起手机 WPS / Office 导出)", "value": "docx_to_pdf_android", "platforms": ["android"]},
-        {"label": "📊 Excel 转 PDF (调起手机 WPS / Office 导出 · 官方保真)", "value": "excel_to_pdf_android_office", "platforms": ["android"]},
-        {"label": "📊 Excel 转 PDF (本地离线轻量引擎 · 纯表格转换)", "value": "excel_to_pdf_android_light", "platforms": ["android"]}
+        {
+          "label": "🖼️ 图片批量转 PPT (全平台通用)",
+          "value": "images_to_pptx",
+          "platforms": [
+            "universal"
+          ]
+        },
+        {
+          "label": "📷 PPT 转图片 / 拼长图 (Windows 原生 Office · 100%保真)",
+          "value": "pptx_to_images",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "label": "📷 PPT 转图片 / 长图 (调起手机 WPS / Office 导出 · 官方保真)",
+          "value": "pptx_to_images_android_office",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "label": "📐 CAD(DXF) 矢量转 PDF (全平台通用)",
+          "value": "cad_to_pdf",
+          "platforms": [
+            "universal"
+          ]
+        },
+        {
+          "label": "📽️ PDF 转 PPT 演示文稿 (全平台通用)",
+          "value": "pdf_to_pptx",
+          "platforms": [
+            "universal"
+          ]
+        },
+        {
+          "label": "📝 Markdown 文档转 PDF (全平台通用)",
+          "value": "markdown_to_pdf",
+          "platforms": [
+            "universal"
+          ]
+        },
+        {
+          "label": "📄 TXT 纯文本转 Word (全平台通用)",
+          "value": "txt_to_docx",
+          "platforms": [
+            "universal"
+          ]
+        },
+        {
+          "label": "✏️ PDF 转可编辑 Word (需 Windows 安装 Office/WPS · 完整格式重构)",
+          "value": "pdf_to_docx",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "label": "✏️ PDF 转 Word (调起手机 WPS / Office 导出 · 官方高保真)",
+          "value": "pdf_to_docx_android_office",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "label": "✏️ PDF 转 Word (本地离线排版引擎 · 智能清洗段落与排版)",
+          "value": "pdf_to_docx_android_light",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "label": "📑 PPT 转 PDF (需 Windows 安装 Office/WPS · 100%保真)",
+          "value": "pptx_to_pdf",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "label": "📘 Word 转 PDF (需 Windows 安装 Office/WPS · 100%保真)",
+          "value": "docx_to_pdf",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "label": "📊 Excel 转 PDF (需 Windows 安装 Office/WPS · 100%保真)",
+          "value": "excel_to_pdf",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "label": "📑 PPT 转 PDF (调起手机 WPS / Office 导出)",
+          "value": "pptx_to_pdf_android",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "label": "📘 Word 转 PDF (调起手机 WPS / Office 导出)",
+          "value": "docx_to_pdf_android",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "label": "📊 Excel 转 PDF (调起手机 WPS / Office 导出 · 官方保真)",
+          "value": "excel_to_pdf_android_office",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "label": "📊 Excel 转 PDF (本地离线轻量引擎 · 纯表格转换)",
+          "value": "excel_to_pdf_android_light",
+          "platforms": [
+            "android"
+          ]
+        }
       ]
     },
     {
@@ -41,7 +145,13 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": true,
-      "allowedExtensions": ["jpg", "jpeg", "png", "webp", "bmp"],
+      "allowedExtensions": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp"
+      ],
       "visibleIf": {
         "field": "subTool",
         "equals": "images_to_pptx"
@@ -53,10 +163,22 @@
       "type": "select",
       "defaultValue": "auto",
       "options": [
-        {"label": "自适应匹配 (推荐)", "value": "auto"},
-        {"label": "16:9 宽屏 (横向)", "value": "16:9"},
-        {"label": "4:3 标屏 (横向)", "value": "4:3"},
-        {"label": "3:4 竖屏 (手机/A4)", "value": "portrait"}
+        {
+          "label": "自适应匹配 (推荐)",
+          "value": "auto"
+        },
+        {
+          "label": "16:9 宽屏 (横向)",
+          "value": "16:9"
+        },
+        {
+          "label": "4:3 标屏 (横向)",
+          "value": "4:3"
+        },
+        {
+          "label": "3:4 竖屏 (手机/A4)",
+          "value": "portrait"
+        }
       ],
       "visibleIf": {
         "field": "subTool",
@@ -69,10 +191,15 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["pptx"],
+      "allowedExtensions": [
+        "pptx"
+      ],
       "visibleIf": {
         "field": "subTool",
-        "in": ["pptx_to_images", "pptx_to_images_android_office"]
+        "in": [
+          "pptx_to_images",
+          "pptx_to_images_android_office"
+        ]
       }
     },
     {
@@ -81,12 +208,20 @@
       "type": "select",
       "defaultValue": "pages",
       "options": [
-        {"label": "📄 逐页切图 (单张高清图片)", "value": "pages"},
-        {"label": "📜 竖向无缝拼长图 (全部幻灯片拼接为单张超清长图)", "value": "long_image"}
+        {
+          "label": "📄 逐页切图 (单张高清图片)",
+          "value": "pages"
+        },
+        {
+          "label": "📜 竖向无缝拼长图 (全部幻灯片拼接为单张超清长图)",
+          "value": "long_image"
+        }
       ],
       "visibleIf": {
         "field": "subTool",
-        "in": ["pptx_to_images"]
+        "in": [
+          "pptx_to_images"
+        ]
       }
     },
     {
@@ -95,14 +230,28 @@
       "type": "select",
       "defaultValue": "1080p",
       "options": [
-        {"label": "1080P 全高清 (1920 × 1080 · 推荐)", "value": "1080p"},
-        {"label": "2K 超清 (2560 × 1440 · 细腻呈现)", "value": "2k"},
-        {"label": "4K 极清 (3840 × 2160 · 商业级高精度)", "value": "4k"},
-        {"label": "720P 标清 (1280 × 720 · 紧凑省空间)", "value": "720p"}
+        {
+          "label": "1080P 全高清 (1920 × 1080 · 推荐)",
+          "value": "1080p"
+        },
+        {
+          "label": "2K 超清 (2560 × 1440 · 细腻呈现)",
+          "value": "2k"
+        },
+        {
+          "label": "4K 极清 (3840 × 2160 · 商业级高精度)",
+          "value": "4k"
+        },
+        {
+          "label": "720P 标清 (1280 × 720 · 紧凑省空间)",
+          "value": "720p"
+        }
       ],
       "visibleIf": {
         "field": "subTool",
-        "in": ["pptx_to_images"]
+        "in": [
+          "pptx_to_images"
+        ]
       }
     },
     {
@@ -111,12 +260,20 @@
       "type": "select",
       "defaultValue": "png",
       "options": [
-        {"label": "PNG 高清无损图片 (推荐)", "value": "png"},
-        {"label": "JPG 紧凑图片 (体积更小)", "value": "jpg"}
+        {
+          "label": "PNG 高清无损图片 (推荐)",
+          "value": "png"
+        },
+        {
+          "label": "JPG 紧凑图片 (体积更小)",
+          "value": "jpg"
+        }
       ],
       "visibleIf": {
         "field": "subTool",
-        "in": ["pptx_to_images"]
+        "in": [
+          "pptx_to_images"
+        ]
       }
     },
     {
@@ -126,7 +283,9 @@
       "defaultValue": true,
       "visibleIf": {
         "field": "subTool",
-        "in": ["pptx_to_images"]
+        "in": [
+          "pptx_to_images"
+        ]
       }
     },
     {
@@ -135,7 +294,9 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["dxf"],
+      "allowedExtensions": [
+        "dxf"
+      ],
       "visibleIf": {
         "field": "subTool",
         "equals": "cad_to_pdf"
@@ -147,9 +308,18 @@
       "type": "select",
       "defaultValue": "A4",
       "options": [
-        {"label": "标准 A4 (210 × 297 mm)", "value": "A4"},
-        {"label": "中型 A3 (297 × 420 mm 工程图)", "value": "A3"},
-        {"label": "大型 A2 (420 × 594 mm 建筑施工图)", "value": "A2"}
+        {
+          "label": "标准 A4 (210 × 297 mm)",
+          "value": "A4"
+        },
+        {
+          "label": "中型 A3 (297 × 420 mm 工程图)",
+          "value": "A3"
+        },
+        {
+          "label": "大型 A2 (420 × 594 mm 建筑施工图)",
+          "value": "A2"
+        }
       ],
       "visibleIf": {
         "field": "subTool",
@@ -162,9 +332,18 @@
       "type": "select",
       "defaultValue": "auto",
       "options": [
-        {"label": "自动匹配长宽比 (推荐)", "value": "auto"},
-        {"label": "横向 (Landscape)", "value": "landscape"},
-        {"label": "纵向 (Portrait)", "value": "portrait"}
+        {
+          "label": "自动匹配长宽比 (推荐)",
+          "value": "auto"
+        },
+        {
+          "label": "横向 (Landscape)",
+          "value": "landscape"
+        },
+        {
+          "label": "纵向 (Portrait)",
+          "value": "portrait"
+        }
       ],
       "visibleIf": {
         "field": "subTool",
@@ -177,10 +356,15 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["pptx"],
+      "allowedExtensions": [
+        "pptx"
+      ],
       "visibleIf": {
         "field": "subTool",
-        "in": ["pptx_to_pdf", "pptx_to_pdf_android"]
+        "in": [
+          "pptx_to_pdf",
+          "pptx_to_pdf_android"
+        ]
       }
     },
     {
@@ -189,7 +373,9 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["pdf"],
+      "allowedExtensions": [
+        "pdf"
+      ],
       "visibleIf": {
         "field": "subTool",
         "equals": "pdf_to_pptx"
@@ -201,10 +387,22 @@
       "type": "select",
       "defaultValue": "auto",
       "options": [
-        {"label": "自适应匹配 (推荐)", "value": "auto"},
-        {"label": "16:9 宽屏 (横向)", "value": "16:9"},
-        {"label": "4:3 标屏 (横向)", "value": "4:3"},
-        {"label": "3:4 竖屏 (手机/A4)", "value": "portrait"}
+        {
+          "label": "自适应匹配 (推荐)",
+          "value": "auto"
+        },
+        {
+          "label": "16:9 宽屏 (横向)",
+          "value": "16:9"
+        },
+        {
+          "label": "4:3 标屏 (横向)",
+          "value": "4:3"
+        },
+        {
+          "label": "3:4 竖屏 (手机/A4)",
+          "value": "portrait"
+        }
       ],
       "visibleIf": {
         "field": "subTool",
@@ -217,8 +415,14 @@
       "type": "select",
       "defaultValue": "150",
       "options": [
-        {"label": "150 DPI 高清 (推荐)", "value": "150"},
-        {"label": "300 DPI 超清 (高精印刷)", "value": "300"}
+        {
+          "label": "150 DPI 高清 (推荐)",
+          "value": "150"
+        },
+        {
+          "label": "300 DPI 超清 (高精印刷)",
+          "value": "300"
+        }
       ],
       "visibleIf": {
         "field": "subTool",
@@ -231,10 +435,19 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["xlsx", "csv", "tsv"],
+      "allowedExtensions": [
+        "xlsx",
+        "csv",
+        "tsv"
+      ],
       "visibleIf": {
         "field": "subTool",
-        "in": ["excel_to_pdf", "excel_to_pdf_android", "excel_to_pdf_android_office", "excel_to_pdf_android_light"]
+        "in": [
+          "excel_to_pdf",
+          "excel_to_pdf_android",
+          "excel_to_pdf_android_office",
+          "excel_to_pdf_android_light"
+        ]
       }
     },
     {
@@ -243,7 +456,11 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["md", "markdown", "txt"],
+      "allowedExtensions": [
+        "md",
+        "markdown",
+        "txt"
+      ],
       "visibleIf": {
         "field": "subTool",
         "equals": "markdown_to_pdf"
@@ -255,7 +472,11 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["txt", "log", "ini"],
+      "allowedExtensions": [
+        "txt",
+        "log",
+        "ini"
+      ],
       "visibleIf": {
         "field": "subTool",
         "equals": "txt_to_docx"
@@ -267,10 +488,22 @@
       "type": "select",
       "defaultValue": "standard",
       "options": [
-        {"label": "🏛️ 标准公文规范 (仿宋+黑体 · 2字符首行缩进 · 1.25倍行距)", "value": "standard"},
-        {"label": "🎓 高校学术论文 (宋体+Times · 1.5倍行距 · 规范大纲)", "value": "academic"},
-        {"label": "📖 随笔小说阅读 (五号楷体 · 紧凑段落 · 舒适行距)", "value": "reading"},
-        {"label": "💻 技术源码日志 (等宽Consolas · 紧凑代码无缩进)", "value": "code_log"}
+        {
+          "label": "🏛️ 标准公文规范 (仿宋+黑体 · 2字符首行缩进 · 1.25倍行距)",
+          "value": "standard"
+        },
+        {
+          "label": "🎓 高校学术论文 (宋体+Times · 1.5倍行距 · 规范大纲)",
+          "value": "academic"
+        },
+        {
+          "label": "📖 随笔小说阅读 (五号楷体 · 紧凑段落 · 舒适行距)",
+          "value": "reading"
+        },
+        {
+          "label": "💻 技术源码日志 (等宽Consolas · 紧凑代码无缩进)",
+          "value": "code_log"
+        }
       ],
       "visibleIf": {
         "field": "subTool",
@@ -283,10 +516,15 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["docx"],
+      "allowedExtensions": [
+        "docx"
+      ],
       "visibleIf": {
         "field": "subTool",
-        "in": ["docx_to_pdf", "docx_to_pdf_android"]
+        "in": [
+          "docx_to_pdf",
+          "docx_to_pdf_android"
+        ]
       }
     },
     {
@@ -295,10 +533,16 @@
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
-      "allowedExtensions": ["pdf"],
+      "allowedExtensions": [
+        "pdf"
+      ],
       "visibleIf": {
         "field": "subTool",
-        "in": ["pdf_to_docx", "pdf_to_docx_android_office", "pdf_to_docx_android_light"]
+        "in": [
+          "pdf_to_docx",
+          "pdf_to_docx_android_office",
+          "pdf_to_docx_android_light"
+        ]
       }
     },
     {
@@ -308,7 +552,10 @@
       "defaultValue": true,
       "visibleIf": {
         "field": "subTool",
-        "in": ["pdf_to_docx", "pdf_to_docx_android_light"]
+        "in": [
+          "pdf_to_docx",
+          "pdf_to_docx_android_light"
+        ]
       }
     }
   ],

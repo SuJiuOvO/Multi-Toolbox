@@ -1,6 +1,6 @@
 {
   "id": "universal-archive-extractor",
-  "name": "万能压缩与解压工坊",
+  "name": "压缩与解压",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
   "category": "other",
@@ -8,7 +8,7 @@
     "universal"
   ],
   "executionType": "native_tool",
-  "description": "【全平台万能解压与归档母舰】无需安装外部解压缩软件，原生集成 7z (支持 LZMA/LZMA2/Deflate/AES-256 加密)、RAR4/RAR5、Zip、Tar、GZ、BZ2、XZ、APK、EPUB 等主流格式的极速解压与目录树还原；同时支持将选定文件或目录一键打包为 Zip 或 Tar.gz 归档。",
+  "description": "【全平台万能解压与分卷归档】原生支持 7z、RAR4/RAR5、Zip、Tar.Gz、BZ2、XZ 及 .001 / .part1.rar / .z01 分卷压缩包的极速解压，解压后自动归整至压缩包同名文件夹；同时支持单卷与多分卷打包压缩。",
   "icon": "folder_zip",
   "author": "Toolbox 架构实验室",
   "engineType": "native_tool",
@@ -20,18 +20,18 @@
       "defaultValue": "extract",
       "options": [
         {
-          "label": "📦 万能解压 (支持 7z / RAR / Zip / Tar / GZ / XZ / APK)",
+          "label": "📦 万能解压 (支持单卷与 .001 / .part1.rar / .z01 分卷，自动解压至同名文件夹)",
           "value": "extract"
         },
         {
-          "label": "🗜️ 压缩归档 (打包为 Zip 或 Tar.gz 文件)",
+          "label": "🗜️ 压缩归档 (支持单文件打包与自定义分卷压缩)",
           "value": "compress"
         }
       ]
     },
     {
       "id": "archiveInput",
-      "label": "选择待解压的文件",
+      "label": "选择待解压的压缩包或分卷文件 (.7z / .rar / .zip / .001 等)",
       "type": "file_picker",
       "required": true,
       "allowMultiple": false,
@@ -50,7 +50,10 @@
         "cbr",
         "apk",
         "jar",
-        "epub"
+        "epub",
+        "001",
+        "z01",
+        "r00"
       ],
       "visibleIf": {
         "field": "archiveMode",
@@ -109,6 +112,38 @@
         "field": "archiveMode",
         "equals": "compress"
       }
+    },
+    {
+      "id": "splitSizeMb",
+      "label": "分卷拆分大小 (大文件自动切分为 .001, .002 ...)",
+      "type": "select",
+      "defaultValue": "0",
+      "options": [
+        {
+          "label": "📦 不分卷 (生成单个完整压缩包)",
+          "value": "0"
+        },
+        {
+          "label": "✂️ 10 MB / 卷 (适合邮件附件或小文件传输)",
+          "value": "10"
+        },
+        {
+          "label": "✂️ 50 MB / 卷 (适合社交软件分片发送)",
+          "value": "50"
+        },
+        {
+          "label": "✂️ 100 MB / 卷 (通用中等分卷规格)",
+          "value": "100"
+        },
+        {
+          "label": "✂️ 500 MB / 卷 (大体积备份分卷)",
+          "value": "500"
+        }
+      ],
+      "visibleIf": {
+        "field": "archiveMode",
+        "equals": "compress"
+      }
     }
   ],
   "action": {
@@ -117,7 +152,8 @@
       "archiveMode": "${archiveMode}",
       "archivePassword": "${archivePassword}",
       "compressFormat": "${compressFormat}",
-      "outputArchiveName": "${outputArchiveName}"
+      "outputArchiveName": "${outputArchiveName}",
+      "splitSizeMb": "${splitSizeMb}"
     }
   }
 }

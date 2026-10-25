@@ -37,6 +37,13 @@ class DocConverterService {
 
   static List<int>? _cachedChineseFontBytes;
 
+  /// 在后台 Isolate 初始化时预注入中文字体字节流，避免后台线程重复读取磁盘或调用 rootBundle
+  static void seedChineseFontBytes(List<int> bytes) {
+    if (bytes.isNotEmpty) {
+      _cachedChineseFontBytes = bytes;
+    }
+  }
+
   /// 加载通用中文字体字节流 (优先使用打包的 SourceHanSans 思源黑体，降级系统字体)
   static Future<List<int>?> getChineseFontBytes() async {
     if (_cachedChineseFontBytes != null) return _cachedChineseFontBytes;

@@ -1,6 +1,6 @@
 {
   "id": "gemini-banana-watermark",
-  "name": "Gemini-Banana 无损去水印",
+  "name": "Gemini 去水印",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
   "category": "image",
