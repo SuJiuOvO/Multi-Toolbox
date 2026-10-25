@@ -112,6 +112,7 @@ class ToolEngineService {
             final pwd = params['archivePassword']?.toString().trim() ?? params['password']?.toString().trim();
             return await ArchiveUniversalService.extract(
               archivePath: inputFiles.first,
+              candidateFiles: inputFiles,
               outputDir: outputDir,
               password: (pwd != null && pwd.isNotEmpty) ? pwd : null,
               onProgress: onProgress,

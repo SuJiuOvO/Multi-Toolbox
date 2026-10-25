@@ -167,5 +167,53 @@ void main() {
       expect(File(p.join(extractedBase.path, 'project_folder', 'code.py')).readAsStringSync(), 'print("hello")');
       expect(File(p.join(extractedBase.path, 'project_folder', 'data.csv')).readAsStringSync(), 'id,val\n1,100');
     });
+
+    test('Repeated compression over existing split and single archive does not throw PathExistsException', () async {
+      final f1 = File(p.join(tempDir.path, 'file1.txt'))..writeAsStringSync('Hello 1');
+      final f2 = File(p.join(tempDir.path, 'file2.txt'))..writeAsStringSync('Hello 2');
+      final targetZip = p.join(tempDir.path, 'repeat_archive.zip');
+
+      // First run (with splitting into .001, .002, ...)
+      final res1 = await ArchiveUniversalService.compress(
+        inputPaths: [f1.path, f2.path],
+        outputPath: targetZip,
+        splitBytesOverride: 50,
+      );
+      expect(res1.success, isTrue);
+
+      // Second run: repeatedly compress to the EXACT SAME outputPath and split files, plus duplicate inputs
+      final res2 = await ArchiveUniversalService.compress(
+        inputPaths: [f1.path, f2.path, f1.path],
+        outputPath: targetZip,
+        splitBytesOverride: 50,
+      );
+      expect(res2.success, isTrue);
+
+      // Verify extraction succeeds from the overwritten archive using candidateFiles
+      final outDir = p.join(tempDir.path, 'repeat_out');
+      final extRes = await ArchiveUniversalService.extract(
+        archivePath: res2.outputFiles.first,
+        candidateFiles: res2.outputFiles,
+        outputDir: outDir,
+      );
+      expect(extRes.success, isTrue);
+      expect(extRes.outputFiles.length, 2);
+    });
+
+    test('candidateFiles multi-selection connects scattered split volumes cleanly', () async {
+      final dir1 = Directory(p.join(tempDir.path, 'folder1'))..createSync();
+      final dir2 = Directory(p.join(tempDir.path, 'folder2'))..createSync();
+      final p1 = File(p.join(dir1.path, 'scattered.zip.001'))..writeAsBytesSync([1, 2, 3]);
+      final p2 = File(p.join(dir2.path, 'scattered.zip.002'))..writeAsBytesSync([4, 5, 6]);
+
+      final parts = ArchiveUniversalService.collectNumberedVolumes(
+        p1.path,
+        candidateFiles: [p2.path, p1.path],
+      );
+      expect(parts, isNotNull);
+      expect(parts!.length, 2);
+      expect(parts.first.path.endsWith('.001'), isTrue);
+      expect(parts.last.path.endsWith('.002'), isTrue);
+    });
   });
 }

@@ -14,6 +14,7 @@ import '../services/quickjs_bridge_service.dart';
 import '../services/android_office_bridge.dart';
 import '../services/notification_service.dart';
 import '../services/settings_service.dart';
+import '../services/storage_permission_service.dart';
 import 'terminal_log_viewer.dart';
 
 class DynamicToolRunnerPage extends StatefulWidget {
@@ -139,7 +140,20 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               ? List<String>.from(_formValues[input.id])
               : <String>[];
           for (final f in picked) {
-            if (!existing.contains(f)) {
+            final fName = p.basename(f);
+            final fFile = File(f);
+            final fSize = fFile.existsSync() ? fFile.lengthSync() : -1;
+            final isDuplicate = existing.any((e) {
+              if (e == f) return true;
+              if (p.basename(e) == fName) {
+                final eFile = File(e);
+                if (fSize >= 0 && eFile.existsSync() && eFile.lengthSync() == fSize) {
+                  return true;
+                }
+              }
+              return false;
+            });
+            if (!isDuplicate) {
               existing.add(f);
             }
           }
@@ -152,6 +166,42 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   }
 
   Future<void> _pickFolder(PluginInputDef input) async {
+    if (Platform.isAndroid) {
+      final hasPermission = await StoragePermissionService.checkPermission();
+      if (!hasPermission && mounted) {
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.folder_special_rounded, color: Colors.blueAccent),
+                SizedBox(width: 8),
+                Text('需要所有文件访问权限', style: TextStyle(fontSize: 16)),
+              ],
+            ),
+            content: const Text(
+              '打包整个文件夹需要读取文件夹内所有子文件。\n\n由于安卓系统（Android 11+）隐私限制，请在系统设置中为本应用开启【允许管理所有文件】权限。',
+              style: TextStyle(fontSize: 14, height: 1.5),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('前往授权'),
+              ),
+            ],
+          ),
+        );
+        if (ok == true) {
+          await StoragePermissionService.requestPermission();
+        }
+        return;
+      }
+    }
+
     final dir = await FilePicker.platform.getDirectoryPath(
       lockParentWindow: true,
     );
@@ -160,8 +210,11 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         final existing = (_formValues[input.id] is List)
             ? List<String>.from(_formValues[input.id])
             : <String>[];
-        if (!existing.contains(dir)) {
-          existing.add(dir);
+        final cleanDir = dir.endsWith('/') || dir.endsWith(r'\')
+            ? dir.substring(0, dir.length - 1)
+            : dir;
+        if (!existing.contains(cleanDir)) {
+          existing.add(cleanDir);
         }
         _formValues[input.id] = existing;
       });
@@ -252,6 +305,43 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   }
 
   Future<void> _executeTool() async {
+    if (Platform.isAndroid && widget.plugin.id == 'universal-archive-extractor') {
+      final hasPerm = await StoragePermissionService.checkPermission();
+      if (!hasPerm && mounted) {
+        final shouldRequest = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.folder_special_rounded, color: Colors.blueAccent),
+                SizedBox(width: 8),
+                Text('存储权限提示', style: TextStyle(fontSize: 16)),
+              ],
+            ),
+            content: const Text(
+              '压缩与解压模块需要读写设备公共存储区域的文件与文件夹。\n\n为确保真机环境下能正常扫描文件夹并输出压缩包，建议开启【允许管理所有文件】权限。',
+              style: TextStyle(fontSize: 14, height: 1.5),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('暂不授权'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('前往授权'),
+              ),
+            ],
+          ),
+        );
+        if (shouldRequest == true) {
+          await StoragePermissionService.requestPermission();
+          return;
+        }
+      }
+    }
+    if (!mounted) return;
+
     final visibleInputs = widget.plugin.inputs.where(_isInputVisible).toList();
     final visibleFileInputs = visibleInputs.where((i) => i.type == 'file_picker').toList();
 
@@ -1170,33 +1260,47 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _pickFiles(input),
-                      icon: const Icon(Icons.note_add_outlined, size: 18),
-                      label: const Text('添加文件 (多选)'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
+              if (input.id == 'archiveInput')
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _pickFiles(input),
+                    icon: const Icon(Icons.folder_zip_outlined, size: 20),
+                    label: const Text('选择压缩包 / 分卷文件 (支持多选分卷 .001/.002 等)'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _pickFolder(input),
-                      icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-                      label: const Text('添加文件夹'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickFiles(input),
+                        icon: const Icon(Icons.note_add_outlined, size: 18),
+                        label: const Text('添加文件 (多选)'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickFolder(input),
+                        icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                        label: const Text('添加文件夹'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               if (currentFiles.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Container(
@@ -1256,7 +1360,9 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    '已收纳 ${currentFiles.length} 项待压缩条目 (包含文件与文件夹)',
+                    input.id == 'archiveInput'
+                        ? '已选定 ${currentFiles.length} 个分卷/归档文件'
+                        : '已收纳 ${currentFiles.length} 项待压缩条目 (包含文件与文件夹)',
                     style: TextStyle(fontSize: 12, color: textSecondary),
                   ),
                 ),

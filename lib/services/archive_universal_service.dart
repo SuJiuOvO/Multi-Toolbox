@@ -161,6 +161,32 @@ class ArchiveUniversalService {
     }
   }
 
+  /// 安全写文件工具：预先探测并清理旧文件，并在遇到 Android FUSE / Scoped Storage 的
+  /// PathExistsException (errno = 17) 时自动回退至 FileMode.writeOnly 模式强制覆写
+  static Future<void> _safeWriteFile(File file, List<int> bytes) async {
+    if (file.existsSync()) {
+      try {
+        file.deleteSync();
+      } catch (_) {}
+    }
+    try {
+      await file.writeAsBytes(bytes, flush: true);
+    } catch (_) {
+      try {
+        if (file.existsSync()) {
+          file.deleteSync();
+        }
+      } catch (_) {}
+      final raf = await file.open(mode: FileMode.writeOnly);
+      try {
+        await raf.writeFrom(bytes);
+        await raf.flush();
+      } finally {
+        await raf.close();
+      }
+    }
+  }
+
   /// 提取压缩包干净的基础名称（剥离分卷后缀与复合扩展名），用于创建同名文件夹
   static String extractArchiveBaseName(String filePath) {
     var name = p.basename(filePath);
@@ -239,9 +265,33 @@ class ArchiveUniversalService {
     return p.joinAll([targetSubDir, ...segments]);
   }
 
+  /// 公开分卷探寻方法，支持指定候选集与本地目录深层关联
+  static List<File>? collectNumberedVolumes(String filePath, {List<String>? candidateFiles}) =>
+      _collectNumberedVolumes(filePath, candidateFiles: candidateFiles);
+
   /// 检测并收集数字分卷文件列表 (.001, .002, .003 ...)
   /// 无论用户选中了 .001 还是 .002 / .003，都能自动定位全套分卷
-  static List<File>? _collectNumberedVolumes(String filePath) {
+  static List<File>? _collectNumberedVolumes(String filePath, {List<String>? candidateFiles}) {
+    // 1. 若外部传入了候选文件列表，优先直接从候选集中聚合匹配同名前缀的分卷
+    if (candidateFiles != null && candidateFiles.length > 1) {
+      final baseMatch = RegExp(r'^(.*)\.(\d{3,4})$').firstMatch(p.basename(filePath));
+      if (baseMatch != null) {
+        final basePrefix = baseMatch.group(1)!.toLowerCase();
+        final matched = <File>[];
+        for (final c in candidateFiles) {
+          final cMatch = RegExp(r'^(.*)\.(\d{3,4})$').firstMatch(p.basename(c));
+          if (cMatch != null && cMatch.group(1)!.toLowerCase() == basePrefix) {
+            final f = File(c);
+            if (f.existsSync()) matched.add(f);
+          }
+        }
+        if (matched.length > 1) {
+          matched.sort((a, b) => p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase()));
+          return matched;
+        }
+      }
+    }
+
     final match = RegExp(r'^(.*)\.(\d{3,4})$').firstMatch(filePath);
     if (match == null) return null;
 
@@ -259,11 +309,62 @@ class ArchiveUniversalService {
         break;
       }
     }
+    if (parts.length > 1) return parts;
+
+    // 2. 安卓环境特殊自愈：若当前文件处于缓存目录 (file_picker 缓存)，到常见存储路径自动探查原文件与同胞分卷
+    if (Platform.isAndroid && filePath.contains('/cache/')) {
+      final fileName = p.basename(filePath);
+      final filePrefixMatch = RegExp(r'^(.*)\.(\d{3,4})$').firstMatch(fileName);
+      if (filePrefixMatch != null) {
+        final fileBase = filePrefixMatch.group(1)!;
+        final searchDirs = [
+          '/storage/emulated/0/Download',
+          '/storage/emulated/0/Download/Toolbox_Outputs',
+          '/storage/emulated/0/Documents',
+        ];
+        for (final dirPath in searchDirs) {
+          final firstRealFile = File('$dirPath/$fileName');
+          if (firstRealFile.existsSync()) {
+            final realParts = <File>[];
+            for (var idx = 1; idx <= 9999; idx++) {
+              final cPath = '$dirPath/$fileBase.${idx.toString().padLeft(padWidth, '0')}';
+              final f = File(cPath);
+              if (f.existsSync()) {
+                realParts.add(f);
+              } else {
+                break;
+              }
+            }
+            if (realParts.length > 1) return realParts;
+          }
+        }
+      }
+    }
+
     return parts.isNotEmpty ? parts : null;
   }
 
   /// 检测并收集 Split ZIP 分卷 (.z01, .z02, ... + .zip)
-  static List<File>? _collectSplitZipVolumes(String filePath) {
+  static List<File>? _collectSplitZipVolumes(String filePath, {List<String>? candidateFiles}) {
+    // 0. 若外部传入了候选文件列表，优先从 candidateFiles 匹配
+    if (candidateFiles != null && candidateFiles.length > 1) {
+      final baseNoExtMatch = RegExp(r'^(.*?)(\.z\d{2,4}|\.zip)$', caseSensitive: false).firstMatch(p.basename(filePath));
+      if (baseNoExtMatch != null) {
+        final prefix = baseNoExtMatch.group(1)!.toLowerCase();
+        final matched = <File>[];
+        for (final c in candidateFiles) {
+          final cBase = p.basename(c).toLowerCase();
+          if (cBase.startsWith(prefix) && (RegExp(r'\.z\d{2,4}$').hasMatch(cBase) || cBase.endsWith('.zip'))) {
+            final f = File(c);
+            if (f.existsSync()) matched.add(f);
+          }
+        }
+        if (matched.length > 1) {
+          matched.sort((a, b) => p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase()));
+          return matched;
+        }
+      }
+    }
     final lower = filePath.toLowerCase();
     String? baseNoExt;
     if (RegExp(r'\.z\d{2,4}$').hasMatch(lower)) {
@@ -327,7 +428,27 @@ class ArchiveUniversalService {
   }
 
   /// 根据 RAR 第 1 卷路径与 1-based 分卷号 (2, 3, ...)，定位对应分卷文件
-  static File? _resolveRarVolumeFile(String firstVolumePath, int volume) {
+  static File? _resolveRarVolumeFile(String firstVolumePath, int volume, {List<String>? candidateFiles}) {
+    if (volume <= 1) return File(firstVolumePath);
+
+    // 0. 若外部传入了候选文件列表，优先从 candidateFiles 匹配对应分卷
+    if (candidateFiles != null && candidateFiles.isNotEmpty) {
+      for (final c in candidateFiles) {
+        final m = RegExp(r'\.part(\d+)\.rar$', caseSensitive: false).firstMatch(c);
+        if (m != null && int.tryParse(m.group(1)!) == volume) {
+          final f = File(c);
+          if (f.existsSync()) return f;
+        }
+        final rIndex = volume - 2;
+        if (rIndex >= 0) {
+          final rm = RegExp(r'\.r(\d{2,4})$', caseSensitive: false).firstMatch(c);
+          if (rm != null && int.tryParse(rm.group(1)!) == rIndex) {
+            final f = File(c);
+            if (f.existsSync()) return f;
+          }
+        }
+      }
+    }
     if (volume <= 1) return File(firstVolumePath);
 
     // 情况 1: name.part1.rar / name.part01.rar / name.part001.rar
@@ -363,6 +484,7 @@ class ArchiveUniversalService {
   static Future<ProcessingResult> extract({
     required String archivePath,
     required String outputDir,
+    List<String>? candidateFiles,
     String? password,
     bool createSubfolder = true,
     void Function(double progress, String stage)? onProgress,
@@ -384,7 +506,7 @@ class ArchiveUniversalService {
     }
 
     // 1. 检测是否为 .001 / .002 数字分卷压缩包
-    final numberedParts = _collectNumberedVolumes(archivePath);
+    final numberedParts = _collectNumberedVolumes(archivePath, candidateFiles: candidateFiles);
     final effectivePathForExt = numberedParts != null
         ? archivePath.replaceFirst(RegExp(r'\.\d{3,4}$'), '')
         : archivePath;
@@ -408,6 +530,7 @@ class ArchiveUniversalService {
         return await _extract7z(
           archiveFile: archiveFile,
           numberedParts: numberedParts,
+          candidateFiles: candidateFiles,
           targetSubDir: effectiveOutputDir,
           archiveBaseName: archiveBaseName,
           password: password,
@@ -418,6 +541,7 @@ class ArchiveUniversalService {
         return await _extractRar(
           archiveFile: archiveFile,
           numberedParts: numberedParts,
+          candidateFiles: candidateFiles,
           targetSubDir: effectiveOutputDir,
           archiveBaseName: archiveBaseName,
           password: password,
@@ -428,6 +552,7 @@ class ArchiveUniversalService {
         return await _extractTar(
           archiveFile: archiveFile,
           numberedParts: numberedParts,
+          candidateFiles: candidateFiles,
           targetSubDir: effectiveOutputDir,
           archiveBaseName: archiveBaseName,
           ext: ext,
@@ -439,6 +564,7 @@ class ArchiveUniversalService {
         return await _extractZip(
           archiveFile: archiveFile,
           numberedParts: numberedParts,
+          candidateFiles: candidateFiles,
           targetSubDir: effectiveOutputDir,
           archiveBaseName: archiveBaseName,
           password: password,
@@ -460,6 +586,7 @@ class ArchiveUniversalService {
   static Future<ProcessingResult> _extract7z({
     required File archiveFile,
     required List<File>? numberedParts,
+    List<String>? candidateFiles,
     required String targetSubDir,
     required String archiveBaseName,
     String? password,
@@ -510,6 +637,9 @@ class ArchiveUniversalService {
 
         final targetFile = File(targetPath);
         targetFile.parent.createSync(recursive: true);
+        if (targetFile.existsSync()) {
+          try { targetFile.deleteSync(); } catch (_) {}
+        }
 
         final sink = targetFile.openWrite();
         await sink.addStream(reader.openRead(entry));
@@ -527,6 +657,13 @@ class ArchiveUniversalService {
       await source.close();
     }
 
+    if (extractedPaths.isEmpty) {
+      return ProcessingResult(
+        success: false,
+        message: '7z 压缩包中未提取到有效文件。若为分卷压缩包，请确保包含全部编号分卷并在解压时同时勾选全部相关分卷。',
+      );
+    }
+
     onProgress?.call(1.0, '7z 解压完成！');
     onLog?.call('>>> 7z 解压完成！文件已归整至文件夹: $targetSubDir', false);
 
@@ -541,6 +678,7 @@ class ArchiveUniversalService {
   static Future<ProcessingResult> _extractRar({
     required File archiveFile,
     required List<File>? numberedParts,
+    List<String>? candidateFiles,
     required String targetSubDir,
     required String archiveBaseName,
     String? password,
@@ -572,7 +710,7 @@ class ArchiveUniversalService {
       password: password,
       entryNameDecoder: decodeArchiveEntryBytes,
       nextVolume: (int volume) async {
-        final nextFile = _resolveRarVolumeFile(firstVolPath, volume);
+        final nextFile = _resolveRarVolumeFile(firstVolPath, volume, candidateFiles: candidateFiles);
         if (nextFile == null || !nextFile.existsSync()) {
           return null;
         }
@@ -612,6 +750,9 @@ class ArchiveUniversalService {
 
         final targetFile = File(targetPath);
         targetFile.parent.createSync(recursive: true);
+        if (targetFile.existsSync()) {
+          try { targetFile.deleteSync(); } catch (_) {}
+        }
 
         final sink = targetFile.openWrite();
         await sink.addStream(reader.openRead(entry));
@@ -631,6 +772,13 @@ class ArchiveUniversalService {
       }
     }
 
+    if (extractedPaths.isEmpty) {
+      return ProcessingResult(
+        success: false,
+        message: 'RAR 压缩包中未提取到有效文件。若为分卷压缩包，请确保包含全部编号分卷并在解压时同时勾选全部相关分卷。',
+      );
+    }
+
     final volNote = volumeCount > 1 ? ' ($volumeCount 个分卷)' : '';
     onProgress?.call(1.0, 'RAR 解压完成！');
     onLog?.call('>>> RAR 解压完成！文件已归整至文件夹: $targetSubDir', false);
@@ -646,6 +794,7 @@ class ArchiveUniversalService {
   static Future<ProcessingResult> _extractZip({
     required File archiveFile,
     required List<File>? numberedParts,
+    List<String>? candidateFiles,
     required String targetSubDir,
     required String archiveBaseName,
     String? password,
@@ -656,7 +805,7 @@ class ArchiveUniversalService {
     Uint8List bytes;
     var volumeCount = 1;
 
-    final splitZipParts = numberedParts ?? _collectSplitZipVolumes(archiveFile.path);
+    final splitZipParts = numberedParts ?? _collectSplitZipVolumes(archiveFile.path, candidateFiles: candidateFiles);
     if (splitZipParts != null && splitZipParts.length > 1) {
       volumeCount = splitZipParts.length;
       onLog?.call('>>> 正在合并读取 $volumeCount 个 ZIP 分卷流...', false);
@@ -672,6 +821,14 @@ class ArchiveUniversalService {
 
     final decoder = ZipDecoder();
     final archive = decoder.decodeBytes(bytes, password: password);
+
+    if (archive.files.isEmpty) {
+      final isNumbered = RegExp(r'\.\d{3,4}$').hasMatch(archiveFile.path);
+      final errMsg = isNumbered
+          ? '未能在该压缩包中找到有效文件。该文件疑似多分卷压缩包的分卷之一，请确保所有分卷（如 .001, .002 等）完整存在，并在解压时同时勾选全部相关分卷！'
+          : '解压失败: 压缩包内未包含有效文件或已被损坏。';
+      return ProcessingResult(success: false, message: errMsg);
+    }
 
     final extractedPaths = <String>[];
     final totalFiles = archive.files.length;
@@ -690,7 +847,7 @@ class ArchiveUniversalService {
       if (file.isFile) {
         final outFile = File(targetPath);
         outFile.parent.createSync(recursive: true);
-        await outFile.writeAsBytes(file.content as List<int>);
+        await _safeWriteFile(outFile, file.content as List<int>);
         extractedPaths.add(outFile.path);
       } else {
         Directory(targetPath).createSync(recursive: true);
@@ -700,6 +857,13 @@ class ArchiveUniversalService {
         final pct = 0.1 + (count / totalFiles) * 0.85;
         onProgress?.call(pct, '正在解压: ${p.basename(cleanName)} ($count/$totalFiles)');
       }
+    }
+
+    if (extractedPaths.isEmpty) {
+      return ProcessingResult(
+        success: false,
+        message: 'ZIP 压缩包未提取到有效文件。若为分卷压缩包，请确保包含全部编号分卷并在解压时同时勾选全部相关分卷。',
+      );
     }
 
     onProgress?.call(1.0, 'ZIP 解压完成！');
@@ -716,6 +880,7 @@ class ArchiveUniversalService {
   static Future<ProcessingResult> _extractTar({
     required File archiveFile,
     required List<File>? numberedParts,
+    List<String>? candidateFiles,
     required String targetSubDir,
     required String archiveBaseName,
     required String ext,
@@ -763,7 +928,7 @@ class ArchiveUniversalService {
       if (file.isFile) {
         final outFile = File(targetPath);
         outFile.parent.createSync(recursive: true);
-        await outFile.writeAsBytes(file.content as List<int>);
+        await _safeWriteFile(outFile, file.content as List<int>);
         extractedPaths.add(outFile.path);
       } else {
         Directory(targetPath).createSync(recursive: true);
@@ -773,6 +938,13 @@ class ArchiveUniversalService {
         final pct = 0.1 + (count / total) * 0.85;
         onProgress?.call(pct, '正在解压: ${p.basename(cleanName)} ($count/$total)');
       }
+    }
+
+    if (extractedPaths.isEmpty) {
+      return ProcessingResult(
+        success: false,
+        message: 'TAR 归档未提取到有效文件。',
+      );
     }
 
     final volNote = volumeCount > 1 ? ' ($volumeCount 个分卷)' : '';
@@ -798,34 +970,80 @@ class ArchiveUniversalService {
   }) async {
     onProgress?.call(0.1, '正在收集待压缩文件...');
     final archive = Archive();
+    final addedEntryNames = <String>{};
 
-    for (final path in inputPaths) {
+    for (final rawPath in inputPaths) {
+      final path = rawPath.endsWith('/') || rawPath.endsWith(r'\')
+          ? rawPath.substring(0, rawPath.length - 1)
+          : rawPath;
       final f = File(path);
       if (f.existsSync()) {
         final name = p.basename(path);
+        if (addedEntryNames.contains(name)) {
+          // 自动跳过重复添加的文件
+          continue;
+        }
+        addedEntryNames.add(name);
         final bytes = await f.readAsBytes();
         archive.addFile(ArchiveFile(name, bytes.length, bytes));
       } else if (Directory(path).existsSync()) {
         final dir = Directory(path);
         final baseName = p.basename(path);
-        for (final entity in dir.listSync(recursive: true)) {
+        List<FileSystemEntity> entities = [];
+        try {
+          entities = dir.listSync(recursive: true);
+        } catch (e) {
+          onLog?.call('>>> 扫描目录异常 ($path): $e。若在安卓真机上，请确保在系统设置中授予【所有文件访问权限】', true);
+        }
+        if (entities.isEmpty) {
+          onLog?.call('>>> 提示: 目录 $baseName 下未扫描到任何文件。若文件夹内实际包含文件，请检查系统设置中是否已为本应用开启【允许管理所有文件】权限。', true);
+        }
+        for (final entity in entities) {
           if (entity is File) {
             final rel = p.relative(entity.path, from: dir.path);
             final archiveEntryName = '$baseName/$rel'.replaceAll(r'\', '/');
+            if (addedEntryNames.contains(archiveEntryName)) continue;
+            addedEntryNames.add(archiveEntryName);
             final bytes = await entity.readAsBytes();
             archive.addFile(ArchiveFile(archiveEntryName, bytes.length, bytes));
           } else if (entity is Directory) {
             final rel = p.relative(entity.path, from: dir.path);
             final archiveEntryName = '$baseName/$rel/'.replaceAll(r'\', '/');
+            if (addedEntryNames.contains(archiveEntryName)) continue;
+            addedEntryNames.add(archiveEntryName);
             archive.addFile(ArchiveFile(archiveEntryName, 0, <int>[]));
           }
         }
       }
     }
 
+    if (archive.files.isEmpty) {
+      return ProcessingResult(
+        success: false,
+        message: '压缩失败: 未收集到待压缩的文件。若在安卓真机上打包文件夹，请确保已在系统权限设置中开启【允许管理所有文件】权限。',
+      );
+    }
+
     onProgress?.call(0.45, '正在执行压缩编码...');
     final outFile = File(outputPath);
     outFile.parent.createSync(recursive: true);
+
+    // 预清理可能存在的同名旧归档文件或同名前缀分卷，防止 Android FUSE 报 PathExistsException (errno = 17)
+    if (outFile.existsSync()) {
+      try {
+        outFile.deleteSync();
+      } catch (_) {}
+    }
+    for (var i = 1; i <= 9999; i++) {
+      final oldVol = File('$outputPath.${i.toString().padLeft(3, '0')}');
+      if (oldVol.existsSync()) {
+        try {
+          oldVol.deleteSync();
+        } catch (_) {}
+      } else {
+        break;
+      }
+    }
 
     final List<int> encodedBytes;
     if (format.toLowerCase() == 'tar.gz' || format.toLowerCase() == 'tgz') {
@@ -846,7 +1064,8 @@ class ArchiveUniversalService {
         final start = i * splitLimitBytes;
         final end = min(start + splitLimitBytes, encodedBytes.length);
         final volName = '$outputPath.${(i + 1).toString().padLeft(3, '0')}';
-        await File(volName).writeAsBytes(encodedBytes.sublist(start, end));
+        final volFile = File(volName);
+        await _safeWriteFile(volFile, encodedBytes.sublist(start, end));
         volumePaths.add(volName);
       }
 
@@ -859,7 +1078,7 @@ class ArchiveUniversalService {
       );
     }
 
-    await outFile.writeAsBytes(encodedBytes);
+    await _safeWriteFile(outFile, encodedBytes);
     onProgress?.call(1.0, '打包压缩完成！');
     onLog?.call('>>> 压缩文件已保存至: $outputPath', false);
 

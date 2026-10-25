@@ -31,10 +31,10 @@
     },
     {
       "id": "archiveInput",
-      "label": "选择待解压的压缩包或分卷文件 (.7z / .rar / .zip / .001 等)",
+      "label": "选择待解压的压缩包或分卷文件 (支持多选分卷 .001/.002 等)",
       "type": "file_picker",
       "required": true,
-      "allowMultiple": false,
+      "allowMultiple": true,
       "allowedExtensions": [
         "7z",
         "rar",
