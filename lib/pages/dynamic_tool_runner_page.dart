@@ -62,10 +62,24 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   }
 
   Future<void> _pickFiles(PluginInputDef input) async {
+    // 安卓端 SAF 文件选择器对 .001 / .z01 / .r00 等分卷扩展名缺乏系统 MIME 映射。
+    // 当在安卓端选取解压包或允许的扩展名包含分卷后缀时，强制使用 FileType.any，确保 SAF 不会置灰分卷文件
+    final bool isAndroidArchivePicker = Platform.isAndroid &&
+        (input.id == 'archiveInput' ||
+            input.allowedExtensions.any((e) =>
+                ['001', 'z01', 'r00', 'part1', 'part01'].contains(e.toLowerCase())));
+
+    final pickerType = (input.allowedExtensions.isNotEmpty && !isAndroidArchivePicker)
+        ? FileType.custom
+        : FileType.any;
+    final pickerExts = (input.allowedExtensions.isNotEmpty && !isAndroidArchivePicker)
+        ? input.allowedExtensions
+        : null;
+
     final res = await FilePicker.platform.pickFiles(
       allowMultiple: input.allowMultiple,
-      type: input.allowedExtensions.isNotEmpty ? FileType.custom : FileType.any,
-      allowedExtensions: input.allowedExtensions.isNotEmpty ? input.allowedExtensions : null,
+      type: pickerType,
+      allowedExtensions: pickerExts,
       lockParentWindow: true,
     );
 
@@ -120,7 +134,36 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       }
 
       setState(() {
-        _formValues[input.id] = picked;
+        if (input.allowMultiple) {
+          final existing = (_formValues[input.id] is List)
+              ? List<String>.from(_formValues[input.id])
+              : <String>[];
+          for (final f in picked) {
+            if (!existing.contains(f)) {
+              existing.add(f);
+            }
+          }
+          _formValues[input.id] = existing;
+        } else {
+          _formValues[input.id] = picked;
+        }
+      });
+    }
+  }
+
+  Future<void> _pickFolder(PluginInputDef input) async {
+    final dir = await FilePicker.platform.getDirectoryPath(
+      lockParentWindow: true,
+    );
+    if (dir != null && dir.isNotEmpty) {
+      setState(() {
+        final existing = (_formValues[input.id] is List)
+            ? List<String>.from(_formValues[input.id])
+            : <String>[];
+        if (!existing.contains(dir)) {
+          existing.add(dir);
+        }
+        _formValues[input.id] = existing;
       });
     }
   }
@@ -1095,6 +1138,135 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       final currentFiles = (_formValues[input.id] is List)
           ? List<String>.from(_formValues[input.id])
           : <String>[];
+
+      if (input.allowMultiple) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      input.label,
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
+                    ),
+                  ),
+                  if (currentFiles.isNotEmpty)
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _formValues[input.id] = <String>[];
+                        });
+                      },
+                      icon: const Icon(Icons.clear_all, size: 16, color: Colors.redAccent),
+                      label: const Text('清空全部', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickFiles(input),
+                      icon: const Icon(Icons.note_add_outlined, size: 18),
+                      label: const Text('添加文件 (多选)'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickFolder(input),
+                      icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                      label: const Text('添加文件夹'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (currentFiles.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  decoration: BoxDecoration(
+                    color: inputBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: inputBorderColor),
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: currentFiles.length,
+                    separatorBuilder: (_, __) => Divider(
+                      height: 1,
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                    ),
+                    itemBuilder: (context, index) {
+                      final itemPath = currentFiles[index];
+                      final isDirectory = Directory(itemPath).existsSync();
+                      final itemName = p.basename(itemPath);
+                      return ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        leading: Icon(
+                          isDirectory ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
+                          color: isDirectory ? Colors.amber : (isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB)),
+                          size: 22,
+                        ),
+                        title: Text(
+                          itemName,
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: textPrimary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          isDirectory ? '文件夹 · $itemPath' : itemPath,
+                          style: TextStyle(fontSize: 11, color: textSecondary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close, size: 16),
+                          splashRadius: 16,
+                          color: textSecondary,
+                          onPressed: () {
+                            setState(() {
+                              final list = List<String>.from(_formValues[input.id]);
+                              list.removeAt(index);
+                              _formValues[input.id] = list;
+                            });
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '已收纳 ${currentFiles.length} 项待压缩条目 (包含文件与文件夹)',
+                    style: TextStyle(fontSize: 12, color: textSecondary),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }
+
+      final currentFile = currentFiles.isNotEmpty ? currentFiles.first : null;
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: Column(
@@ -1123,22 +1295,34 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 child: Row(
                   children: [
                     Icon(
-                      Icons.cloud_upload_outlined,
+                      currentFile != null ? Icons.folder_zip_rounded : Icons.cloud_upload_outlined,
                       color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        currentFiles.isEmpty
-                            ? '点击选择文件 (支持 ${input.allowedExtensions.join('/')})'
-                            : '已选择 ${currentFiles.length} 个文件:\n${currentFiles.map((f) => p.basename(f)).take(2).join(', ')}${currentFiles.length > 2 ? " 等..." : ""}',
+                        currentFile == null
+                            ? (input.allowedExtensions.isNotEmpty
+                                ? '点击选择文件 (支持 ${input.allowedExtensions.join('/')})'
+                                : '点击选择文件')
+                            : '已选择: ${p.basename(currentFile)}',
                         style: TextStyle(
-                          color: currentFiles.isEmpty ? textSecondary : textPrimary,
-                          fontWeight: currentFiles.isEmpty ? FontWeight.normal : FontWeight.w600,
+                          color: currentFile == null ? textSecondary : textPrimary,
+                          fontWeight: currentFile == null ? FontWeight.normal : FontWeight.w600,
                           fontSize: 13,
                         ),
                       ),
                     ),
+                    if (currentFile != null)
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        splashRadius: 18,
+                        onPressed: () {
+                          setState(() {
+                            _formValues[input.id] = <String>[];
+                          });
+                        },
+                      ),
                   ],
                 ),
               ),

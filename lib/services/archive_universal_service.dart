@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:archive/archive.dart';
+import 'package:fast_gbk/fast_gbk.dart';
 import 'package:flutter/foundation.dart';
 import 'package:koni_archive_core/io.dart';
 import 'package:koni_sevenz/koni_sevenz.dart';
@@ -121,6 +123,44 @@ final class CompositeFileByteSource implements ByteSource {
 /// 跨平台万能压缩与解压引擎服务 (All-in-One Universal Archive Engine)
 /// 统一调度 7z、RAR4/RAR5、Zip、Tar、GZip、BZip2、XZ 等全规格格式解压、同名文件夹归整与分卷压缩/解压
 class ArchiveUniversalService {
+  /// 智能解析与修复压缩包内文件名编码 (完美解决 Windows GBK/CP936 乱码与 UTF-8 跨平台兼容)
+  static String fixArchiveFileName(String rawName) {
+    final codeUnits = rawName.codeUnits;
+    final hasHighLatin = codeUnits.any((c) => c >= 0x80 && c <= 0xFF);
+    final hasUnicode = codeUnits.any((c) => c > 0xFF);
+
+    if (hasUnicode || !hasHighLatin) {
+      return rawName;
+    }
+
+    final bytes = Uint8List.fromList(codeUnits);
+
+    // 1. 优先尝试 UTF-8 解码 (处理未置位 UTF-8 flag 但实际是 UTF-8 字节被转为 Latin-1 的场景)
+    try {
+      return utf8.decode(bytes);
+    } catch (_) {}
+
+    // 2. 尝试 GBK / GB2312 / CP936 解码 (Windows 经典中文压缩包编码)
+    try {
+      return gbk.decode(bytes);
+    } catch (_) {}
+
+    return rawName;
+  }
+
+  /// 用于 koni 格式 (7z, RAR) 的原始字节解码器
+  static String decodeArchiveEntryBytes(Uint8List nameBytes) {
+    try {
+      return utf8.decode(nameBytes);
+    } catch (_) {
+      try {
+        return gbk.decode(nameBytes);
+      } catch (_) {
+        return String.fromCharCodes(nameBytes);
+      }
+    }
+  }
+
   /// 提取压缩包干净的基础名称（剥离分卷后缀与复合扩展名），用于创建同名文件夹
   static String extractArchiveBaseName(String filePath) {
     var name = p.basename(filePath);
@@ -436,7 +476,10 @@ class ArchiveUniversalService {
       source = await FileByteSource.open(archiveFile.path);
     }
 
-    final options = ArchiveReadOptions(password: password);
+    final options = ArchiveReadOptions(
+      password: password,
+      entryNameDecoder: decodeArchiveEntryBytes,
+    );
     const format = SevenZFormat();
 
     onProgress?.call(0.1, '正在读取 7z 目录与数据流...');
@@ -453,10 +496,11 @@ class ArchiveUniversalService {
     try {
       for (final entry in reader.entries) {
         processedCount++;
+        final cleanPath = fixArchiveFileName(entry.path);
         final targetPath = _resolveTargetFilePath(
           targetSubDir,
           archiveBaseName,
-          entry.path,
+          cleanPath,
         );
 
         if (entry.type == ArchiveEntryType.directory) {
@@ -526,6 +570,7 @@ class ArchiveUniversalService {
     final firstVolPath = _resolveRarFirstVolume(archiveFile).path;
     final options = ArchiveReadOptions(
       password: password,
+      entryNameDecoder: decodeArchiveEntryBytes,
       nextVolume: (int volume) async {
         final nextFile = _resolveRarVolumeFile(firstVolPath, volume);
         if (nextFile == null || !nextFile.existsSync()) {
@@ -553,10 +598,11 @@ class ArchiveUniversalService {
       int processedCount = 0;
       for (final entry in reader.entries) {
         processedCount++;
+        final cleanPath = fixArchiveFileName(entry.path);
         final targetPath = _resolveTargetFilePath(
           targetSubDir,
           archiveBaseName,
-          entry.path,
+          cleanPath,
         );
 
         if (entry.type == ArchiveEntryType.directory) {
@@ -635,10 +681,11 @@ class ArchiveUniversalService {
     int count = 0;
     for (final file in archive.files) {
       count++;
+      final cleanName = fixArchiveFileName(file.name);
       final targetPath = _resolveTargetFilePath(
         targetSubDir,
         archiveBaseName,
-        file.name,
+        cleanName,
       );
       if (file.isFile) {
         final outFile = File(targetPath);
@@ -651,7 +698,7 @@ class ArchiveUniversalService {
 
       if (totalFiles > 0) {
         final pct = 0.1 + (count / totalFiles) * 0.85;
-        onProgress?.call(pct, '正在解压: ${p.basename(file.name)} ($count/$totalFiles)');
+        onProgress?.call(pct, '正在解压: ${p.basename(cleanName)} ($count/$totalFiles)');
       }
     }
 
@@ -707,10 +754,11 @@ class ArchiveUniversalService {
     int count = 0;
     for (final file in archive.files) {
       count++;
+      final cleanName = fixArchiveFileName(file.name);
       final targetPath = _resolveTargetFilePath(
         targetSubDir,
         archiveBaseName,
-        file.name,
+        cleanName,
       );
       if (file.isFile) {
         final outFile = File(targetPath);
@@ -723,7 +771,7 @@ class ArchiveUniversalService {
 
       if (total > 0) {
         final pct = 0.1 + (count / total) * 0.85;
-        onProgress?.call(pct, '正在解压: ${p.basename(file.name)} ($count/$total)');
+        onProgress?.call(pct, '正在解压: ${p.basename(cleanName)} ($count/$total)');
       }
     }
 
@@ -766,6 +814,10 @@ class ArchiveUniversalService {
             final archiveEntryName = '$baseName/$rel'.replaceAll(r'\', '/');
             final bytes = await entity.readAsBytes();
             archive.addFile(ArchiveFile(archiveEntryName, bytes.length, bytes));
+          } else if (entity is Directory) {
+            final rel = p.relative(entity.path, from: dir.path);
+            final archiveEntryName = '$baseName/$rel/'.replaceAll(r'\', '/');
+            archive.addFile(ArchiveFile(archiveEntryName, 0, <int>[]));
           }
         }
       }

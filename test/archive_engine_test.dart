@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:archive/archive.dart';
+import 'package:fast_gbk/fast_gbk.dart';
 import 'package:koni_sevenz/koni_sevenz.dart';
 import 'package:koni_rar/koni_rar.dart';
 import 'package:path/path.dart' as p;
@@ -115,6 +117,55 @@ void main() {
       final targetSubDir = p.join(outRoot, 'multi_vol_pkg');
       expect(File(p.join(targetSubDir, 'data_a.bin')).readAsBytesSync(), payloadA);
       expect(File(p.join(targetSubDir, 'data_b.bin')).readAsBytesSync(), payloadB);
+    });
+
+    test('GBK Chinese filename encoding recovery in ZIP and koni formats', () {
+      const originalChinese = '2026年度业务数据分析与战略报告.docx';
+      final gbkBytes = gbk.encode(originalChinese);
+
+      // Simulate package:archive Latin-1 decoding of GBK bytes
+      final garbled = String.fromCharCodes(gbkBytes);
+      expect(garbled, isNot(originalChinese));
+
+      final fixed = ArchiveUniversalService.fixArchiveFileName(garbled);
+      expect(fixed, originalChinese);
+
+      // Verify raw byte decoder for koni (7z / RAR)
+      final decodedFromBytes = ArchiveUniversalService.decodeArchiveEntryBytes(Uint8List.fromList(gbkBytes));
+      expect(decodedFromBytes, originalChinese);
+
+      // Verify UTF-8 strings are unchanged
+      expect(ArchiveUniversalService.fixArchiveFileName(originalChinese), originalChinese);
+    });
+
+    test('Compressing mixed files and nested directories preserves hierarchy', () async {
+      final srcDir = Directory(p.join(tempDir.path, 'mixed_src'))..createSync();
+      final standaloneFile = File(p.join(srcDir.path, 'root_notes.txt'))..writeAsStringSync('Root note content');
+
+      final subDir = Directory(p.join(srcDir.path, 'project_folder'))..createSync();
+      File(p.join(subDir.path, 'code.py')).writeAsStringSync('print("hello")');
+      File(p.join(subDir.path, 'data.csv')).writeAsStringSync('id,val\n1,100');
+
+      final zipPath = p.join(tempDir.path, 'mixed_bundle.zip');
+      final compRes = await ArchiveUniversalService.compress(
+        inputPaths: [standaloneFile.path, subDir.path],
+        outputPath: zipPath,
+        format: 'zip',
+      );
+      expect(compRes.success, isTrue);
+
+      final outRoot = p.join(tempDir.path, 'mixed_out');
+      final extRes = await ArchiveUniversalService.extract(
+        archivePath: zipPath,
+        outputDir: outRoot,
+      );
+      expect(extRes.success, isTrue);
+
+      final extractedBase = Directory(p.join(outRoot, 'mixed_bundle'));
+      expect(extractedBase.existsSync(), isTrue);
+      expect(File(p.join(extractedBase.path, 'root_notes.txt')).readAsStringSync(), 'Root note content');
+      expect(File(p.join(extractedBase.path, 'project_folder', 'code.py')).readAsStringSync(), 'print("hello")');
+      expect(File(p.join(extractedBase.path, 'project_folder', 'data.csv')).readAsStringSync(), 'id,val\n1,100');
     });
   });
 }

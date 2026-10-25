@@ -73,7 +73,7 @@
     },
     {
       "id": "filesToCompress",
-      "label": "选择待打包压缩的文件 (支持多选)",
+      "label": "选择待打包压缩的文件或文件夹 (支持多选文件与选取文件夹)",
       "type": "file_picker",
       "required": true,
       "allowMultiple": true,
