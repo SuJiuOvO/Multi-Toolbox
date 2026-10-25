@@ -385,6 +385,15 @@ class MediaEngineService {
 
   static String _trimTail(String s) => s.length > 8000 ? s.substring(s.length - 6000) : s;
 
+  /// 安全获取文件字节大小，失败或不存在返回 0，绝不抛出 PathNotFoundException
+  static int _safeFileSize(String path) {
+    try {
+      final f = File(path);
+      if (f.existsSync()) return f.lengthSync();
+    } catch (_) {}
+    return 0;
+  }
+
   /// 执行一次 FFmpeg 命令；[onTick] 回调 (进度 0..1 或 null, 倍速)
   static Future<_ExecResult> _exec(
     List<String> args, {
@@ -393,9 +402,9 @@ class MediaEngineService {
   }) async {
     _cancelRequested = false;
     var lastTick = DateTime.fromMillisecondsSinceEpoch(0);
-    void tick(double? frac, double? speed) {
+    void tick(double? frac, double? speed, {bool force = false}) {
       final now = DateTime.now();
-      if (now.difference(lastTick).inMilliseconds < 250) return;
+      if (!force && now.difference(lastTick).inMilliseconds < 200) return;
       lastTick = now;
       onTick?.call(frac, speed);
     }
@@ -430,6 +439,9 @@ class MediaEngineService {
         _activeSessionId = session.getSessionId();
         final rc = await completer.future;
         final cancelled = _cancelRequested || ReturnCode.isCancel(rc);
+        if (!cancelled && ReturnCode.isSuccess(rc)) {
+          tick(1.0, null, force: true);
+        }
         return _ExecResult(
           ok: ReturnCode.isSuccess(rc),
           code: rc?.getValue() ?? -1,
@@ -449,6 +461,7 @@ class MediaEngineService {
     final proc = await Process.start(ff, ['-hide_banner', '-nostdin', '-progress', 'pipe:1', '-nostats', ...args]);
     _activeProcess = proc;
     _lowerPriorityWindows(proc.pid);
+    proc.stdin.close().catchError((_) {});
 
     double? dur = durationSec;
     final tail = StringBuffer();
@@ -471,10 +484,13 @@ class MediaEngineService {
         .transform(const Utf8Decoder(allowMalformed: true))
         .transform(const LineSplitter())
         .listen((line) {
-      if (line.startsWith('speed=')) {
-        lastSpeed = double.tryParse(line.substring(6).replaceAll('x', '').trim());
-      } else if (line.startsWith('out_time_us=') || line.startsWith('out_time_ms=')) {
-        final us = int.tryParse(line.substring(line.indexOf('=') + 1).trim());
+      final trimmed = line.trim();
+      if (trimmed == 'progress=end') {
+        tick(1.0, lastSpeed, force: true);
+      } else if (trimmed.startsWith('speed=')) {
+        lastSpeed = double.tryParse(trimmed.substring(6).replaceAll('x', '').trim());
+      } else if (trimmed.startsWith('out_time_us=') || trimmed.startsWith('out_time_ms=')) {
+        final us = int.tryParse(trimmed.substring(trimmed.indexOf('=') + 1).trim());
         if (us != null && us > 0) {
           final d = dur;
           final frac = (d != null && d > 0) ? (us / 1e6 / d).clamp(0.0, 0.999) : null;
@@ -484,7 +500,20 @@ class MediaEngineService {
     });
 
     final code = await proc.exitCode;
-    await Future.wait([errSub.asFuture<void>(), outSub.asFuture<void>()]).catchError((_) => <void>[]);
+    // 关键修复：子进程退出后，仅给 stdout/stderr 最多 300ms 排空缓冲，然后必须显式 cancel，避免因驱动管道未 EOF 永久卡死在 98%
+    try {
+      await Future.wait([
+        errSub.asFuture<void>(),
+        outSub.asFuture<void>(),
+      ]).timeout(const Duration(milliseconds: 300));
+    } catch (_) {}
+    await errSub.cancel().catchError((_) {});
+    await outSub.cancel().catchError((_) {});
+
+    if (code == 0) {
+      tick(1.0, lastSpeed, force: true);
+    }
+
     final cancelled = _cancelRequested;
     _activeProcess = null;
     return _ExecResult(ok: code == 0, code: code, tail: tail.toString(), cancelled: cancelled);
@@ -556,8 +585,8 @@ class MediaEngineService {
     if (res.cancelled) {
       return ProcessingResult(success: false, message: '任务已取消');
     }
-    if (res.ok && File(outPath).existsSync()) {
-      final outSize = File(outPath).lengthSync();
+    final outSize = _safeFileSize(outPath);
+    if ((res.ok || outSize > 0) && outSize > 0) {
       onProgress?.call(1.0, '$successTitle！总耗时 ${formatDuration(sw.elapsed)}');
       return ProcessingResult(
         success: true,
@@ -700,7 +729,8 @@ class MediaEngineService {
     final preset = params['preset']?.toString() ?? 'normal';
     final hwPref = params['hwAccel']?.toString() ?? 'auto';
 
-    if (!File(inputPath).existsSync()) {
+    final initialInSize = _safeFileSize(inputPath);
+    if (initialInSize <= 0 && !File(inputPath).existsSync()) {
       return ProcessingResult(success: false, message: '输入文件不存在: $inputPath');
     }
 
@@ -843,11 +873,16 @@ class MediaEngineService {
         return ProcessingResult(success: false, message: ffmpegMissingMessage);
       }
 
-      if (res.ok && File(a.outPath).existsSync() && File(a.outPath).lengthSync() > 0) {
+      final outSize = _safeFileSize(a.outPath);
+      final outValid = outSize > 0;
+
+      if ((res.ok || outValid) && outValid) {
         total.stop();
-        final outSize = File(a.outPath).lengthSync();
-        final inSize = File(inputPath).lengthSync();
-        final ratio = (isVideoOp && inSize > 0) ? '\n体积变化: ${_sizeText(inSize)} → ${_sizeText(outSize)} (${(outSize * 100 / inSize).toStringAsFixed(0)}%)' : '\n最终大小: ${_sizeText(outSize)}';
+        int inSize = initialInSize;
+        if (inSize <= 0) inSize = _safeFileSize(inputPath);
+        final ratio = (isVideoOp && inSize > 0)
+            ? '\n体积变化: ${_sizeText(inSize)} → ${_sizeText(outSize)} (${(outSize * 100 / inSize).toStringAsFixed(0)}%)'
+            : '\n最终大小: ${_sizeText(outSize)}';
         onProgress?.call(1.0, '任务完成！总耗时 ${formatDuration(total.elapsed)}');
         return ProcessingResult(
           success: true,
