@@ -22,6 +22,56 @@ class DynamicToolRunnerPage extends StatefulWidget {
 
   const DynamicToolRunnerPage({super.key, required this.plugin});
 
+  /// 将用户选择的输入项（可能包含文件路径与文件夹路径）转换为扁平化的有效文件列表。
+  ///
+  /// - [rawEntries]: 用户选择的文件或文件夹路径列表
+  /// - [allowedExtensions]: 允许的文件扩展名列表（若为空则不限类型）
+  /// - [isArchiveCompress]: 是否为归档压缩模式（若为 true，则保留文件夹路径以便归档引擎维护目录层级）
+  static List<String> flattenInputEntries({
+    required List<String> rawEntries,
+    List<String> allowedExtensions = const [],
+    bool isArchiveCompress = false,
+  }) {
+    final effective = <String>[];
+    final allowedExts = allowedExtensions
+        .map((e) => e.toLowerCase().replaceFirst(RegExp(r'^\.'), ''))
+        .where((e) => e.isNotEmpty)
+        .toSet();
+
+    for (final item in rawEntries) {
+      if (item.trim().isEmpty) continue;
+      final d = Directory(item);
+      if (!isArchiveCompress && d.existsSync()) {
+        try {
+          final dirFiles = d
+              .listSync(recursive: true)
+              .whereType<File>()
+              .map((f) => f.path)
+              .where((filePath) {
+                final base = p.basename(filePath);
+                if (base.startsWith('.') ||
+                    base.toLowerCase() == 'thumbs.db' ||
+                    base.toLowerCase() == 'desktop.ini') {
+                  return false;
+                }
+                if (allowedExts.isEmpty) return true;
+                final ext = p.extension(filePath).toLowerCase().replaceFirst(RegExp(r'^\.'), '');
+                return allowedExts.contains(ext) || allowedExts.any((ae) => filePath.toLowerCase().endsWith(ae));
+              })
+              .toList();
+          dirFiles.sort();
+          effective.addAll(dirFiles);
+        } catch (e) {
+          debugPrint('Failed to expand directory $item: $e');
+          effective.add(item);
+        }
+      } else {
+        effective.add(item);
+      }
+    }
+    return effective;
+  }
+
   @override
   State<DynamicToolRunnerPage> createState() => _DynamicToolRunnerPageState();
 }
@@ -63,29 +113,86 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   }
 
   Future<void> _pickFiles(PluginInputDef input) async {
-    // 安卓端 SAF 文件选择器对 .001 / .z01 / .r00 等分卷扩展名缺乏系统 MIME 映射。
-    // 当在安卓端选取解压包或允许的扩展名包含分卷后缀时，强制使用 FileType.any，确保 SAF 不会置灰分卷文件
+    // 1. 判断是否属于系统缺乏标准 MIME 映射的特殊格式：
+    // - 安卓 SAF 对 .001 / .z01 / .r00 等分卷扩展名缺乏系统 MIME 映射
+    // - 专有/加密音频、文档或自定义格式（如 .ncm, .qmc, .kgm, .kwm, .mflac, .dwg 等）同样缺乏系统 MIME 映射
+    const standardMimeExtensions = {
+      'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg',
+      'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma',
+      'mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm',
+      'txt', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+      'zip', 'rar', '7z', 'tar', 'gz', 'json', 'xml', 'html'
+    };
+
+    final bool hasUnknownAndroidMime = Platform.isAndroid &&
+        input.allowedExtensions.isNotEmpty &&
+        input.allowedExtensions.any((ext) {
+          final clean = ext.toLowerCase().replaceFirst(RegExp(r'^\.'), '');
+          return !standardMimeExtensions.contains(clean);
+        });
+
     final bool isAndroidArchivePicker = Platform.isAndroid &&
         (input.id == 'archiveInput' ||
             input.allowedExtensions.any((e) =>
                 ['001', 'z01', 'r00', 'part1', 'part01'].contains(e.toLowerCase())));
 
-    final pickerType = (input.allowedExtensions.isNotEmpty && !isAndroidArchivePicker)
+    final bool forceAnyOnAndroid = hasUnknownAndroidMime || isAndroidArchivePicker;
+
+    final pickerType = (input.allowedExtensions.isNotEmpty && !forceAnyOnAndroid)
         ? FileType.custom
         : FileType.any;
-    final pickerExts = (input.allowedExtensions.isNotEmpty && !isAndroidArchivePicker)
+    final pickerExts = (input.allowedExtensions.isNotEmpty && !forceAnyOnAndroid)
         ? input.allowedExtensions
         : null;
 
-    final res = await FilePicker.platform.pickFiles(
-      allowMultiple: input.allowMultiple,
-      type: pickerType,
-      allowedExtensions: pickerExts,
-      lockParentWindow: true,
-    );
+    FilePickerResult? res;
+    try {
+      res = await FilePicker.platform.pickFiles(
+        allowMultiple: input.allowMultiple,
+        type: pickerType,
+        allowedExtensions: pickerExts,
+        lockParentWindow: true,
+      );
+    } catch (e) {
+      if (Platform.isAndroid && pickerType == FileType.custom) {
+        debugPrint('[FilePicker] Android FileType.custom failed ($e), falling back to FileType.any');
+        res = await FilePicker.platform.pickFiles(
+          allowMultiple: input.allowMultiple,
+          type: FileType.any,
+          lockParentWindow: true,
+        );
+      } else {
+        rethrow;
+      }
+    }
 
     if (res != null && res.paths.isNotEmpty) {
-      final picked = res.paths.whereType<String>().toList();
+      List<String> picked = res.paths.whereType<String>().toList();
+
+      // 在 Android 端降级使用 FileType.any 时，若插件定义了明确的 allowedExtensions，
+      // 在宿主层做安全过滤，避免用户误选其他无关类型的文件
+      if (Platform.isAndroid && (forceAnyOnAndroid || pickerType == FileType.any) && input.allowedExtensions.isNotEmpty && input.id != 'archiveInput') {
+        final validExts = input.allowedExtensions
+            .map((e) => e.toLowerCase().replaceFirst(RegExp(r'^\.'), ''))
+            .toSet();
+        final filtered = picked.where((f) {
+          final ext = p.extension(f).toLowerCase().replaceFirst(RegExp(r'^\.'), '');
+          return validExts.contains(ext) || validExts.any((ve) => f.toLowerCase().endsWith(ve));
+        }).toList();
+
+        if (filtered.length < picked.length && mounted) {
+          final droppedCount = picked.length - filtered.length;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已自动过滤 $droppedCount 个不符合格式要求的文件（仅支持: ${input.allowedExtensions.join(', ')}）'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        picked = filtered;
+      }
+
+      if (picked.isEmpty) return;
 
       // 前置格式强校验拦截：若选择 CAD 时选中了 DWG 或 DWF，直接弹窗指导并拒绝，绝不生成假 PDF
       if (input.id == 'cadInput' && picked.any((f) {
@@ -653,11 +760,37 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       });
     }
 
+    final bool isArchiveCompress = (widget.plugin.action?.handler == 'archive_universal' ||
+            widget.plugin.id == 'archive_universal') &&
+        _formValues['archiveMode']?.toString() == 'compress';
+
     final effectiveInputFiles = <String>[];
     for (var fileInput in visibleFileInputs) {
-      if (_formValues[fileInput.id] is List) {
-        effectiveInputFiles.addAll(List<String>.from(_formValues[fileInput.id]));
+      final val = _formValues[fileInput.id];
+      final rawList = val is List
+          ? List<String>.from(val)
+          : (val is String && val.isNotEmpty ? [val] : <String>[]);
+      final flattened = DynamicToolRunnerPage.flattenInputEntries(
+        rawEntries: rawList,
+        allowedExtensions: fileInput.allowedExtensions,
+        isArchiveCompress: isArchiveCompress,
+      );
+      effectiveInputFiles.addAll(flattened);
+    }
+
+    if (effectiveInputFiles.isEmpty && visibleFileInputs.any((i) => i.required)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              visibleFileInputs.any((i) => i.allowedExtensions.isNotEmpty)
+                  ? '所选条目中未扫描到有效文件（格式要求: ${visibleFileInputs.expand((i) => i.allowedExtensions).toSet().join(', ')}）'
+                  : '所选条目中未扫描到有效文件',
+            ),
+          ),
+        );
       }
+      return;
     }
 
     final ProcessingResult res;
@@ -1381,7 +1514,9 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                   child: Text(
                     input.id == 'archiveInput'
                         ? '已选定 ${currentFiles.length} 个分卷/归档文件'
-                        : '已收纳 ${currentFiles.length} 项待压缩条目 (包含文件与文件夹)',
+                        : (input.id.contains('archive') || widget.plugin.id.contains('archive'))
+                        ? '已收纳 ${currentFiles.length} 项待压缩条目 (包含文件与文件夹)'
+                        : '已选择 ${currentFiles.length} 项输入 (包含文件与文件夹)',
                     style: TextStyle(fontSize: 12, color: textSecondary),
                   ),
                 ),
