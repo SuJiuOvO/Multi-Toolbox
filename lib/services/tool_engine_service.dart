@@ -125,6 +125,7 @@ class ToolEngineService {
             formValues: params,
             inputFiles: inputFiles,
             outputDir: outputDir,
+            pluginDirectory: params['pluginDirectory']?.toString(),
             onProgress: onProgress,
             onLog: onLog,
           );
