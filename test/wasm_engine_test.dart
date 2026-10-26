@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:wasm_run/wasm_run.dart';
 // ignore: implementation_imports
 import 'package:wasm_run/src/rust/api.dart' show parseWatFormat;
+import 'package:app/models/plugin_manifest.dart';
 import 'package:app/services/wasm_universal_service.dart';
 
 void main() {
@@ -527,6 +528,151 @@ void main() {
         final json = jsonDecode(reportFile.readAsStringSync());
         expect(json['inspection'], isNotNull);
         expect((json['inspection']['exports'] as List).isNotEmpty, true);
+      } finally {
+        try {
+          tempDir.deleteSync(recursive: true);
+        } catch (_) {}
+      }
+    });
+
+    test('PluginManifest wasmRunner json deserialization and isWasmPlugin flag', () {
+      final json = {
+        'id': 'ncm-converter',
+        'name': '网易云音乐 NCM 解锁转换器',
+        'version': '1.0.0',
+        'category': 'audio',
+        'description': '纯 Rust 编写的 WebAssembly 无损解密模块',
+        'icon': 'music_note',
+        'author': 'AudioLab',
+        'engineType': 'wasm',
+        'executionType': 'wasm',
+        'wasmRunner': {
+          'entry': 'bin/ncmdump.wasm',
+          'executionMode': 'wasi_cli',
+          'args': ['-i', '{input}', '-o', r'{outputDir}/{input_base}.${format}'],
+          'batchMode': true,
+        },
+      };
+
+      final manifest = PluginManifest.fromJson(json);
+      expect(manifest.isWasmPlugin, true);
+      expect(manifest.wasmRunner, isNotNull);
+      expect(manifest.wasmRunner!.entry, 'bin/ncmdump.wasm');
+      expect(manifest.wasmRunner!.executionMode, 'wasi_cli');
+      expect(manifest.wasmRunner!.batchMode, true);
+      expect(manifest.wasmRunner!.args, ['-i', '{input}', '-o', r'{outputDir}/{input_base}.${format}']);
+    });
+
+    test('WasmUniversalService CLI two-phase argument parsing with formValues and placeholder expansion', () {
+      final parsed = WasmUniversalService.parseCliArgs(
+        ['-i', '{input}', '-o', r'{outputDir}/{input_base}.${format}', '--bitrate', '{bitrate}'],
+        formValues: {
+          'format': 'flac',
+          'bitrate': '320k',
+        },
+        replacements: {
+          '{input}': '/input/test_song.ncm',
+          '{input_base}': 'test_song',
+          '{outputDir}': '/output',
+        },
+      );
+
+      expect(parsed, [
+        '-i',
+        '/input/test_song.ncm',
+        '-o',
+        '/output/test_song.flac',
+        '--bitrate',
+        '320k',
+      ]);
+    });
+
+    test('WasmUniversalService resolves private .wasm in pluginDirectory and mounts /plugin', () async {
+      if (!canRunWasm) return;
+      final tempPluginDir = Directory.systemTemp.createTempSync('wasm_mock_plugin_');
+      final tempOutDir = Directory.systemTemp.createTempSync('wasm_mock_out_');
+
+      try {
+        // 1. Create pluginDirectory/bin/tool.wasm (using built-in wasi demo)
+        final binDir = Directory(p.join(tempPluginDir.path, 'bin'))..createSync(recursive: true);
+        final wasmBytes = await WasmUniversalService.resolveBytes(WasmUniversalService.builtinDemoWasiWat);
+        final pluginWasmFile = File(p.join(binDir.path, 'tool.wasm'));
+        pluginWasmFile.writeAsBytesSync(wasmBytes);
+
+        // 2. Execute with pluginDirectory, omitting wasmInput
+        final logs = <String>[];
+        final result = await WasmUniversalService.execute(
+          formValues: {
+            'wasmPath': 'bin/tool.wasm',
+            'executionMode': 'wasi_cli',
+            'exportJson': 'yes',
+          },
+          inputFiles: [],
+          outputDir: tempOutDir.path,
+          pluginDirectory: tempPluginDir.path,
+          onLog: (line, isErr) => logs.add(line),
+        );
+
+        expect(result.success, true);
+        expect(logs.any((l) => l.contains('成功定位并加载插件 WASM 模块: tool.wasm')), true);
+        expect(logs.any((l) => l.contains('插件内部资产 [${tempPluginDir.path}] -> 沙箱挂载点 [/plugin]')), true);
+        expect(File(p.join(tempOutDir.path, 'wasi_output_demo.txt')).existsSync(), true);
+      } finally {
+        try {
+          tempPluginDir.deleteSync(recursive: true);
+        } catch (_) {}
+        try {
+          tempOutDir.deleteSync(recursive: true);
+        } catch (_) {}
+      }
+    });
+
+    test('WasmUniversalService execute batch mode processes multiple files sequentially', () async {
+      if (!canRunWasm) return;
+      final tempDir = Directory.systemTemp.createTempSync('wasm_batch_test_');
+
+      try {
+        // Create 3 input files
+        final in1 = File(p.join(tempDir.path, 'song_1.txt'))..writeAsStringSync('batch file 1 content');
+        final in2 = File(p.join(tempDir.path, 'song_2.txt'))..writeAsStringSync('batch file 2 content');
+        final in3 = File(p.join(tempDir.path, 'song_3.txt'))..writeAsStringSync('batch file 3 content');
+
+        final progressList = <double>[];
+        final stages = <String>[];
+        final logs = <String>[];
+
+        final result = await WasmUniversalService.execute(
+          formValues: {
+            'executionMode': 'memory_stream',
+            'functionName': 'process',
+            'batchMode': true,
+            'exportJson': 'yes',
+          },
+          inputFiles: [in1.path, in2.path, in3.path],
+          outputDir: tempDir.path,
+          onProgress: (p, stage) {
+            progressList.add(p);
+            stages.add(stage);
+          },
+          onLog: (line, isErr) => logs.add(line),
+        );
+
+        expect(result.success, true);
+        expect(progressList.isNotEmpty, true);
+        expect(result.outputFiles.length >= 3, true);
+
+        // Verify all 3 output files were created with uppercase content
+        final out1 = File(p.join(tempDir.path, 'song_1_wasm_out.txt'));
+        final out2 = File(p.join(tempDir.path, 'song_2_wasm_out.txt'));
+        final out3 = File(p.join(tempDir.path, 'song_3_wasm_out.txt'));
+
+        expect(out1.existsSync(), true);
+        expect(out2.existsSync(), true);
+        expect(out3.existsSync(), true);
+
+        expect(out1.readAsStringSync(), 'BATCH FILE 1 CONTENT');
+        expect(out2.readAsStringSync(), 'BATCH FILE 2 CONTENT');
+        expect(out3.readAsStringSync(), 'BATCH FILE 3 CONTENT');
       } finally {
         try {
           tempDir.deleteSync(recursive: true);

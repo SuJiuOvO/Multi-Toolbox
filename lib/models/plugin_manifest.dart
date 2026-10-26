@@ -237,6 +237,50 @@ class PluginNativeRunnerDef {
   };
 }
 
+/// WebAssembly (WASM) 微内核沙箱运行配置 (跨平台跨架构统一执行 C/C++/Rust 字节码)
+class PluginWasmRunnerDef {
+  final String entry; // .wasm 模块文件相对路径 (如 "bin/tool.wasm" 或 "ncmdump.wasm")
+  final String executionMode; // "wasi_cli", "memory_stream", "call_func"
+  final List<String> args; // CLI 参数模板列表 (支持占位符如 {input}, {outputDir}, {input_base} 等)
+  final bool batchMode; // 当多选输入文件时，是否自动逐个循环调度
+  final String? functionName; // 待调用的导出函数名称 (call_func / memory_stream 模式)
+  final Map<String, String> env; // 额外注入沙箱的环境变量
+  final bool showTerminal; // 是否在界面展示终端运行日志黑框
+
+  PluginWasmRunnerDef({
+    required this.entry,
+    this.executionMode = 'wasi_cli',
+    this.args = const [],
+    this.batchMode = true,
+    this.functionName,
+    this.env = const {},
+    this.showTerminal = true,
+  });
+
+  factory PluginWasmRunnerDef.fromJson(Map<String, dynamic> json) {
+    return PluginWasmRunnerDef(
+      entry: json['entry']?.toString() ?? json['wasmPath']?.toString() ?? '',
+      executionMode: json['executionMode']?.toString() ?? 'wasi_cli',
+      args: (json['args'] as List?)?.map((e) => e.toString()).toList() ??
+          (json['cliArgs'] != null ? [json['cliArgs'].toString()] : const []),
+      batchMode: json['batchMode'] != false,
+      functionName: json['functionName']?.toString(),
+      env: (json['env'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? const {},
+      showTerminal: json['showTerminal'] ?? true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'entry': entry,
+    'executionMode': executionMode,
+    if (args.isNotEmpty) 'args': args,
+    'batchMode': batchMode,
+    if (functionName != null) 'functionName': functionName,
+    if (env.isNotEmpty) 'env': env,
+    'showTerminal': showTerminal,
+  };
+}
+
 /// 功能模块图标定义 (支持图片限制尺寸与大小、代码渲染矢量SVG，以及系统默认图标降级)
 class PluginIconDef {
   /// 默认最大支持图片文件大小：512 KB
@@ -355,8 +399,9 @@ class PluginManifest {
   final PluginIconDef? iconDef;
   final String author;
   final String engineType; // native_image, media_pipeline, webview, native_executable, script
-  final String executionType; // 'internal' | 'native_executable' | 'script' | 'quickjs'
+  final String executionType; // 'internal' | 'native_executable' | 'script' | 'quickjs' | 'wasm'
   final PluginNativeRunnerDef? nativeRunner;
+  final PluginWasmRunnerDef? wasmRunner;
   final String? downloadUrl;
   final Map<String, String> downloadUrls;
   final bool isOfficial;
@@ -384,6 +429,7 @@ class PluginManifest {
     required this.engineType,
     this.executionType = 'internal',
     this.nativeRunner,
+    this.wasmRunner,
     this.downloadUrl,
     this.downloadUrls = const {},
     this.isOfficial = false,
@@ -425,7 +471,8 @@ class PluginManifest {
 
   /// 是否为 WebAssembly (Wasm) 模块插件 (跨平台沙箱直接执行 C/C++/Rust 字节码)
   bool get isWasmPlugin {
-    return executionType == 'wasm' ||
+    return wasmRunner != null ||
+        executionType == 'wasm' ||
         engineType == 'wasm' ||
         action?.handler == 'wasm_runner' ||
         action?.handler == 'wasm_universal';
@@ -491,6 +538,9 @@ class PluginManifest {
           (json['nativeRunner'] != null ? 'native_executable' : 'internal'),
       nativeRunner: json['nativeRunner'] != null
           ? PluginNativeRunnerDef.fromJson(Map<String, dynamic>.from(json['nativeRunner']))
+          : null,
+      wasmRunner: json['wasmRunner'] != null
+          ? PluginWasmRunnerDef.fromJson(Map<String, dynamic>.from(json['wasmRunner']))
           : null,
       downloadUrl: json['downloadUrl'],
       downloadUrls: (json['downloadUrls'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? {},

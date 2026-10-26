@@ -621,6 +621,25 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
 
     // 解析 action 参数映射模板，例如将 ${quality} 替换为表单实际填写的值
     final evaluatedParams = <String, dynamic>{..._formValues};
+    if (widget.plugin.localDir != null) {
+      evaluatedParams['pluginDirectory'] = widget.plugin.localDir;
+    }
+    if (widget.plugin.wasmRunner != null) {
+      final wr = widget.plugin.wasmRunner!;
+      evaluatedParams['wasmPath'] ??= wr.entry;
+      evaluatedParams['executionMode'] ??= wr.executionMode;
+      if (wr.args.isNotEmpty) {
+        evaluatedParams['cliArgsList'] = wr.args;
+        evaluatedParams['cliArgs'] ??= wr.args.join(' ');
+      }
+      evaluatedParams['batchMode'] ??= wr.batchMode;
+      if (wr.functionName != null) {
+        evaluatedParams['functionName'] ??= wr.functionName;
+      }
+      if (wr.env.isNotEmpty) {
+        evaluatedParams['wasmEnv'] = wr.env;
+      }
+    }
     if (widget.plugin.action != null) {
       widget.plugin.action!.params.forEach((key, val) {
         if (val is String && val.startsWith(r'${') && val.endsWith('}')) {
@@ -684,7 +703,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       );
     } else {
       res = await BackgroundTaskRunner.execute(
-        handler: widget.plugin.action?.handler ?? 'image_compress',
+        handler: widget.plugin.action?.handler ?? (widget.plugin.isWasmPlugin ? 'wasm_universal' : 'image_compress'),
         inputFiles: effectiveInputFiles,
         params: evaluatedParams,
         outputDir: outDir,
