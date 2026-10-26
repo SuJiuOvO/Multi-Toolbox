@@ -1,7 +1,7 @@
 {
   "id": "video-audio-toolbox",
   "name": "音视频工具箱",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "minAppVersion": "1.0.0",
   "category": "media",
   "description": "基于 GPU 硬件加速 (NVENC / QSV / AMF / MediaCodec) 与智能线程调度的音视频工具箱：提供实时进度百分比、编码倍速与剩余时间预估，彻底告别满载卡顿。",
@@ -25,7 +25,9 @@
         "flac",
         "aac",
         "webm",
-        "ts"
+        "ts",
+        "ogg",
+        "m4a"
       ]
     },
     {
@@ -55,7 +57,7 @@
           "value": "to_mp4"
         },
         {
-          "label": "音频格式转换 (MP3/WAV/AAC)",
+          "label": "音频格式转换 (MP3/WAV/AAC/FLAC/OGG)",
           "value": "audio_convert"
         }
       ]
@@ -101,6 +103,14 @@
         {
           "label": "AAC (高保真小体积)",
           "value": "aac"
+        },
+        {
+          "label": "FLAC (无损压缩高音质)",
+          "value": "flac"
+        },
+        {
+          "label": "OGG (Vorbis 开放高效音频)",
+          "value": "ogg"
         }
       ],
       "visibleIf": {
