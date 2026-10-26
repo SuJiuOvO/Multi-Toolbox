@@ -604,8 +604,9 @@ class WasmUniversalService {
       stderrText = await _captureStream(instance.stderr);
     } catch (e) {
       // 容错处理：WASI 应用调用 proc_exit(0) 时部分运行时会以捕获异常返回退出状态码
-      if (e.toString().contains('0') && !e.toString().toLowerCase().contains('error')) {
-        // 正常退出码 0
+      final errStr = e.toString().toLowerCase();
+      if (errStr.contains('exit status 0') || (errStr.contains('status 0') || (errStr.contains('exit') && errStr.contains(' 0')))) {
+        // 正常退出码 0，视同执行成功
       } else {
         executionError = e;
       }

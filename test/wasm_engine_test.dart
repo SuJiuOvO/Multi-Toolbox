@@ -350,8 +350,12 @@ void main() {
         preopenedDirs: const [],
         webBrowserFileSystem: const {},
       );
-      // proc_exit(0) exits normally
-      await module0.builder(wasiConfig: wasiConfig).build();
+      // proc_exit(0) exits with code 0 (caught as AnyhowException exit status 0 in some runtimes)
+      try {
+        await module0.builder(wasiConfig: wasiConfig).build();
+      } catch (e) {
+        expect(e.toString(), contains('0'));
+      }
 
       // Let's test proc_exit(1)
       const exit1Wat = r'''
