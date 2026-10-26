@@ -7,7 +7,7 @@ import 'dart:math' as math;
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:path/path.dart' as p;
 
 import 'tool_engine_service.dart' show ProcessingResult;
@@ -686,6 +686,31 @@ class MediaEngineService {
     }
   }
 
+  /// 构建音频转码 FFmpeg 参数 (供执行与单元测试验证)
+  @visibleForTesting
+  static List<String> buildAudioConvertArgs({
+    required String format,
+    required String inputPath,
+    required String outPath,
+    bool fallbackOgg = false,
+  }) {
+    final fmt = format.trim().toLowerCase();
+    if (fmt == 'wav') {
+      return ['-y', '-i', inputPath, '-vn', '-c:a', 'pcm_s16le', outPath];
+    } else if (fmt == 'aac') {
+      return ['-y', '-i', inputPath, '-vn', '-c:a', 'aac', '-b:a', '192k', outPath];
+    } else if (fmt == 'flac') {
+      return ['-y', '-i', inputPath, '-vn', '-c:a', 'flac', outPath];
+    } else if (fmt == 'ogg') {
+      if (fallbackOgg) {
+        return ['-y', '-i', inputPath, '-vn', '-c:a', 'vorbis', '-q:a', '5', outPath];
+      }
+      return ['-y', '-i', inputPath, '-vn', '-c:a', 'libvorbis', '-q:a', '5', outPath];
+    } else {
+      return ['-y', '-i', inputPath, '-vn', '-c:a', 'libmp3lame', '-q:a', '2', outPath];
+    }
+  }
+
   static List<_Attempt> _videoAttempts({
     required String input,
     required String outPath,
@@ -812,16 +837,25 @@ class MediaEngineService {
         break;
       case 'audio_convert':
         {
-          final fmt = params['format']?.toString() ?? 'mp3';
+          final fmt = (params['format']?.toString() ?? 'mp3').trim().toLowerCase();
           if (fmt == 'wav') {
             final out = p.join(outputDir, 'converted_$base.wav');
-            attempts.add(_Attempt('转换为 WAV', ['-y', '-i', inputPath, '-vn', '-c:a', 'pcm_s16le', out], out));
+            attempts.add(_Attempt('转换为 WAV', buildAudioConvertArgs(format: 'wav', inputPath: inputPath, outPath: out), out));
           } else if (fmt == 'aac') {
             final out = p.join(outputDir, 'converted_$base.aac');
-            attempts.add(_Attempt('转换为 AAC', ['-y', '-i', inputPath, '-vn', '-c:a', 'aac', '-b:a', '192k', out], out));
+            attempts.add(_Attempt('转换为 AAC', buildAudioConvertArgs(format: 'aac', inputPath: inputPath, outPath: out), out));
+          } else if (fmt == 'flac') {
+            // 新增: 原生多线程无损 FLAC 压缩
+            final out = p.join(outputDir, 'converted_$base.flac');
+            attempts.add(_Attempt('转换为 FLAC', buildAudioConvertArgs(format: 'flac', inputPath: inputPath, outPath: out), out));
+          } else if (fmt == 'ogg') {
+            // 新增: 原生 Vorbis OGG 编码 (libvorbis 优先，vorbis 备用兜底)
+            final out = p.join(outputDir, 'converted_$base.ogg');
+            attempts.add(_Attempt('转换为 OGG', buildAudioConvertArgs(format: 'ogg', inputPath: inputPath, outPath: out, fallbackOgg: false), out));
+            attempts.add(_Attempt('转换为 OGG (vorbis 备用)', buildAudioConvertArgs(format: 'ogg', inputPath: inputPath, outPath: out, fallbackOgg: true), out));
           } else {
             final out = p.join(outputDir, 'converted_$base.mp3');
-            attempts.add(_Attempt('转换为 MP3', ['-y', '-i', inputPath, '-vn', '-c:a', 'libmp3lame', '-q:a', '2', out], out));
+            attempts.add(_Attempt('转换为 MP3', buildAudioConvertArgs(format: 'mp3', inputPath: inputPath, outPath: out), out));
           }
         }
         break;
