@@ -111,5 +111,27 @@ void main() {
       expect(result.length, 1);
       expect(result.first, f.path);
     });
+
+    test('Mixed file and directory inputs de-duplicate repeated files via canonical path', () {
+      final musicDir = Directory(p.join(tempDir.path, 'mixed_music'))..createSync();
+      final track1 = File(p.join(musicDir.path, 'track1.ncm'))..writeAsStringSync('ncm1');
+      final track2 = File(p.join(musicDir.path, 'track2.ncm'))..writeAsStringSync('ncm2');
+
+      // 用户同时选中了单个 track1.ncm 以及包含 track1.ncm 和 track2.ncm 的整个目录，
+      // 并可能包含 redundant relative/cased 路径
+      final result = DynamicToolRunnerPage.flattenInputEntries(
+        rawEntries: [
+          track1.path,
+          musicDir.path,
+          p.join(musicDir.path, '.', 'track1.ncm'),
+        ],
+        allowedExtensions: ['ncm'],
+      );
+
+      // 应严格去重，仅包含 2 个唯一文件
+      expect(result.length, 2);
+      expect(result.contains(track1.path), isTrue);
+      expect(result.contains(track2.path), isTrue);
+    });
   });
 }
