@@ -33,10 +33,16 @@ class DynamicToolRunnerPage extends StatefulWidget {
     bool isArchiveCompress = false,
   }) {
     final effective = <String>[];
+    final seenPaths = <String>{};
     final allowedExts = allowedExtensions
         .map((e) => e.toLowerCase().replaceFirst(RegExp(r'^\.'), ''))
         .where((e) => e.isNotEmpty)
         .toSet();
+
+    String normalizeKey(String path) {
+      final canonical = p.canonicalize(path);
+      return Platform.isWindows ? canonical.toLowerCase() : canonical;
+    }
 
     for (final item in rawEntries) {
       if (item.trim().isEmpty) continue;
@@ -44,7 +50,7 @@ class DynamicToolRunnerPage extends StatefulWidget {
       if (!isArchiveCompress && d.existsSync()) {
         try {
           final dirFiles = d
-              .listSync(recursive: true)
+              .listSync(recursive: true, followLinks: false)
               .whereType<File>()
               .map((f) => f.path)
               .where((filePath) {
@@ -60,13 +66,24 @@ class DynamicToolRunnerPage extends StatefulWidget {
               })
               .toList();
           dirFiles.sort();
-          effective.addAll(dirFiles);
+          for (final fPath in dirFiles) {
+            final key = normalizeKey(fPath);
+            if (seenPaths.add(key)) {
+              effective.add(fPath);
+            }
+          }
         } catch (e) {
           debugPrint('Failed to expand directory $item: $e');
-          effective.add(item);
+          final key = normalizeKey(item);
+          if (seenPaths.add(key)) {
+            effective.add(item);
+          }
         }
       } else {
-        effective.add(item);
+        final key = normalizeKey(item);
+        if (seenPaths.add(key)) {
+          effective.add(item);
+        }
       }
     }
     return effective;
