@@ -1,14 +1,14 @@
 {
   "id": "universal-wasm-runner",
   "name": "Wasm 算力工坊",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minAppVersion": "1.0.0",
   "category": "other",
   "platforms": [
     "universal"
   ],
   "executionType": "wasm",
-  "description": "【WASM 跨平台高算力引擎】基于沙箱内嵌的 WebAssembly 微内核解释器与即时编译执行框架，支持在全隔离内存沙箱中直接加载并运行由 C/C++/Rust 编译的 .wasm 与 .wat 算力模块。提供高精度导出表逆向自省、函数调用传参及执行耗时纳秒级统计。跨 Android/Windows 全平台零依赖无缝运行。",
+  "description": "【WASM 跨平台高算力引擎】基于沙箱内嵌的 WebAssembly 微内核解释器与即时编译执行框架，支持在全隔离沙箱中运行由 C/C++/Rust 编译的 .wasm 与 .wat 算力模块。原生打通 WASI 虚拟文件系统 (VFS) 磁盘映射、标准 CLI (_start) 调度与内存流式管道，实现真正的主机文件零依赖无缝 I/O 处理。",
   "icon": {
     "type": "code",
     "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"3\" fill=\"#6366F1\"/><path fill=\"#FFFFFF\" d=\"M7 11h2v5H7zm8-4h2v9h-2zm-4 2h2v7h-2z\"/></svg>"
@@ -23,7 +23,7 @@
       "defaultValue": "demo",
       "options": [
         {
-          "label": "⚡ 内置高性能演示内核 (包含 add、递归 fib、square 算法)",
+          "label": "⚡ 内置高性能演示内核 (包含 WASI 文件落盘、内存流转换与数学算法)",
           "value": "demo"
         },
         {
@@ -58,20 +58,56 @@
           "value": "call_func"
         },
         {
+          "label": "💻 WASI 命令行应用执行模式 (CLI Main / _start，支持宿主文件 I/O 虚拟映射)",
+          "value": "wasi_cli"
+        },
+        {
+          "label": "🌊 内存流处理模式 (将输入文件推入 WASM 内存缓冲区计算并落盘)",
+          "value": "memory_stream"
+        },
+        {
           "label": "🔍 逆向探测模块结构与导出表 (Inspect Imports/Exports)",
           "value": "inspect"
         }
       ]
     },
     {
+      "id": "cliArgs",
+      "label": "WASI 命令行参数 (支持变量占位符，如 -i {input} -o {outputDir}/output.ext)",
+      "type": "text",
+      "defaultValue": "",
+      "required": false,
+      "visibleIf": {
+        "field": "executionMode",
+        "equals": "wasi_cli"
+      }
+    },
+    {
+      "id": "dataInput",
+      "label": "选择待处理的数据文件 (图片/文本/音频等，自动映射至沙箱 /input 虚拟路径)",
+      "type": "file_picker",
+      "required": false,
+      "allowMultiple": true,
+      "visibleIf": {
+        "field": "executionMode",
+        "in": [
+          "wasi_cli",
+          "memory_stream"
+        ]
+      }
+    },
+    {
       "id": "functionName",
-      "label": "待调用的导出函数名称 (例如 fib, add, square)",
+      "label": "待调用的导出函数名称 (例如 fib, add, square, process)",
       "type": "text",
       "defaultValue": "fib",
       "required": false,
       "visibleIf": {
         "field": "executionMode",
-        "equals": "call_func"
+        "in": [
+          "call_func",
+          "memory_stream"
+        ]
       }
     },
     {
