@@ -88,6 +88,11 @@ class PluginManagerService {
   Directory? _pluginsDirectory;
   Directory get pluginsDirectory => _pluginsDirectory ?? Directory('');
 
+  @visibleForTesting
+  void overridePluginsDirectory(Directory dir) {
+    _pluginsDirectory = dir;
+  }
+
   /// 初始化本地目录与服务器配置
   Future<void> init() async {
     try {
@@ -261,24 +266,7 @@ class PluginManagerService {
     }
 
     // 确保核心内置功能插件就绪并保持与 assets 同步更新
-    const defaultPluginIds = [
-      'image-compress',
-      'image-resize',
-      'id-photo-bg',
-      'video-audio-toolbox',
-      'qr-toolbox',
-      'downloader-toolbox',
-      'gif-toolbox',
-      'livephoto-toolbox',
-      'pdf-toolbox',
-      'doc-converter',
-      'windows-media-downloader',
-      'universal-data-codec',
-      'universal-archive-extractor',
-      'universal-wasm-runner',
-      'gemini-banana-watermark',
-    ];
-    for (final id in defaultPluginIds) {
+    for (final id in PluginManifest.defaultPluginIds) {
       try {
         final assetData = await rootBundle.loadString('assets/default_plugins/$id.json');
         final jsonMap = jsonDecode(assetData);

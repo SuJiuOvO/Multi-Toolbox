@@ -6,6 +6,7 @@ import '../models/plugin_manifest.dart';
 import '../widgets/plugin_icon_widget.dart';
 import '../services/app_update_service.dart';
 import '../services/plugin_manager_service.dart';
+import 'installed_plugins_manager_page.dart';
 
 class PluginStorePage extends StatefulWidget {
   final VoidCallback onInstalledChanged;
@@ -44,6 +45,15 @@ class _PluginStorePageState extends State<PluginStorePage> {
     if (item.isWindowsOnly()) return const Color(0xFF0284C7);
     if (item.isAndroidOnly()) return const Color(0xFF16A34A);
     return const Color(0xFF4F46E5);
+  }
+
+  void _openInstalledManager() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InstalledPluginsManagerPage(onInstalledChanged: widget.onInstalledChanged),
+      ),
+    ).then((_) => _refreshStore(silent: true));
   }
 
   Future<void> _refreshStore({bool silent = false}) async {
@@ -889,6 +899,12 @@ class _PluginStorePageState extends State<PluginStorePage> {
         ),
         actions: [
           if (!isMobile) ...[
+            OutlinedButton.icon(
+              onPressed: _openInstalledManager,
+              icon: const Icon(Icons.tune_rounded, size: 16),
+              label: const Text('已安装管理'),
+            ),
+            const SizedBox(width: 6),
             FilledButton.tonalIcon(
               onPressed: _pickAndInstallLocalPlugin,
               icon: const Icon(Icons.file_upload_outlined, size: 18),
@@ -946,6 +962,11 @@ class _PluginStorePageState extends State<PluginStorePage> {
             ),
           ] else ...[
             IconButton(
+              icon: const Icon(Icons.tune_rounded),
+              tooltip: '管理已安装插件',
+              onPressed: _openInstalledManager,
+            ),
+            IconButton(
               icon: const Icon(Icons.speed),
               tooltip: '镜像节点测速与换源',
               onPressed: _showNodeSelectionDialog,
@@ -954,7 +975,9 @@ class _PluginStorePageState extends State<PluginStorePage> {
               icon: const Icon(Icons.more_vert),
               tooltip: '更多与社区',
               onSelected: (val) {
-                if (val == 'install') {
+                if (val == 'installed') {
+                  _openInstalledManager();
+                } else if (val == 'install') {
                   _pickAndInstallLocalPlugin();
                 } else if (val == 'update') {
                   _checkAppUpdate();
@@ -967,6 +990,14 @@ class _PluginStorePageState extends State<PluginStorePage> {
                 }
               },
               itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'installed',
+                  child: Row(children: [
+                    Icon(Icons.tune_rounded, size: 18, color: Colors.blueAccent),
+                    SizedBox(width: 8),
+                    Text('管理已安装模块与卸载'),
+                  ]),
+                ),
                 const PopupMenuItem(
                   value: 'install',
                   child: Row(children: [
