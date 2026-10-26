@@ -445,6 +445,27 @@ class PluginManifest {
 
   PluginIconDef get effectiveIconDef => iconDef ?? PluginIconDef.fromRaw(icon);
 
+  static const List<String> defaultPluginIds = [
+    'image-compress',
+    'image-resize',
+    'id-photo-bg',
+    'video-audio-toolbox',
+    'qr-toolbox',
+    'downloader-toolbox',
+    'gif-toolbox',
+    'livephoto-toolbox',
+    'pdf-toolbox',
+    'doc-converter',
+    'windows-media-downloader',
+    'universal-data-codec',
+    'universal-archive-extractor',
+    'universal-wasm-runner',
+    'gemini-banana-watermark',
+  ];
+
+  /// 是否为客户端核心内置功能
+  bool get isBuiltIn => defaultPluginIds.contains(id);
+
   bool isSupportedOnCurrentPlatform() {
     if (platforms.isEmpty || platforms.contains('universal')) return true;
     if (Platform.isWindows && platforms.contains('windows')) return true;

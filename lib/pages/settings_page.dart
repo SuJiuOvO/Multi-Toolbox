@@ -4,6 +4,7 @@ import '../services/app_update_service.dart';
 import '../services/notification_service.dart';
 import '../services/plugin_manager_service.dart';
 import '../services/settings_service.dart';
+import 'installed_plugins_manager_page.dart';
 import '../theme/app_theme_manager.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -52,7 +53,11 @@ class _SettingsPageState extends State<SettingsPage> {
               _buildMirrorNetworkSection(theme),
               const SizedBox(height: 20),
 
-              // 5. 主页显示偏好
+              // 5. 插件与功能模块管理
+              _buildPluginManagementSection(theme),
+              const SizedBox(height: 20),
+
+              // 6. 主页显示偏好
               _buildDisplayPreferencesSection(theme),
               const SizedBox(height: 20),
 
@@ -424,6 +429,57 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 插件与功能模块管理入口
+  Widget _buildPluginManagementSection(ThemeData theme) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.tune_rounded, size: 20, color: AppThemeManager.accentBlue),
+                const SizedBox(width: 8),
+                Text(
+                  '插件与功能模块管理',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppThemeManager.accentBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.extension_outlined, color: AppThemeManager.accentBlue, size: 20),
+            ),
+            title: const Text('已安装模块管理与卸载', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            subtitle: const Text('集中查看、搜索与安全卸载扩展及本地导入模块', style: TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right, size: 20),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const InstalledPluginsManagerPage(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 

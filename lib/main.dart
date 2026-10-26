@@ -5,6 +5,7 @@ import 'models/plugin_manifest.dart';
 import 'widgets/plugin_icon_widget.dart';
 import 'pages/dynamic_tool_runner_page.dart';
 import 'pages/plugin_store_page.dart';
+import 'pages/installed_plugins_manager_page.dart';
 import 'pages/settings_page.dart';
 import 'services/app_update_service.dart';
 import 'services/notification_service.dart';
@@ -373,6 +374,15 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
     if (item.isWindowsOnly()) return AppThemeManager.accentBlue;
     if (item.isAndroidOnly()) return AppThemeManager.accentYellow;
     return AppThemeManager.accentBlue;
+  }
+
+  void _openPluginsManager() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InstalledPluginsManagerPage(onInstalledChanged: _refreshList),
+      ),
+    ).then((_) => _refreshList());
   }
 
   void _openStore() {
@@ -795,12 +805,16 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
               children: [
                 const Icon(Icons.handyman_rounded, color: AppThemeManager.accentBlue),
                 const SizedBox(width: 8),
-                Text(
-                  '多功能百宝箱',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: isMobile ? 16 : 18,
-                    color: textPrimary,
+                Flexible(
+                  child: Text(
+                    '多功能百宝箱',
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: isMobile ? 16 : 18,
+                      color: textPrimary,
+                    ),
                   ),
                 ),
               ],
@@ -821,7 +835,9 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                   icon: Icon(Icons.more_vert, color: textPrimary),
                   tooltip: '更多选项',
                   onSelected: (val) {
-                    if (val == 'settings') {
+                    if (val == 'plugins') {
+                      _openPluginsManager();
+                    } else if (val == 'settings') {
                       _openSettings();
                     } else if (val == 'install') {
                       _pickAndInstallLocalPlugin();
@@ -832,6 +848,16 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                     }
                   },
                   itemBuilder: (ctx) => [
+                    const PopupMenuItem(
+                      value: 'plugins',
+                      child: Row(
+                        children: [
+                          Icon(Icons.tune_rounded, size: 18, color: AppThemeManager.accentBlue),
+                          SizedBox(width: 8),
+                          Text('插件与模块管理'),
+                        ],
+                      ),
+                    ),
                     const PopupMenuItem(
                       value: 'settings',
                       child: Row(
@@ -876,6 +902,12 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                 ),
                 const SizedBox(width: 4),
               ] else ...[
+                OutlinedButton.icon(
+                  onPressed: _openPluginsManager,
+                  icon: const Icon(Icons.tune_rounded, size: 17),
+                  label: const Text('插件管理'),
+                ),
+                const SizedBox(width: 8),
                 OutlinedButton.icon(
                   onPressed: _pickAndInstallLocalPlugin,
                   icon: const Icon(Icons.file_upload_outlined, size: 17),
