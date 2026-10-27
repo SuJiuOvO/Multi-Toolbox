@@ -17,7 +17,33 @@ import '../services/settings_service.dart';
 import '../services/storage_permission_service.dart';
 import 'terminal_log_viewer.dart';
 
+enum PluginExecutionEngine {
+  windowsNative,
+  quickJs,
+  wasmUniversal,
+  internalHandler,
+}
+
 class DynamicToolRunnerPage extends StatefulWidget {
+  /// 智能解析在当前平台下所使用的执行引擎 (支持双端自适应插件在 Windows 调度原生、在 Android 调度 WASM)
+  @visibleForTesting
+  static PluginExecutionEngine resolveExecutionEngine({
+    required PluginManifest plugin,
+    required bool isWindows,
+  }) {
+    if (isWindows && (plugin.isWindowsExtension || plugin.nativeRunner != null)) {
+      return PluginExecutionEngine.windowsNative;
+    } else if (plugin.isQuickJsPlugin) {
+      return PluginExecutionEngine.quickJs;
+    } else if (plugin.isWasmPlugin) {
+      return PluginExecutionEngine.wasmUniversal;
+    } else if (plugin.isWindowsExtension || plugin.nativeRunner != null) {
+      return PluginExecutionEngine.windowsNative;
+    } else {
+      return PluginExecutionEngine.internalHandler;
+    }
+  }
+
   final PluginManifest plugin;
 
   const DynamicToolRunnerPage({super.key, required this.plugin});
@@ -811,66 +837,95 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     }
 
     final ProcessingResult res;
-    if (widget.plugin.isWindowsExtension || widget.plugin.nativeRunner != null) {
-      res = await WindowsExtensionRunnerService.execute(
-        plugin: widget.plugin,
-        formValues: evaluatedParams,
-        inputFiles: effectiveInputFiles,
-        outputDir: outDir,
-        onProgress: (progress, stage) {
-          if (!mounted) return;
-          setState(() {
-            _progress = progress;
-            _statusText = stage;
-          });
-        },
-        onLog: (line, isError) {
-          if (!mounted) return;
-          setState(() {
-            _terminalLogs.add(TerminalLogEntry(text: line, isError: isError));
-          });
-        },
-      );
-    } else if (widget.plugin.isQuickJsPlugin) {
-      res = await QuickJsBridgeService.execute(
-        plugin: widget.plugin,
-        formValues: evaluatedParams,
-        inputFiles: effectiveInputFiles,
-        outputDir: outDir,
-        onProgress: (progress, stage) {
-          if (!mounted) return;
-          setState(() {
-            _progress = progress;
-            _statusText = stage;
-          });
-        },
-        onLog: (line, isError) {
-          if (!mounted) return;
-          setState(() {
-            _terminalLogs.add(TerminalLogEntry(text: line, isError: isError));
-          });
-        },
-      );
-    } else {
-      res = await BackgroundTaskRunner.execute(
-        handler: widget.plugin.action?.handler ?? (widget.plugin.isWasmPlugin ? 'wasm_universal' : 'image_compress'),
-        inputFiles: effectiveInputFiles,
-        params: evaluatedParams,
-        outputDir: outDir,
-        onProgress: (progress, stage) {
-          if (!mounted) return;
-          setState(() {
-            _progress = progress;
-            _statusText = stage;
-          });
-        },
-        onLog: (line, isError) {
-          if (!mounted) return;
-          setState(() {
-            _terminalLogs.add(TerminalLogEntry(text: line, isError: isError));
-          });
-        },
-      );
+    final engine = DynamicToolRunnerPage.resolveExecutionEngine(
+      plugin: widget.plugin,
+      isWindows: Platform.isWindows,
+    );
+    switch (engine) {
+      case PluginExecutionEngine.windowsNative:
+        res = await WindowsExtensionRunnerService.execute(
+          plugin: widget.plugin,
+          formValues: evaluatedParams,
+          inputFiles: effectiveInputFiles,
+          outputDir: outDir,
+          onProgress: (progress, stage) {
+            if (!mounted) return;
+            setState(() {
+              _progress = progress;
+              _statusText = stage;
+            });
+          },
+          onLog: (line, isError) {
+            if (!mounted) return;
+            setState(() {
+              _terminalLogs.add(TerminalLogEntry(text: line, isError: isError));
+            });
+          },
+        );
+        break;
+      case PluginExecutionEngine.quickJs:
+        res = await QuickJsBridgeService.execute(
+          plugin: widget.plugin,
+          formValues: evaluatedParams,
+          inputFiles: effectiveInputFiles,
+          outputDir: outDir,
+          onProgress: (progress, stage) {
+            if (!mounted) return;
+            setState(() {
+              _progress = progress;
+              _statusText = stage;
+            });
+          },
+          onLog: (line, isError) {
+            if (!mounted) return;
+            setState(() {
+              _terminalLogs.add(TerminalLogEntry(text: line, isError: isError));
+            });
+          },
+        );
+        break;
+      case PluginExecutionEngine.wasmUniversal:
+        res = await BackgroundTaskRunner.execute(
+          handler: widget.plugin.action?.handler ?? 'wasm_universal',
+          inputFiles: effectiveInputFiles,
+          params: evaluatedParams,
+          outputDir: outDir,
+          onProgress: (progress, stage) {
+            if (!mounted) return;
+            setState(() {
+              _progress = progress;
+              _statusText = stage;
+            });
+          },
+          onLog: (line, isError) {
+            if (!mounted) return;
+            setState(() {
+              _terminalLogs.add(TerminalLogEntry(text: line, isError: isError));
+            });
+          },
+        );
+        break;
+      case PluginExecutionEngine.internalHandler:
+        res = await BackgroundTaskRunner.execute(
+          handler: widget.plugin.action?.handler ?? 'image_compress',
+          inputFiles: effectiveInputFiles,
+          params: evaluatedParams,
+          outputDir: outDir,
+          onProgress: (progress, stage) {
+            if (!mounted) return;
+            setState(() {
+              _progress = progress;
+              _statusText = stage;
+            });
+          },
+          onLog: (line, isError) {
+            if (!mounted) return;
+            setState(() {
+              _terminalLogs.add(TerminalLogEntry(text: line, isError: isError));
+            });
+          },
+        );
+        break;
     }
 
     // 发送任务处理完成系统通知（即使用户已退回主界面或将 App 放至后台）
@@ -1283,7 +1338,21 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (widget.plugin.isWindowsExtension) ...[
+              if (widget.plugin.isDualAdaptivePlugin) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.indigo.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.indigo.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    Platform.isWindows ? '🚀 Win 原生极速模式' : '🦀 Android Wasm 沙箱模式',
+                    style: const TextStyle(fontSize: 10, color: Colors.indigo, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ] else if (widget.plugin.isWindowsExtension) ...[
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

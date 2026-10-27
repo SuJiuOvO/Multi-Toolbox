@@ -755,7 +755,9 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
     final text = plugin.platformBadgeText;
     Color color = AppThemeManager.accentBlue;
 
-    if (plugin.isWasmPlugin) {
+    if (plugin.isDualAdaptivePlugin) {
+      color = const Color(0xFF6366F1); // 自适应 靛蓝紫色
+    } else if (plugin.isWasmPlugin) {
       color = const Color(0xFFDC2626); // Wasm 红色
     } else if (plugin.isWindowsExtension) {
       color = const Color(0xFF0284C7); // Win 蓝色
