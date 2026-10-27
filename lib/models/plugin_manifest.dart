@@ -7,6 +7,7 @@ class PluginInputCondition {
   final dynamic notEquals;
   final List<dynamic>? inValues;
   final List<PluginInputCondition>? and;
+  final List<PluginInputCondition>? or;
 
   PluginInputCondition({
     required this.field,
@@ -14,6 +15,7 @@ class PluginInputCondition {
     this.notEquals,
     this.inValues,
     this.and,
+    this.or,
   });
 
   factory PluginInputCondition.fromJson(Map<String, dynamic> json) {
@@ -25,6 +27,9 @@ class PluginInputCondition {
       and: (json['and'] as List?)
           ?.map((e) => PluginInputCondition.fromJson(Map<String, dynamic>.from(e)))
           .toList(),
+      or: (json['or'] as List?)
+          ?.map((e) => PluginInputCondition.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
     );
   }
 }
@@ -33,7 +38,8 @@ class PluginInputCondition {
 class PluginInputDef {
   final String id;
   final String label;
-  final String type; // file_picker, slider, select, number, text
+  final String description;
+  final String type; // file_picker, slider, select, number, text, switch
   final bool required;
   final bool allowMultiple;
   final List<String> allowedExtensions;
@@ -48,6 +54,7 @@ class PluginInputDef {
   PluginInputDef({
     required this.id,
     required this.label,
+    this.description = '',
     required this.type,
     this.required = false,
     this.allowMultiple = false,
@@ -95,6 +102,7 @@ class PluginInputDef {
     return PluginInputDef(
       id: json['id'] ?? '',
       label: json['label'] ?? '',
+      description: json['description']?.toString() ?? '',
       type: json['type'] ?? 'text',
       required: json['required'] ?? false,
       allowMultiple: json['allowMultiple'] ?? false,
@@ -415,6 +423,7 @@ class PluginManifest {
   bool isInstalled;
   bool isUpdateAvailable;
   String? localDir;
+  bool isDevLink;
 
   PluginManifest({
     required this.id,
@@ -441,6 +450,7 @@ class PluginManifest {
     this.isInstalled = false,
     this.isUpdateAvailable = false,
     this.localDir,
+    this.isDevLink = false,
   });
 
   PluginIconDef get effectiveIconDef => iconDef ?? PluginIconDef.fromRaw(icon);
@@ -512,6 +522,9 @@ class PluginManifest {
   bool get isDualAdaptivePlugin => nativeRunner != null && isWasmPlugin;
 
   String get platformBadgeText {
+    if (isDevLink) {
+      return '🛠️ 本地调试';
+    }
     final lower = platforms.map((e) => e.toLowerCase()).toList();
     if (isDualAdaptivePlugin) {
       return '🚀 双端自适应';

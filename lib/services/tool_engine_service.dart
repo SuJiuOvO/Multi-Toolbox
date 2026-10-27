@@ -47,6 +47,8 @@ class ToolEngineService {
       }
 
       switch (handler) {
+        case 'image_pipeline':
+          return await _handleImagePipeline(inputFiles, params, outputDir, onProgress, onLog);
         case 'image_compress':
           if (inputFiles.isEmpty) return ProcessingResult(success: false, message: '请至少选择一个输入文件');
           return await _handleImageCompress(inputFiles, params, outputDir, onProgress);
@@ -246,6 +248,178 @@ class ToolEngineService {
       success: true,
       message: '成功压缩 ${results.length} 张图片！\n总体积由 ${(totalOriginalSize / 1024).toStringAsFixed(1)} KB → ${(totalCompressedSize / 1024).toStringAsFixed(1)} KB (压缩率: $ratio%)',
       outputFiles: results,
+    );
+  }
+
+  // =========================================================================
+  // 通用受控图像处理管道 (Image Pipeline) - 纯 Dart 跨平台算力开放
+  // =========================================================================
+  static Future<ProcessingResult> _handleImagePipeline(
+    List<String> inputFiles,
+    Map<String, dynamic> params,
+    String outputDir,
+    Function(double progress, String stage)? onProgress,
+    void Function(String line, bool isError)? onLog,
+  ) async {
+    dynamic stepsRaw = params['steps'] ?? params['pipeline'];
+    if (stepsRaw is String) {
+      try {
+        stepsRaw = jsonDecode(stepsRaw);
+      } catch (_) {}
+    }
+    final steps = (stepsRaw is List)
+        ? stepsRaw.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList()
+        : <Map<String, dynamic>>[];
+
+    if (steps.isEmpty) {
+      return ProcessingResult(success: false, message: 'image_pipeline 未指定任何 steps 步骤');
+    }
+
+    onLog?.call('【Image Pipeline 原生图像管道启动】执行 ${steps.length} 个连续图形处理步骤', false);
+
+    img.Image? currentImg;
+    if (inputFiles.isNotEmpty && File(inputFiles.first).existsSync()) {
+      final bytes = File(inputFiles.first).readAsBytesSync();
+      currentImg = img.decodeImage(bytes);
+    }
+
+    final outputFiles = <String>[];
+    img.GifEncoder? gifEncoder;
+    int gifFps = 10;
+    String? gifOutPath;
+
+    for (int i = 0; i < steps.length; i++) {
+      final step = steps[i];
+      final op = step['op']?.toString().toLowerCase() ?? '';
+      final progress = 0.1 + (i / steps.length) * 0.8;
+      onProgress?.call(progress, '正在执行步骤 [${i + 1}/${steps.length}]: $op...');
+
+      switch (op) {
+        case 'load':
+          final src = step['file']?.toString() ?? step['path']?.toString() ?? '';
+          if (File(src).existsSync()) {
+            currentImg = img.decodeImage(File(src).readAsBytesSync());
+          }
+          break;
+
+        case 'resize':
+          if (currentImg != null) {
+            final w = (step['width'] ?? step['w'] as num?)?.toInt() ?? currentImg.width;
+            final h = (step['height'] ?? step['h'] as num?)?.toInt() ?? currentImg.height;
+            currentImg = img.copyResize(currentImg, width: w, height: h);
+          }
+          break;
+
+        case 'crop':
+          if (currentImg != null) {
+            final x = (step['x'] as num?)?.toInt() ?? 0;
+            final y = (step['y'] as num?)?.toInt() ?? 0;
+            final w = (step['width'] ?? step['w'] as num?)?.toInt() ?? currentImg.width;
+            final h = (step['height'] ?? step['h'] as num?)?.toInt() ?? currentImg.height;
+            currentImg = img.copyCrop(currentImg, x: x, y: y, width: w, height: h);
+          }
+          break;
+
+        case 'circle_crop':
+          if (currentImg != null) {
+            final size = min(currentImg.width, currentImg.height);
+            var cropped = img.copyCrop(
+              currentImg,
+              x: (currentImg.width - size) ~/ 2,
+              y: (currentImg.height - size) ~/ 2,
+              width: size,
+              height: size,
+            );
+            if (cropped.numChannels < 4) {
+              cropped = cropped.convert(numChannels: 4);
+            }
+            final radius = size / 2.0;
+            final cx = radius;
+            final cy = radius;
+            for (int y = 0; y < size; y++) {
+              for (int x = 0; x < size; x++) {
+                final dx = x - cx + 0.5;
+                final dy = y - cy + 0.5;
+                if (dx * dx + dy * dy > radius * radius) {
+                  cropped.setPixelRgba(x, y, 0, 0, 0, 0);
+                }
+              }
+            }
+            currentImg = cropped;
+          }
+          break;
+
+        case 'composite':
+        case 'overlay':
+          if (currentImg != null) {
+            final overlayPath = step['image']?.toString() ?? step['file']?.toString() ?? '';
+            img.Image? overlayImg;
+            if (File(overlayPath).existsSync()) {
+              overlayImg = img.decodeImage(File(overlayPath).readAsBytesSync());
+            } else if (step['base64'] != null) {
+              overlayImg = img.decodeImage(base64Decode(step['base64'].toString()));
+            }
+            if (overlayImg != null) {
+              final dstX = (step['x'] as num?)?.toInt() ?? 0;
+              final dstY = (step['y'] as num?)?.toInt() ?? 0;
+              img.compositeImage(currentImg, overlayImg, dstX: dstX, dstY: dstY);
+            }
+          }
+          break;
+
+        case 'init_gif':
+          final fps = (step['fps'] as num?)?.toInt() ?? 10;
+          final repeat = (step['repeat'] as num?)?.toInt() ?? 0;
+          final outName = step['output']?.toString() ?? 'animation.gif';
+          gifFps = fps;
+          gifOutPath = p.isAbsolute(outName) ? outName : p.join(outputDir, outName);
+          gifEncoder = img.GifEncoder(repeat: repeat);
+          break;
+
+        case 'add_gif_frame':
+          if (gifEncoder != null && currentImg != null) {
+            final durationHundredths = (100 / gifFps).round().clamp(1, 1000);
+            gifEncoder.addFrame(currentImg, duration: durationHundredths);
+          }
+          break;
+
+        case 'save':
+        case 'encode':
+          if (currentImg != null) {
+            final format = (step['format']?.toString() ?? 'png').toLowerCase();
+            final outName = step['output']?.toString() ?? 'output.$format';
+            final outPath = p.isAbsolute(outName) ? outName : p.join(outputDir, outName);
+            List<int> bytes;
+            if (format == 'jpg' || format == 'jpeg') {
+              final q = (step['quality'] as num?)?.toInt() ?? 85;
+              bytes = img.encodeJpg(currentImg, quality: q);
+            } else if (format == 'gif') {
+              bytes = img.encodeGif(currentImg);
+            } else {
+              bytes = img.encodePng(currentImg);
+            }
+            File(outPath).writeAsBytesSync(bytes);
+            outputFiles.add(outPath);
+            onLog?.call('  • 已生成图像: ${p.basename(outPath)} (${bytes.length} 字节)', false);
+          }
+          break;
+      }
+    }
+
+    if (gifEncoder != null && gifOutPath != null) {
+      final gifBytes = gifEncoder.finish();
+      if (gifBytes != null) {
+        File(gifOutPath).writeAsBytesSync(gifBytes);
+        outputFiles.add(gifOutPath);
+        onLog?.call('  • 已生成 GIF 动图: ${p.basename(gifOutPath)} (${gifBytes.length} 字节)', false);
+      }
+    }
+
+    onProgress?.call(1.0, '图像管道处理完成');
+    return ProcessingResult(
+      success: true,
+      message: '图像管道成功生成 ${outputFiles.length} 个文件',
+      outputFiles: outputFiles,
     );
   }
 

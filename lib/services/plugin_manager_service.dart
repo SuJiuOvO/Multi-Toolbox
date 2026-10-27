@@ -265,6 +265,31 @@ class PluginManagerService {
       debugPrint('读取已安装插件目录发生异常: $e');
     }
 
+    // 读取开发模式关联插件 (dev_links.json)
+    if (_pluginsDirectory != null) {
+      final devLinksFile = File(p.join(_pluginsDirectory!.path, 'dev_links.json'));
+      if (devLinksFile.existsSync()) {
+        try {
+          final Map<String, dynamic> links = jsonDecode(await devLinksFile.readAsString());
+          for (final entry in links.entries) {
+            final devPath = entry.value.toString();
+            final manifestFile = File(p.join(devPath, 'manifest.json'));
+            if (manifestFile.existsSync()) {
+              final jsonStr = await manifestFile.readAsString();
+              final jsonMap = jsonDecode(jsonStr);
+              final plugin = PluginManifest.fromJson(jsonMap, isRemote: false);
+              plugin.localDir = devPath;
+              plugin.isDevLink = true;
+              loaded.removeWhere((p) => p.id == plugin.id);
+              loaded.add(plugin);
+            }
+          }
+        } catch (e) {
+          debugPrint('读取开发模式关联插件发生异常: $e');
+        }
+      }
+    }
+
     // 确保核心内置功能插件就绪并保持与 assets 同步更新
     for (final id in PluginManifest.defaultPluginIds) {
       try {
@@ -753,9 +778,72 @@ class PluginManagerService {
     return _ValidationOutcome(isValid: true);
   }
 
-  /// 卸载插件
+  /// 关联本地源码开发目录 (免打包实时调试)
+  Future<LocalInstallResult> linkDevPluginDirectory(String dirPath) async {
+    final dir = Directory(dirPath);
+    if (!dir.existsSync()) {
+      return LocalInstallResult(success: false, message: '指定的开发目录不存在: $dirPath');
+    }
+    final manifestFile = File(p.join(dir.path, 'manifest.json'));
+    if (!manifestFile.existsSync()) {
+      return LocalInstallResult(success: false, message: '指定目录未包含 manifest.json 插件清单文件');
+    }
+
+    try {
+      final jsonStr = await manifestFile.readAsString();
+      final jsonMap = jsonDecode(jsonStr);
+      final validation = _validatePluginJson(jsonMap);
+      if (!validation.isValid) {
+        return LocalInstallResult(
+          success: false,
+          message: '插件配置校验未通过：\n${validation.errorMessage}',
+        );
+      }
+      final manifest = PluginManifest.fromJson(jsonMap, isRemote: false);
+      manifest.localDir = dir.path;
+      manifest.isDevLink = true;
+
+      if (_pluginsDirectory == null) await init();
+      final devLinksFile = File(p.join(_pluginsDirectory!.path, 'dev_links.json'));
+      Map<String, dynamic> links = {};
+      if (devLinksFile.existsSync()) {
+        try {
+          links = jsonDecode(await devLinksFile.readAsString());
+        } catch (_) {}
+      }
+      links[manifest.id] = dir.path;
+      await devLinksFile.writeAsString(jsonEncode(links));
+
+      await loadInstalledPlugins();
+      return LocalInstallResult(
+        success: true,
+        message: '成功关联本地开发插件【${manifest.name}】！\n'
+            '源码目录：${dir.path}\n\n'
+            '现在你在外部编辑器保存代码后，重新进入页面即可立即生效，无需反复压缩打包。',
+        plugin: manifest,
+      );
+    } catch (e) {
+      return LocalInstallResult(success: false, message: '关联开发目录失败: $e');
+    }
+  }
+
+  /// 卸载插件 (若为本地开发关联目录，则仅移除关联配置，严禁删除用户源码)
   Future<bool> uninstallPlugin(String pluginId) async {
     try {
+      if (_pluginsDirectory == null) await init();
+      final devLinksFile = File(p.join(pluginsDirectory.path, 'dev_links.json'));
+      if (devLinksFile.existsSync()) {
+        try {
+          final Map<String, dynamic> links = jsonDecode(await devLinksFile.readAsString());
+          if (links.containsKey(pluginId)) {
+            links.remove(pluginId);
+            await devLinksFile.writeAsString(jsonEncode(links));
+            await loadInstalledPlugins();
+            return true;
+          }
+        } catch (_) {}
+      }
+
       final targetPluginDir = Directory(p.join(pluginsDirectory.path, pluginId));
       if (targetPluginDir.existsSync()) {
         await targetPluginDir.delete(recursive: true);

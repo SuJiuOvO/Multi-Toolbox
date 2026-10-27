@@ -246,6 +246,79 @@ void main() {
       }
     });
 
+    test('QuickJsBridgeService handles binary I/O and Uint8Array transformation with Toolbox.fs and Toolbox.utils', () async {
+      final outDir = Directory.systemTemp.createTempSync('qjs_binary_test_');
+      try {
+        // Create an arbitrary binary file (containing non-UTF8 bytes like 0xFF, 0xD8, 0x00, 0x89, 0x50)
+        final binarySource = File('${outDir.path}/raw_binary.bin');
+        binarySource.writeAsBytesSync([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xD8, 0x00, 0xAA]);
+
+        final manifest = PluginManifest(
+          id: 'test-binary-io',
+          name: 'Binary IO Test',
+          version: '1.0.0',
+          category: 'developer',
+          description: 'Testing binary file I/O',
+          icon: 'code',
+          author: 'Test',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ inputFiles, outputDir, params }) {
+                  const srcPath = outputDir + '/raw_binary.bin';
+                  
+                  // 1. Read binary via readBytes (Base64)
+                  const b64Data = Toolbox.fs.readBytes(srcPath);
+                  Toolbox.log('Base64 length: ' + b64Data.length);
+                  
+                  // 2. Convert to Uint8Array using helper
+                  const bytes = Toolbox.utils.base64ToBytes(b64Data);
+                  Toolbox.log('Bytes length: ' + bytes.length);
+                  
+                  // Verify magic bytes (PNG header: 0x89 0x50)
+                  const isPngMagic = (bytes[0] === 0x89 && bytes[1] === 0x50);
+                  
+                  // Mutate last byte (0xAA -> 0xBB)
+                  bytes[bytes.length - 1] = 0xBB;
+                  
+                  // 3. Convert back to Base64 and write
+                  const modifiedB64 = Toolbox.utils.bytesToBase64(bytes);
+                  const destPath = outputDir + '/modified_binary.bin';
+                  Toolbox.fs.writeFile(destPath, modifiedB64, true);
+                  
+                  return { success: isPngMagic, message: 'Binary I/O complete' };
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [],
+          outputDir: outDir.path,
+          onProgress: (pct, stage) {},
+          onLog: (line, isError) {},
+        );
+
+        expect(result.success, true);
+        final modFile = File('${outDir.path}/modified_binary.bin');
+        expect(modFile.existsSync(), true);
+        final modBytes = modFile.readAsBytesSync();
+        expect(modBytes.length, 12);
+        expect(modBytes[0], 0x89);
+        expect(modBytes[1], 0x50);
+        expect(modBytes[11], 0xBB);
+      } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
     test('PluginManifest correctly identifies QuickJS plugin and badges', () {
       final manifest = PluginManifest(
         id: 'js-markdown-formatter',

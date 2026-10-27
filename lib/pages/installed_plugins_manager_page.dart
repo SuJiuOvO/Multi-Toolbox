@@ -148,35 +148,122 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
     }
   }
 
+  /// 关联本地源码开发目录 (免打包实时调试)
+  Future<void> _pickAndLinkDevPlugin() async {
+    try {
+      final selectedDir = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: '选择插件源码开发目录 (必须包含 manifest.json)',
+        lockParentWindow: true,
+      );
+
+      if (selectedDir == null || selectedDir.isEmpty) return;
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(
+          child: Card(
+            elevation: 8,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 20),
+                  Text('正在校验开发目录并建立调试关联...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final linkResult = await _pluginManager.linkDevPluginDirectory(selectedDir);
+      if (!mounted) return;
+      Navigator.pop(context); // 关闭加载框
+
+      if (linkResult.success) {
+        widget.onInstalledChanged?.call();
+        await _loadData(silent: true);
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.construction_rounded, color: Colors.indigo, size: 48),
+            title: const Text('开发调试模式已就绪'),
+            content: SelectableText(linkResult.message),
+            actions: [
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  if (linkResult.plugin != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => DynamicToolRunnerPage(plugin: linkResult.plugin!),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('立即进入测试'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 48),
+            title: const Text('关联失败'),
+            content: SelectableText(linkResult.message),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('选择目录异常: $e')));
+    }
+  }
+
   /// 卸载插件
   Future<void> _uninstallPlugin(PluginManifest plugin) async {
     final theme = Theme.of(context);
+    final isDev = plugin.isDevLink;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Row(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 24),
+            Icon(isDev ? Icons.link_off_rounded : Icons.warning_amber_rounded, color: isDev ? Colors.orange : Colors.redAccent, size: 24),
             const SizedBox(width: 8),
-            Text('卸载模块确认', style: TextStyle(color: theme.colorScheme.onSurface)),
+            Text(isDev ? '解除调试关联确认' : '卸载模块确认', style: TextStyle(color: theme.colorScheme.onSurface)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('确定要卸载功能模块【${plugin.name}】（v${plugin.version}）吗？'),
+            Text(isDev ? '确定要解除对开发目录【${plugin.name}】的调试关联吗？' : '确定要卸载功能模块【${plugin.name}】（v${plugin.version}）吗？'),
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Colors.redAccent.withValues(alpha: 0.08),
+                color: (isDev ? Colors.orange : Colors.redAccent).withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.redAccent.withValues(alpha: 0.2)),
+                border: Border.all(color: (isDev ? Colors.orange : Colors.redAccent).withValues(alpha: 0.2)),
               ),
-              child: const Text(
-                '卸载后将永久删除该模块存储在本地的所有程序代码、依赖组件及私有配置文件。',
-                style: TextStyle(fontSize: 12, color: Colors.redAccent, height: 1.4),
+              child: Text(
+                isDev
+                    ? '此操作仅从客户端中移除调试快捷关联，绝对不会删除你的源码开发目录：\n${plugin.localDir}'
+                    : '卸载后将永久删除该模块存储在本地的所有程序代码、依赖组件及私有配置文件。',
+                style: TextStyle(fontSize: 12, color: isDev ? Colors.orange.shade800 : Colors.redAccent, height: 1.4),
               ),
             ),
           ],
@@ -187,9 +274,9 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: FilledButton.styleFrom(backgroundColor: isDev ? Colors.orange : Colors.redAccent),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认卸载'),
+            child: Text(isDev ? '解除关联' : '确认卸载'),
           ),
         ],
       ),
@@ -280,6 +367,11 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
         actions: [
           if (isMobile) ...[
             IconButton(
+              icon: const Icon(Icons.code_rounded, color: Colors.indigo),
+              tooltip: '关联本地开发目录',
+              onPressed: _pickAndLinkDevPlugin,
+            ),
+            IconButton(
               icon: const Icon(Icons.file_upload_outlined, color: AppThemeManager.accentBlue),
               tooltip: '本地安装模块',
               onPressed: _pickAndInstallLocalPlugin,
@@ -302,6 +394,12 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
               onPressed: () => _loadData(),
             ),
           ] else ...[
+            OutlinedButton.icon(
+              onPressed: _pickAndLinkDevPlugin,
+              icon: const Icon(Icons.code_rounded, size: 16),
+              label: const Text('关联开发目录'),
+            ),
+            const SizedBox(width: 8),
             OutlinedButton.icon(
               onPressed: _pickAndInstallLocalPlugin,
               icon: const Icon(Icons.file_upload_outlined, size: 16),
@@ -596,7 +694,13 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
                             ),
                           ),
                           const SizedBox(width: 6),
-                          _buildOriginBadge(isBuiltIn, isStore, isLocal, isDark),
+                          _buildOriginBadge(
+                            isBuiltIn: isBuiltIn,
+                            isStore: isStore,
+                            isLocal: isLocal,
+                            isDevLink: plugin.isDevLink,
+                            isDark: isDark,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -710,12 +814,22 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
   }
 
   /// 来源 Badge
-  Widget _buildOriginBadge(bool isBuiltIn, bool isStore, bool isLocal, bool isDark) {
+  Widget _buildOriginBadge({
+    required bool isBuiltIn,
+    required bool isStore,
+    required bool isLocal,
+    required bool isDevLink,
+    required bool isDark,
+  }) {
     final String label;
     final Color color;
     final IconData icon;
 
-    if (isBuiltIn) {
+    if (isDevLink) {
+      label = '本地调试';
+      color = Colors.indigo;
+      icon = Icons.construction_rounded;
+    } else if (isBuiltIn) {
       label = '内置';
       color = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
       icon = Icons.verified_user_rounded;

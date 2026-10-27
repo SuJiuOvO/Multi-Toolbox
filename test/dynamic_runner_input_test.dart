@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:app/models/plugin_manifest.dart';
 import 'package:app/pages/dynamic_tool_runner_page.dart';
 import 'package:path/path.dart' as p;
 
@@ -132,6 +133,30 @@ void main() {
       expect(result.length, 2);
       expect(result.contains(track1.path), isTrue);
       expect(result.contains(track2.path), isTrue);
+    });
+
+    test('PluginInputCondition parses or/and/in conditions correctly', () {
+      final json = {
+        'field': 'format',
+        'in': ['mp3', 'wav'],
+        'or': [
+          {'field': 'bitrate', 'equals': 320},
+          {'field': 'quality', 'equals': 'high'}
+        ],
+        'and': [
+          {'field': 'stereo', 'equals': true}
+        ]
+      };
+
+      final cond = PluginInputCondition.fromJson(json);
+      expect(cond.field, 'format');
+      expect(cond.inValues, ['mp3', 'wav']);
+      expect(cond.or?.length, 2);
+      expect(cond.or?[0].field, 'bitrate');
+      expect(cond.or?[0].equals, 320);
+      expect(cond.and?.length, 1);
+      expect(cond.and?[0].field, 'stereo');
+      expect(cond.and?[0].equals, true);
     });
   });
 }

@@ -508,6 +508,7 @@ class WasmUniversalService {
       const EnvVariable(name: 'PATH', value: '/output:/input:/plugin:/bin'),
       const EnvVariable(name: 'TEMP', value: '/tmp'),
       const EnvVariable(name: 'TMP', value: '/tmp'),
+      const EnvVariable(name: 'PLUGIN_DIR', value: '/plugin'),
       ...env.entries.map((e) => EnvVariable(name: e.key, value: e.value)),
     ];
 
@@ -607,7 +608,16 @@ class WasmUniversalService {
       if (errStr.contains('exit status 0') || (errStr.contains('status 0') || (errStr.contains('exit') && errStr.contains(' 0')))) {
         // 正常退出码 0
       } else {
-        executionError = e.toString();
+        final match = RegExp(r'exit status (\d+)').firstMatch(errStr);
+        final code = match?.group(1);
+        if (code != null) {
+          executionError = 'WASI 进程非正常退出 (退出码: $code)。常见排查原因：\n'
+              '  1. 插件所需资源 (如字体/模型) 未使用 "/plugin/" 或环境变量 \$PLUGIN_DIR，误用了宿主绝对路径；\n'
+              '  2. 输出文件未写入当前工作目录 "." 或 "/output/"；\n'
+              '  3. CLI 参数格式不匹配或输入文件损坏。';
+        } else {
+          executionError = e.toString();
+        }
       }
     }
 

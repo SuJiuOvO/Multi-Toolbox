@@ -111,6 +111,58 @@ void main() {
       expect(installedTargetDir.existsSync(), isFalse);
       expect(service.installedPlugins.any((p) => p.id == 'test-uninstall-target'), isFalse);
     });
+
+    test('Local dev plugin directory can be linked, persisted in dev_links.json, and unlinked safely without wiping source files', () async {
+      // 1. 创建独立的开发者工作区目录
+      final devWorkspaceDir = Directory.systemTemp.createTempSync('dev_workspace_plugin_');
+      try {
+        final manifestFile = File(p.join(devWorkspaceDir.path, 'manifest.json'));
+        await manifestFile.writeAsString(jsonEncode({
+          'id': 'my-live-dev-tool',
+          'name': '本地热调试插件',
+          'version': '0.0.1-alpha',
+          'category': 'dev',
+          'description': '正在本地快速迭代开发的插件',
+          'engineType': 'quickjs',
+          'author': 'Developer',
+          'inputs': [],
+        }));
+
+        // 2. 建立开发关联
+        final linkResult = await service.linkDevPluginDirectory(devWorkspaceDir.path);
+        expect(linkResult.success, isTrue);
+
+        // 3. 检查已安装列表中存在，且标记为 isDevLink == true
+        final devPlugin = service.installedPlugins.firstWhere((p) => p.id == 'my-live-dev-tool');
+        expect(devPlugin.isDevLink, isTrue);
+        expect(devPlugin.platformBadgeText, contains('本地调试'));
+
+        // 4. 检查 dev_links.json 持久化成功
+        final devLinksFile = File(p.join(tempPluginsDir.path, 'dev_links.json'));
+        expect(devLinksFile.existsSync(), isTrue);
+        final devLinksMap = jsonDecode(await devLinksFile.readAsString()) as Map<String, dynamic>;
+        expect(devLinksMap['my-live-dev-tool'], devWorkspaceDir.path);
+
+        // 5. 调用卸载 (解除关联)
+        final unlinkSuccess = await service.uninstallPlugin('my-live-dev-tool');
+        expect(unlinkSuccess, isTrue);
+
+        // 6. 验证已从列表移除
+        expect(service.installedPlugins.any((p) => p.id == 'my-live-dev-tool'), isFalse);
+
+        // 7. 关键保障：开发者工作区原始源码依然完好无损！
+        expect(devWorkspaceDir.existsSync(), isTrue);
+        expect(manifestFile.existsSync(), isTrue);
+
+        // 8. 验证 dev_links.json 中记录已清除
+        final updatedLinksMap = jsonDecode(await devLinksFile.readAsString()) as Map<String, dynamic>;
+        expect(updatedLinksMap.containsKey('my-live-dev-tool'), isFalse);
+      } finally {
+        if (devWorkspaceDir.existsSync()) {
+          devWorkspaceDir.deleteSync(recursive: true);
+        }
+      }
+    });
   });
 
   group('InstalledPluginsManagerPage Search & Filter Simulation Tests', () {

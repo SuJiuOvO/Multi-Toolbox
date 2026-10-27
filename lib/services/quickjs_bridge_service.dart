@@ -160,6 +160,22 @@ class QuickJsBridgeService {
               arguments: args,
             );
             result = execRes;
+          } else if (action == 'image_pipeline') {
+            final steps = payload['steps'];
+            final files = (payload['inputFiles'] as List?)?.map((e) => e.toString()).toList() ?? inputFiles;
+            final res = await ToolEngineService.execute(
+              handler: 'image_pipeline',
+              inputFiles: files,
+              params: {'steps': steps},
+              outputDir: outputDir,
+              onProgress: onProgress,
+              onLog: onLog,
+            );
+            result = {
+              'success': res.success,
+              'message': res.message,
+              'outputFiles': res.outputFiles,
+            };
           } else {
             result = {'__error': '未知异步宿主动作: $action'};
           }
@@ -292,8 +308,12 @@ class QuickJsBridgeService {
       // --- 文件系统 (fs) ---
       case 'fs_read':
         final filePath = payload['path']?.toString() ?? '';
+        final isBase64 = payload['isBase64'] == true || payload['encoding'] == 'base64';
         final file = File(filePath);
         if (!file.existsSync()) throw Exception('文件不存在: $filePath');
+        if (isBase64) {
+          return base64Encode(file.readAsBytesSync());
+        }
         return file.readAsStringSync();
 
       case 'fs_write':
@@ -450,8 +470,14 @@ class QuickJsBridgeService {
         sendMessage('ToolboxChannel_Progress', JSON.stringify({ progress: Number(pct), status: String(status || '') }));
       },
       fs: {
-        readFile: function(path) {
-          return __Toolbox_syncCall('fs_read', { path: path });
+        readFile: function(path, isBase64) {
+          return __Toolbox_syncCall('fs_read', { path: path, isBase64: !!isBase64 });
+        },
+        readBytes: function(path) {
+          return __Toolbox_syncCall('fs_read', { path: path, isBase64: true });
+        },
+        readText: function(path) {
+          return __Toolbox_syncCall('fs_read', { path: path, isBase64: false });
         },
         writeFile: function(path, content, isBase64) {
           return __Toolbox_syncCall('fs_write', { path: path, content: content, isBase64: !!isBase64 });
@@ -467,6 +493,47 @@ class QuickJsBridgeService {
         },
         fileSize: function(path) {
           return __Toolbox_syncCall('fs_size', { path: path });
+        }
+      },
+      utils: {
+        base64ToBytes: function(b64) {
+          var b64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+          var lookup = new Uint8Array(256);
+          for (var i = 0; i < b64Chars.length; i++) {
+            lookup[b64Chars.charCodeAt(i)] = i;
+          }
+          var rawStr = String(b64 || '');
+          var str = rawStr.replace(/[^A-Za-z0-9+/]/g, '');
+          var len = str.length;
+          var placeHolders = (rawStr.charAt(rawStr.length - 1) === '=') ? (rawStr.charAt(rawStr.length - 2) === '=' ? 2 : 1) : 0;
+          var arrLen = (len * 3 / 4) - placeHolders;
+          var bytes = new Uint8Array(arrLen);
+          var curByte = 0;
+          for (var j = 0; j < len; j += 4) {
+            var enc1 = lookup[str.charCodeAt(j)];
+            var enc2 = lookup[str.charCodeAt(j + 1)];
+            var enc3 = lookup[str.charCodeAt(j + 2)];
+            var enc4 = lookup[str.charCodeAt(j + 3)];
+            bytes[curByte++] = (enc1 << 2) | (enc2 >> 4);
+            if (curByte < arrLen) bytes[curByte++] = ((enc2 & 15) << 4) | (enc3 >> 2);
+            if (curByte < arrLen) bytes[curByte++] = ((enc3 & 3) << 6) | enc4;
+          }
+          return bytes;
+        },
+        bytesToBase64: function(bytes) {
+          var b64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+          var len = bytes ? (bytes.length || bytes.byteLength || 0) : 0;
+          var base64 = '';
+          for (var i = 0; i < len; i += 3) {
+            var b1 = bytes[i];
+            var b2 = i + 1 < len ? bytes[i + 1] : 0;
+            var b3 = i + 2 < len ? bytes[i + 2] : 0;
+            base64 += b64Chars.charAt(b1 >> 2);
+            base64 += b64Chars.charAt(((b1 & 3) << 4) | (b2 >> 4));
+            base64 += (i + 1 < len) ? b64Chars.charAt(((b2 & 15) << 2) | (b3 >> 6)) : '=';
+            base64 += (i + 2 < len) ? b64Chars.charAt(b3 & 63) : '=';
+          }
+          return base64;
         }
       },
       crypto: {
@@ -489,6 +556,11 @@ class QuickJsBridgeService {
         },
         compress: function(inputPaths, outputPath, format) {
           return __Toolbox_asyncCall('archive_compress', { inputPaths: inputPaths, outputPath: outputPath, format: format || 'zip' });
+        }
+      },
+      image: {
+        pipeline: function(steps, inputFiles) {
+          return __Toolbox_asyncCall('image_pipeline', { steps: steps, inputFiles: inputFiles || [] });
         }
       },
       wasm: {

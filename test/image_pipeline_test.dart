@@ -1,0 +1,195 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
+import 'package:app/models/plugin_manifest.dart';
+import 'package:app/services/tool_engine_service.dart';
+import 'package:app/services/quickjs_bridge_service.dart';
+import 'package:path/path.dart' as p;
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('ToolEngineService image_pipeline Direct Engine Tests', () {
+    late Directory tempDir;
+    late File sampleImageFile;
+
+    setUp(() {
+      tempDir = Directory.systemTemp.createTempSync('image_pipeline_test_');
+      // 创建一个 100x100 的纯色测试 PNG 图像
+      final image = img.Image(width: 100, height: 100);
+      img.fill(image, color: img.ColorRgba8(255, 0, 0, 255)); // 红色
+      sampleImageFile = File(p.join(tempDir.path, 'sample.png'));
+      sampleImageFile.writeAsBytesSync(img.encodePng(image));
+    });
+
+    tearDown(() {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('Executes resize and circle_crop and saves to PNG', () async {
+      final result = await ToolEngineService.execute(
+        handler: 'image_pipeline',
+        inputFiles: [sampleImageFile.path],
+        params: {
+          'steps': [
+            {'op': 'resize', 'width': 40, 'height': 40},
+            {'op': 'circle_crop'},
+            {'op': 'save', 'format': 'png', 'output': 'circle_avatar.png'},
+          ],
+        },
+        outputDir: tempDir.path,
+      );
+
+      expect(result.success, isTrue);
+      expect(result.outputFiles, isNotNull);
+      expect(result.outputFiles!.length, 1);
+
+      final outPath = result.outputFiles!.first;
+      expect(File(outPath).existsSync(), isTrue);
+
+      final decoded = img.decodePng(File(outPath).readAsBytesSync());
+      expect(decoded, isNotNull);
+      expect(decoded!.width, 40);
+      expect(decoded!.height, 40);
+
+      // 角落处的像素 (0, 0) 应该被 circle_crop 镂空为完全透明 (alpha = 0)
+      final cornerPixel = decoded.getPixel(0, 0);
+      expect(cornerPixel.a, 0);
+
+      // 中心处的像素 (20, 20) 应该依然是不透明红色
+      final centerPixel = decoded.getPixel(20, 20);
+      expect(centerPixel.a, 255);
+      expect(centerPixel.r, 255);
+    });
+
+    test('Executes init_gif, add_gif_frame, and generates animated GIF', () async {
+      // 创建第二个测试帧 (蓝色)
+      final frame2 = img.Image(width: 50, height: 50);
+      img.fill(frame2, color: img.ColorRgba8(0, 0, 255, 255));
+      final frame2File = File(p.join(tempDir.path, 'frame2.png'));
+      frame2File.writeAsBytesSync(img.encodePng(frame2));
+
+      final result = await ToolEngineService.execute(
+        handler: 'image_pipeline',
+        inputFiles: [sampleImageFile.path],
+        params: {
+          'steps': [
+            {'op': 'init_gif', 'fps': 5, 'repeat': 0, 'output': 'test_anim.gif'},
+            {'op': 'resize', 'width': 50, 'height': 50},
+            {'op': 'add_gif_frame'},
+            {'op': 'load', 'file': frame2File.path},
+            {'op': 'add_gif_frame'},
+          ],
+        },
+        outputDir: tempDir.path,
+      );
+
+      expect(result.success, isTrue);
+      expect(result.outputFiles, isNotNull);
+      expect(result.outputFiles!.length, 1);
+
+      final gifPath = result.outputFiles!.first;
+      expect(File(gifPath).existsSync(), isTrue);
+      final gifBytes = File(gifPath).readAsBytesSync();
+      expect(gifBytes.length, greaterThan(10));
+      // GIF magic bytes: "GIF89a" or "GIF87a"
+      final magic = String.fromCharCodes(gifBytes.sublist(0, 6));
+      expect(magic.startsWith('GIF'), isTrue);
+    });
+
+    test('Overlay / composite operation overlays watermark onto image', () async {
+      // 水印图片 (10x10 绿色)
+      final watermark = img.Image(width: 10, height: 10);
+      img.fill(watermark, color: img.ColorRgba8(0, 255, 0, 255));
+      final wmFile = File(p.join(tempDir.path, 'wm.png'));
+      wmFile.writeAsBytesSync(img.encodePng(watermark));
+
+      final result = await ToolEngineService.execute(
+        handler: 'image_pipeline',
+        inputFiles: [sampleImageFile.path],
+        params: {
+          'steps': [
+            {'op': 'overlay', 'image': wmFile.path, 'x': 5, 'y': 5},
+            {'op': 'save', 'format': 'png', 'output': 'watermarked.png'},
+          ],
+        },
+        outputDir: tempDir.path,
+      );
+
+      expect(result.success, isTrue);
+      final outPath = result.outputFiles!.first;
+      final decoded = img.decodePng(File(outPath).readAsBytesSync())!;
+      final overlaidPixel = decoded.getPixel(5, 5);
+      expect(overlaidPixel.g, 255);
+    });
+  });
+
+  group('QuickJS Bridge Toolbox.image.pipeline Integration Tests', () {
+    test('QuickJS script successfully invokes Toolbox.image.pipeline', () async {
+      final tempDir = Directory.systemTemp.createTempSync('qjs_img_pipe_');
+      try {
+        // 创建基础图片
+        final baseImg = img.Image(width: 60, height: 60);
+        img.fill(baseImg, color: img.ColorRgba8(200, 100, 50, 255));
+        final baseImgFile = File(p.join(tempDir.path, 'input.png'));
+        baseImgFile.writeAsBytesSync(img.encodePng(baseImg));
+
+        final manifest = PluginManifest(
+          id: 'test-js-image-pipe',
+          name: 'QuickJS Image Pipeline Test',
+          version: '1.0.0',
+          category: 'image',
+          description: 'Testing Toolbox.image.pipeline from QuickJS sandbox',
+          icon: 'image',
+          author: 'Test',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ inputFiles, outputDir, params }) {
+                  Toolbox.log('Starting image pipeline from JS...');
+                  
+                  const res = await Toolbox.image.pipeline([
+                    { op: 'resize', width: 30, height: 30 },
+                    { op: 'save', format: 'png', output: 'qjs_output.png' }
+                  ], inputFiles);
+                  
+                  Toolbox.log('Pipeline finished with: ' + JSON.stringify(res));
+                  return { success: res.success, message: res.message, files: res.files };
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [baseImgFile.path],
+          outputDir: tempDir.path,
+          onProgress: (pct, stage) {},
+          onLog: (line, isError) {},
+        );
+
+        expect(result.success, isTrue);
+        final generatedFile = File(p.join(tempDir.path, 'qjs_output.png'));
+        expect(generatedFile.existsSync(), isTrue);
+
+        final decoded = img.decodePng(generatedFile.readAsBytesSync());
+        expect(decoded, isNotNull);
+        expect(decoded!.width, 30);
+        expect(decoded.height, 30);
+      } finally {
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
+      }
+    });
+  });
+}

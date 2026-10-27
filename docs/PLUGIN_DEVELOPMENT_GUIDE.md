@@ -1,6 +1,6 @@
-# 🛠️ Multi-Toolbox 社区功能模块（插件）全栈开发与技术架构指南 (Manifest v2.2)
+# 🛠️ Multi-Toolbox 社区功能模块（插件）全栈开发与技术架构指南 (Manifest v2.3)
 
-> **当前规范版本**：`Manifest v2.2` (全面支持 WASI Preview 1 VFS 虚拟文件系统与双端自适应合一架构)  
+> **当前规范版本**：`Manifest v2.3` (全面支持 WASI Preview 1 VFS 虚拟文件系统、双端自适应合一架构、QuickJS 二进制/图像管道与免打包本地热调试)  
 > **适用对象**：核心维护人员、第三方工具开发者、系统与脚本工程师（Rust / C++ / WebAssembly / JavaScript / Python / CLI）  
 > **核心哲学**：**客户端极致精简稳定，海量功能按需沙箱热插拔；100% 纯本地离线执行，全面保障用户隐私与数据安全。**
 
@@ -11,23 +11,25 @@
 1. [系统整体架构与沙箱底座全貌](#1-系统整体架构与沙箱底座全貌)
 2. [五大执行模式与运行时深度解析](#2-五大执行模式与运行时深度解析)
    - [2.1 WebAssembly (Wasm) 二进制算力与 WASI Preview 1 虚拟文件系统 (VFS) 沙箱](#21-webassembly-wasm-二进制算力与-wasi-preview-1-虚拟文件系统-vfs-沙箱)
-   - [2.2 QuickJS 跨平台动态脚本沙箱](#22-quickjs-跨平台动态脚本沙箱-executiontype-quickjs)
+   - [2.2 QuickJS 跨平台动态脚本沙箱与宿主 Bridge (Binary I/O & Image Pipeline)](#22-quickjs-跨平台动态脚本沙箱-executiontype-quickjs)
    - [2.3 Windows 开放扩展工坊 (Native CLI / Script)](#23-windows-开放扩展工坊-executiontype-native_executable--script)
    - [2.4 🚀 双端自适应合一架构 (Dual-Adaptive: Win 原生 + Android WASM)](#24--双端自适应合一架构-dual-adaptive-win-原生--android-wasm)
-   - [2.5 客户端内置原生算法与多媒体流水线](#25-客户端内置原生算法与多媒体流水线-executiontype-internal)
-3. [Manifest v2.2 清单规范全字段完整参考](#3-manifest-v22-清单规范全字段完整参考)
+   - [2.5 客户端内置原生算法与多媒体流水线 (Audio & Image Pipeline)](#25-客户端内置原生算法与多媒体流水线-executiontype-internal)
+3. [Manifest v2.3 清单规范全字段完整参考](#3-manifest-v23-清单规范全字段完整参考)
    - [3.1 核心元数据配置](#31-核心元数据配置)
    - [3.2 图标系统完整规范 (图片限制与 SVG 矢量代码渲染)](#32-图标系统完整规范-图片限制与-svg-矢量代码渲染)
    - [3.3 动态表单组件系统 (Inputs)](#33-动态表单组件系统-inputs)
-     - *文件选择器特性：Android 专有后缀容错、文件夹递归展开与符号链接防死循环*
-   - [3.4 动态条件联动展示 (visibleIf)](#34-动态条件联动展示-visibleif)
+     - *文件选择器特性：图片交互缩略图预览、Android 专有后缀容错、文件夹递归展开与符号链接防死循环*
+     - *其他组件：switch 开关、slider 滑块、select 下拉单选、text 文本框*
+   - [3.4 动态条件联动展示 (visibleIf) 高级语法 (and / or / in)](#34-动态条件联动展示-visibleif)
    - [3.5 完整的 dual-adaptive 双 Runner 声明结构](#35-完整的-dual-adaptive-双-runner-声明结构)
 4. [从零开始的实战开发教程 (4 个完整实例)](#4-从零开始的实战开发教程-4-个完整实例)
    - [实战 1：开发一个 QuickJS 文本高频词分析与多重编解码模块](#实战-1开发一个-quickjs-文本高频词分析与多重编解码模块)
    - [实战 2：开发一个 Rust 编译的 WebAssembly 极速素数筛/哈希计算模块](#实战-2开发一个-rust-编译的-webassembly-极速素数筛哈希计算模块)
    - [实战 3：开发一个 Windows 独立 CLI 音视频转码与终端回显扩展](#实战-3开发一个-windows-独立-cli-音视频转码与终端回显扩展)
    - [🌟 实战 4：开发一个双端自适应合一插件（网易云 NCM 解密器）](#-实战-4开发一个双端自适应合一插件网易云-ncm-解密器)
-5. [本地开发、打包与自动化测试规范](#5-本地开发打包与自动化测试规范)
+5. [本地开发、热调试、打包与自动化测试规范](#5-本地开发打包与自动化测试规范)
+   - [5.1 🌟 关联本地开发目录：免打包实时热调试 (Dev Link Mode)](#51--关联本地开发目录免打包实时热调试-local-dev-link-mode)
 6. [社区注册中心提交与合入发布规范 (PR 流程)](#6-社区注册中心提交与合入发布规范-pr-流程)
 
 ---
@@ -147,11 +149,50 @@ flowchart TD
 
 #### 开发特点与优势：
 - **热插拔极速调试**：直接编辑 `.js` 文件，重新进入工具页面即刻生效，无需任何编译工具链。
-- **标准语法支持**：完整支持 ES2020 语法（包括箭头函数、解构赋值、BigInt、Promise 等）。
+- **标准语法支持**：完整支持 ES2020 语法（包括箭头函数、解构赋值、BigInt、Promise、Async/Await 等）。
 - **宿主环境自动注入**：
   - UI 表单参数自动注入为全局对象 `inputs`（例如 `inputs.sourceText`、`inputs.format`）。
   - 支持 `console.log(...)`，终端面板实时捕获回显。
   - 最终结果直接以 `return` 语句返回字符串呈现给用户。
+
+#### 核心 API 与宿主双向通信能力 (Host Bridge)：
+QuickJS 插件沙箱不仅支持普通的文本分析，更提供了完整的高性能底层文件与图形处理 API：
+- **二进制与文件系统 (`Toolbox.fs`)**：
+  - `Toolbox.fs.readBytes(path)`: 异步读取文件并直接返回 `Uint8Array` 原始二进制字节流，轻松处理图片/音频/压缩包等非文本格式。
+  - `Toolbox.fs.readFile(path, isBase64)`: 读取文件为 UTF-8 文本字符串（默认）或 Base64 编码字符串（`isBase64: true`）。
+  - `Toolbox.fs.writeFile(path, content, isBase64)`: 写入文本字符串或 Base64 编码的二进制字节流到磁盘。
+  - `Toolbox.fs.exists(path)`: 判断文件或目录是否存在。
+- **极速编解码工具箱 (`Toolbox.utils`)**：
+  - `Toolbox.utils.base64ToBytes(b64String)`: 标准 RFC 4648 查表算法，将 Base64 字符串极速转换为 `Uint8Array`。
+  - `Toolbox.utils.bytesToBase64(uint8Array)`: 将 `Uint8Array` 极速编码为 Base64 字符串。
+- **纯本地原生图形管道 (`Toolbox.image.pipeline`)**：
+  - 无需在 JS 中费力解析复杂的 PNG/JPG 结构，通过 `await Toolbox.image.pipeline(steps, inputFiles)` 直接调用宿主纯 Dart 驱动的高性能图形流水线（缩放、裁剪、圆形裁切、图层叠放水印、生成动图 GIF）。
+
+#### 二进制与图形处理代码范例：
+```javascript
+async function run({ inputFiles, outputDir, params }) {
+  Toolbox.log('读取输入文件二进制头...');
+  const bytes = await Toolbox.fs.readBytes(inputFiles[0]);
+  
+  // 检查 Magic Bytes (如 PNG 头 0x89 0x50)
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) {
+    Toolbox.log('检测到 PNG 图像，准备调用原生管道进行圆角头像制作与加水印...');
+  }
+  
+  // 直接调度宿主多步骤原生图形管道流水线
+  const res = await Toolbox.image.pipeline([
+    { op: 'resize', width: 256, height: 256 },
+    { op: 'circle_crop' },
+    { op: 'save', format: 'png', output: 'avatar.png' }
+  ], inputFiles);
+  
+  return { 
+    success: res.success, 
+    message: '图像处理成功！已生成圆角透明切片', 
+    files: res.files 
+  };
+}
+```
 
 ---
 
@@ -206,6 +247,19 @@ flowchart TD
 ### 2.5 客户端内置原生算法与多媒体流水线 (`executionType: "internal"`)
 
 客户端内置了经过严苛优化的图形、文档与音视频流水线：
+- **原生多通道图像管道流水线 (`handler: "image_pipeline"`)**：
+  全平台纯 Dart 原生运行，无任何外部 C 动态库或 FFmpeg 强依赖，Windows 与 Android 双端 100% 行为完全一致。
+  支持在 `params.steps` 列表中编排任意数量的图层运算操作：
+  | 操作类型 `op` | 参数说明 | 功能说明 |
+  | :--- | :--- | :--- |
+  | `resize` | `width` / `height` | 高质量尺寸缩放 |
+  | `crop` | `x`, `y`, `width`, `height` | 矩形区域精准裁切 |
+  | `circle_crop` | 无（自动按最小边计算正方形与内切圆） | 圆形头像切片，圆外自动镂空透明（Alpha = 0） |
+  | `overlay` / `composite` | `image` (路径) 或 `base64`，`x`, `y` | 水印与透明图层叠放合成 |
+  | `init_gif` | `fps` (默认 10), `repeat` (默认 0 循环), `output` | 初始化动图序列编码器 |
+  | `add_gif_frame` | 无 | 将当前帧图像推入动图帧序列 |
+  | `load` | `file` / `path` | 重新载入另一张源图片成为当前操作上下文 |
+  | `save` / `encode` | `format` (`png`\|`jpg`\|`gif`), `quality` (1-100), `output` | 将当前画布置入输出目录 |
 - **音视频工具箱 (`video-audio-toolbox`) v1.3.0 增强**：
   - 支持 **FLAC 原生多线程无损转码**（`-c:a flac`）。
   - 支持 **OGG (Vorbis) 高保真转码**（双重保障：首选 `libvorbis -q:a 5`，若环境缺失自动平滑回退至 FFmpeg 原生内置 `vorbis` 编码器）。
@@ -215,7 +269,7 @@ flowchart TD
 
 ---
 
-## 3. Manifest v2.2 清单规范全字段完整参考
+## 3. Manifest v2.3 清单规范全字段完整参考
 
 每个功能模块的唯一配置文件为 `manifest.json`。
 
@@ -282,12 +336,18 @@ flowchart TD
   "allowedExtensions": ["ncm", "flac", "mp3"]
 }
 ```
+- **智能交互缩略图卡片预览 (Image Thumbnail Cards)**：
+  当用户选中图片格式（`.png`、`.jpg`、`.jpeg`、`.gif`、`.webp`、`.bmp`、`.ico`）时，文件选择区域下方会自动渲染响应式缩略图卡片矩阵，直观展示图片真实像素尺寸（如 `1920 × 1080`）、文件大小，并支持悬浮单键移除，大幅提升用户操作体验。
 - **Android 端专有未知后缀安全降级**：
   在 Android 系统下，某些私有后缀（如 `.ncm`、`.qmc`、`.dat`）没有被注册到系统的 MimeTypeMap 中，直接使用 `FileType.custom` 会导致系统 SAF 选择器无响应或文件置灰。Multi-Toolbox 客户端在底层实现了智能捕获与 `FileType.any` 安全平滑降级，并在宿主层完成后缀校验，开发者无需写任何防御胶水代码！
 - **文件夹扁平化展开与防环机制 (`flattenInputEntries`)**：
   若用户选择或拖拽了整个文件夹，客户端会在宿主层自动进行目录递归扫描、排除隐藏与系统垃圾文件（如 `.DS_Store`、`Thumbs.db`、`desktop.ini`），并执行规范化路径去重与符号链接防死循环保护（`followLinks: false`），将目录中的真实目标文件整齐喂给 WASI 沙箱或 CLI 批处理调度器。
 
 #### 2. 其他输入组件
+- `switch` / `checkbox`：布尔开关选择组件。
+  - `label`：主标题文本。
+  - `description`：副标题详细说明（解释开启此开关的行为）。
+  - `defaultValue`：默认布尔值（`true` 或 `false`）。
 - `slider`：数值滑块（支持 `defaultValue`, `min`, `max`, `step`）。
 - `select`：下拉单选（选项支持 `options: [{label, value, platforms}]`）。
 - `number`：数字输入框。
@@ -297,19 +357,42 @@ flowchart TD
 
 ### 3.4 动态条件联动展示 (visibleIf)
 
+`visibleIf` 语法全面支持单值相等比对、列表包含匹配 (`in`) 以及复合与/或逻辑 (`and` / `or`)：
+
+#### 1. 单值相等比对 (`value` / `equals`)
 ```json
-{
-  "id": "bitrate",
-  "label": "自定义音频码率",
-  "type": "select",
-  "options": [
-    { "label": "320 kbps (极致音质)", "value": "320k" },
-    { "label": "192 kbps (标准均衡)", "value": "192k" }
-  ],
-  "visibleIf": {
-    "field": "format",
-    "equals": "mp3"
-  }
+"visibleIf": {
+  "field": "format",
+  "value": "mp3"
+}
+```
+
+#### 2. 多选项匹配 (`in`)
+当某字段的选值命中列表中任一元素时展示：
+```json
+"visibleIf": {
+  "field": "output_format",
+  "in": ["flac", "wav", "aac"]
+}
+```
+
+#### 3. 复合条件 (`and` / `or`)
+- **`or` 逻辑**：满足任一子条件即显示。
+```json
+"visibleIf": {
+  "or": [
+    { "field": "process_mode", "value": "custom_crop" },
+    { "field": "enable_circle_mask", "value": true }
+  ]
+}
+```
+- **`and` 逻辑**：所有子条件必须同时满足才显示。
+```json
+"visibleIf": {
+  "and": [
+    { "field": "mode", "value": "watermark" },
+    { "field": "source_type", "value": "file" }
+  ]
 }
 ```
 
@@ -646,9 +729,24 @@ plugins/ncm-audio-converter/
 
 ## 5. 本地开发、打包与自动化测试规范
 
+### 5.1 🌟 关联本地开发目录：免打包实时热调试 (Local Dev Link Mode)
+
+在 Manifest v2.3 架构中，客户端全面支持**「本地开发关联模式」**。开发者无需每修改一行代码就打包解压一次：
+
+#### 使用步骤：
+1. **进入管理页面**：在 Multi-Toolbox 客户端打开「已安装插件管理」；
+2. **建立关联**：点击顶部栏的「关联开发目录」（移动端为终端代码图标 `Icons.code_rounded`）；
+3. **选择本地工程**：在弹出的文件浏览器中，选择你正在编写的插件源码根目录（该目录下必须包含 `manifest.json`）；
+4. **即刻生效**：客户端校验通过后，将在列表中显示该插件，并佩戴专属深紫色的 **`[🛠️ 本地调试]`** 来源角标；
+5. **免重新打包热迭代**：直接在 VS Code 或其他开发环境中修改 `plugin.js`、`manifest.json` 或更新 `.wasm` 文件，回到 Multi-Toolbox 重新打开该插件页面，所有修改**即刻生效**！
+6. **安全卸载保障**：当你在客户端中点击「卸载」本地调试插件时，客户端仅清除本地映射关系 (`dev_links.json`)，**绝对不会删除或破坏开发者的源码目录**。
+
+---
+
+### 5.2 运行自动化构建与检查
+
 社区注册表仓库自带本地校验与构建工具 `tools/build_registry.py`。
 
-### 运行自动化构建与检查
 在 `Toolbox-Community-Registry-Repo/` 根目录下执行：
 ```bash
 python tools/build_registry.py

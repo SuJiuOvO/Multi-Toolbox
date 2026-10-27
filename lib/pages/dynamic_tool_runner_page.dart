@@ -371,6 +371,36 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     }
   }
 
+  bool _isImageFile(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.gif') ||
+        lower.endsWith('.bmp');
+  }
+
+  bool _isAudioFile(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp3') ||
+        lower.endsWith('.wav') ||
+        lower.endsWith('.flac') ||
+        lower.endsWith('.aac') ||
+        lower.endsWith('.ogg') ||
+        lower.endsWith('.m4a');
+  }
+
+  bool _isVideoFile(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mkv') ||
+        lower.endsWith('.avi') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.flv') ||
+        lower.endsWith('.webm');
+  }
+
   bool _isInputVisible(PluginInputDef input) {
     if (!input.isSupportedOnCurrentPlatform()) return false;
     final cond = input.visibleIf;
@@ -403,6 +433,12 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       for (final subCond in cond.and!) {
         if (!_evalCondition(subCond)) return false;
       }
+    }
+
+    // 3. 支持 or 复合条件 (满足任一即可)
+    if (cond.or != null && cond.or!.isNotEmpty) {
+      final anyPassed = cond.or!.any((subCond) => _evalCondition(subCond));
+      if (!anyPassed) return false;
     }
 
     return true;
@@ -1218,59 +1254,103 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               ),
               const SizedBox(height: 8),
               ..._result!.outputFiles.map((outPath) {
-                final isImg = outPath.endsWith('.jpg') ||
-                    outPath.endsWith('.png') ||
-                    outPath.endsWith('.webp');
+                final isImg = _isImageFile(outPath);
+                final isAudio = _isAudioFile(outPath);
+                final isVideo = _isVideoFile(outPath);
+                final lower = outPath.toLowerCase();
+                final isText = lower.endsWith('.json') ||
+                    lower.endsWith('.txt') ||
+                    lower.endsWith('.md') ||
+                    lower.endsWith('.csv') ||
+                    lower.endsWith('.log');
+                final fileExists = File(outPath).existsSync();
+
                 return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
+                  margin: const EdgeInsets.only(bottom: 10),
                   elevation: 1,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                     side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB)),
                   ),
-                  child: ListTile(
-                    onTap: () => _openFile(outPath),
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                    leading: isImg
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: Image.file(
-                              File(outPath),
-                              width: 44,
-                              height: 44,
-                              fit: BoxFit.cover,
-                            ),
-                          )
-                        : Icon(Icons.insert_drive_file, color: theme.colorScheme.primary),
-                    title: Text(
-                      p.basename(outPath),
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textPrimary),
-                    ),
-                    subtitle: Text(
-                      outPath,
-                      style: TextStyle(fontSize: 11, color: textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.open_in_new, size: 20),
-                          tooltip: '打开或播放',
-                          onPressed: () => _openFile(outPath),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ListTile(
+                        onTap: () => _openFile(outPath),
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                        leading: isImg && fileExists
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: Image.file(
+                                  File(outPath),
+                                  width: 44,
+                                  height: 44,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image),
+                                ),
+                              )
+                            : Icon(
+                                isAudio
+                                    ? Icons.audiotrack_rounded
+                                    : (isVideo
+                                        ? Icons.movie_creation_outlined
+                                        : (isText ? Icons.description_outlined : Icons.insert_drive_file)),
+                                color: theme.colorScheme.primary,
+                              ),
+                        title: Text(
+                          p.basename(outPath),
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textPrimary),
                         ),
-                        if (Platform.isWindows)
-                          IconButton(
-                            icon: const Icon(Icons.folder_open, size: 20),
-                            tooltip: '在文件夹中定位',
-                            onPressed: () {
-                              Process.run('explorer.exe', ['/select,', outPath]);
-                            },
+                        subtitle: Text(
+                          outPath,
+                          style: TextStyle(fontSize: 11, color: textSecondary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.open_in_new, size: 20),
+                              tooltip: '打开或播放',
+                              onPressed: () => _openFile(outPath),
+                            ),
+                            if (Platform.isWindows)
+                              IconButton(
+                                icon: const Icon(Icons.folder_open, size: 20),
+                                tooltip: '在文件夹中定位',
+                                onPressed: () {
+                                  Process.run('explorer.exe', ['/select,', outPath]);
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (isImg && fileExists)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                          child: GestureDetector(
+                            onTap: () => _openFile(outPath),
+                            child: Container(
+                              constraints: const BoxConstraints(maxHeight: 220),
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.file(
+                                  File(outPath),
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                ),
+                              ),
+                            ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 );
               }),
@@ -1562,11 +1642,32 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                       return ListTile(
                         dense: true,
                         visualDensity: VisualDensity.compact,
-                        leading: Icon(
-                          isDirectory ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                          color: isDirectory ? Colors.amber : (isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB)),
-                          size: 22,
-                        ),
+                        leading: isDirectory
+                            ? const Icon(Icons.folder_rounded, color: Colors.amber, size: 22)
+                            : (_isImageFile(itemPath) && File(itemPath).existsSync()
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Image.file(
+                                      File(itemPath),
+                                      width: 26,
+                                      height: 26,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Icon(
+                                        Icons.insert_drive_file_rounded,
+                                        color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
+                                        size: 22,
+                                      ),
+                                    ),
+                                  )
+                                : Icon(
+                                    _isAudioFile(itemPath)
+                                        ? Icons.audiotrack_rounded
+                                        : (_isVideoFile(itemPath)
+                                            ? Icons.movie_creation_outlined
+                                            : Icons.insert_drive_file_rounded),
+                                    color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
+                                    size: 22,
+                                  )),
                         title: Text(
                           itemName,
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: textPrimary),
@@ -1640,10 +1741,31 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      currentFile != null ? Icons.folder_zip_rounded : Icons.cloud_upload_outlined,
-                      color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
-                    ),
+                    if (currentFile != null && _isImageFile(currentFile) && File(currentFile).existsSync())
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.file(
+                          File(currentFile),
+                          width: 38,
+                          height: 38,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.image_outlined,
+                            color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
+                          ),
+                        ),
+                      )
+                    else
+                      Icon(
+                        currentFile != null
+                            ? (_isAudioFile(currentFile)
+                                ? Icons.audiotrack_rounded
+                                : (_isVideoFile(currentFile)
+                                    ? Icons.movie_creation_outlined
+                                    : Icons.insert_drive_file_rounded))
+                            : Icons.cloud_upload_outlined,
+                        color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
+                      ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -1673,6 +1795,26 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 ),
               ),
             ),
+            if (currentFile != null && _isImageFile(currentFile) && File(currentFile).existsSync()) ...[
+              const SizedBox(height: 8),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 160),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: inputBorderColor),
+                ),
+                padding: const EdgeInsets.all(4),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.file(
+                    File(currentFile),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ],
             if (input.id == 'cadInput') ...[
               const SizedBox(height: 8),
               Container(
@@ -1999,6 +2141,35 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               },
             ),
           ],
+        ),
+      );
+    } else if (input.type == 'switch' || input.type == 'checkbox') {
+      final curVal = _formValues[input.id] == true ||
+          _formValues[input.id]?.toString().toLowerCase() == 'true';
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: inputBg,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: inputBorderColor),
+          ),
+          child: SwitchListTile(
+            dense: true,
+            title: Text(
+              input.label,
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: textPrimary),
+            ),
+            subtitle: input.description.isNotEmpty
+                ? Text(input.description, style: TextStyle(fontSize: 12, color: textSecondary))
+                : null,
+            value: curVal,
+            onChanged: (val) {
+              setState(() {
+                _formValues[input.id] = val;
+              });
+            },
+          ),
         ),
       );
     }
