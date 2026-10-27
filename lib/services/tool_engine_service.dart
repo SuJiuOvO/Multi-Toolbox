@@ -342,7 +342,23 @@ class ToolEngineService {
           if (currentImg != null) {
             final w = (step['width'] ?? step['w'] as num?)?.toInt() ?? currentImg.width;
             final h = (step['height'] ?? step['h'] as num?)?.toInt() ?? currentImg.height;
-            currentImg = img.copyResize(currentImg, width: w, height: h);
+            final interpStr = step['interpolation']?.toString().toLowerCase();
+            final img.Interpolation interp;
+            if (interpStr == 'nearest') {
+              interp = img.Interpolation.nearest;
+            } else if (interpStr == 'linear') {
+              interp = img.Interpolation.linear;
+            } else if (interpStr == 'average') {
+              interp = img.Interpolation.average;
+            } else {
+              interp = img.Interpolation.cubic;
+            }
+            currentImg = img.copyResize(
+              currentImg,
+              width: w,
+              height: h,
+              interpolation: interp,
+            );
           }
           break;
 
@@ -400,13 +416,20 @@ class ToolEngineService {
               final dstH = (step['height'] ?? step['h'] as num?)?.toInt();
               final dstX = (step['x'] as num?)?.toInt() ?? 0;
               final dstY = (step['y'] as num?)?.toInt() ?? 0;
+              if ((dstW != null && dstW != overlayImg.width) ||
+                  (dstH != null && dstH != overlayImg.height)) {
+                overlayImg = img.copyResize(
+                  overlayImg,
+                  width: dstW,
+                  height: dstH,
+                  interpolation: img.Interpolation.cubic,
+                );
+              }
               img.compositeImage(
                 currentImg,
                 overlayImg,
                 dstX: dstX,
                 dstY: dstY,
-                dstW: dstW,
-                dstH: dstH,
               );
             }
           }

@@ -217,6 +217,42 @@ void main() {
       expect(dec.getPixel(60, 60).r, 255);
     });
 
+    test('Resize operation defaults to high-quality cubic interpolation and allows explicit nearest neighbor', () async {
+      // 默认 cubic 插值
+      final resCubic = await ToolEngineService.execute(
+        handler: 'image_pipeline',
+        inputFiles: [sampleImageFile.path],
+        params: {
+          'steps': [
+            {'op': 'resize', 'width': 50, 'height': 50},
+            {'op': 'save', 'format': 'png', 'output': 'resize_cubic.png'},
+          ],
+        },
+        outputDir: tempDir.path,
+      );
+      expect(resCubic.success, isTrue);
+      final decCubic = img.decodePng(File(resCubic.outputFiles!.first).readAsBytesSync())!;
+      expect(decCubic.width, 50);
+      expect(decCubic.height, 50);
+
+      // 显式指定 nearest
+      final resNearest = await ToolEngineService.execute(
+        handler: 'image_pipeline',
+        inputFiles: [sampleImageFile.path],
+        params: {
+          'steps': [
+            {'op': 'resize', 'width': 25, 'height': 25, 'interpolation': 'nearest'},
+            {'op': 'save', 'format': 'png', 'output': 'resize_nearest.png'},
+          ],
+        },
+        outputDir: tempDir.path,
+      );
+      expect(resNearest.success, isTrue);
+      final decNearest = img.decodePng(File(resNearest.outputFiles!.first).readAsBytesSync())!;
+      expect(decNearest.width, 25);
+      expect(decNearest.height, 25);
+    });
+
     test('Alpha isolated quantizer preserves transparent background without hollowing out opaque black pixels', () async {
       // 构造包含纯透明背景与纯黑不透明实体的特殊测试图
       final avatar = img.Image(width: 10, height: 10, numChannels: 4);
