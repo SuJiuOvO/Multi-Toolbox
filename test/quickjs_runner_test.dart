@@ -319,6 +319,128 @@ void main() {
       }
     });
 
+    test('QuickJsBridgeService base64ToBytes accurately decodes padded base64 without byte loss', () async {
+      if (!canRunQuickJs) return;
+      final outDir = Directory.systemTemp.createTempSync('qjs_b64_pad_test_');
+      try {
+        final manifest = PluginManifest(
+          id: 'test-js-b64-pad',
+          name: 'QuickJS Base64 Padding Test',
+          version: '1.0.0',
+          category: 'text',
+          description: 'Testing base64ToBytes padding calculation',
+          icon: 'code',
+          author: 'Test',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run() {
+                  // 1 byte (AQ==)
+                  const b1 = Toolbox.utils.base64ToBytes('AQ==');
+                  // 2 bytes (AQI=)
+                  const b2 = Toolbox.utils.base64ToBytes('AQI=');
+                  // 3 bytes (AQID)
+                  const b3 = Toolbox.utils.base64ToBytes('AQID');
+                  // 4 bytes (AQIDBA==)
+                  const b4 = Toolbox.utils.base64ToBytes('AQIDBA==');
+
+                  const ok1 = (b1.length === 1 && b1[0] === 1);
+                  const ok2 = (b2.length === 2 && b2[0] === 1 && b2[1] === 2);
+                  const ok3 = (b3.length === 3 && b3[0] === 1 && b3[1] === 2 && b3[2] === 3);
+                  const ok4 = (b4.length === 4 && b4[0] === 1 && b4[1] === 2 && b4[2] === 3 && b4[3] === 4);
+
+                  return {
+                    success: (ok1 && ok2 && ok3 && ok4),
+                    lengths: [b1.length, b2.length, b3.length, b4.length]
+                  };
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [],
+          outputDir: outDir.path,
+          onProgress: (p, s) {},
+          onLog: (l, e) {},
+        );
+
+        expect(result.success, true);
+      } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('QuickJsBridgeService Toolbox.fs.delete and remove cleans up intermediate files and folders', () async {
+      if (!canRunQuickJs) return;
+      final outDir = Directory.systemTemp.createTempSync('qjs_fs_del_test_');
+      try {
+        final manifest = PluginManifest(
+          id: 'test-js-fs-del',
+          name: 'QuickJS FS Delete Test',
+          version: '1.0.0',
+          category: 'text',
+          description: 'Testing Toolbox.fs.delete and remove',
+          icon: 'code',
+          author: 'Test',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ outputDir }) {
+                  const testFile = outputDir + '/temp_slice.tmp';
+                  const testSubdir = outputDir + '/temp_sub';
+                  
+                  // 1. Write file & create dir
+                  Toolbox.fs.writeFile(testFile, 'temporary slice data');
+                  Toolbox.fs.mkdir(testSubdir);
+                  Toolbox.fs.writeFile(testSubdir + '/sub.tmp', 'sub data');
+                  
+                  const fileCreated = Toolbox.fs.exists(testFile);
+                  const dirCreated = Toolbox.fs.exists(testSubdir);
+                  
+                  // 2. Delete file with Toolbox.fs.remove
+                  const delFileRes = Toolbox.fs.remove(testFile);
+                  const fileExistsAfter = Toolbox.fs.exists(testFile);
+                  
+                  // 3. Delete directory with Toolbox.fs.delete
+                  const delDirRes = Toolbox.fs.delete(testSubdir);
+                  const dirExistsAfter = Toolbox.fs.exists(testSubdir);
+                  
+                  return {
+                    success: (fileCreated && dirCreated && delFileRes && !fileExistsAfter && delDirRes && !dirExistsAfter)
+                  };
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [],
+          outputDir: outDir.path,
+          onProgress: (p, s) {},
+          onLog: (l, e) {},
+        );
+
+        expect(result.success, true);
+      } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
     test('PluginManifest correctly identifies QuickJS plugin and badges', () {
       final manifest = PluginManifest(
         id: 'js-markdown-formatter',

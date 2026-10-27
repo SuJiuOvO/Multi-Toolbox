@@ -344,6 +344,22 @@ class QuickJsBridgeService {
         Directory(dirPath).createSync(recursive: true);
         return true;
 
+      case 'fs_delete':
+      case 'fs_remove':
+        final target = payload['path']?.toString()?.trim() ?? '';
+        if (target.isEmpty) return false;
+        final file = File(target);
+        if (file.existsSync()) {
+          file.deleteSync();
+          return true;
+        }
+        final dir = Directory(target);
+        if (dir.existsSync()) {
+          dir.deleteSync(recursive: true);
+          return true;
+        }
+        return false;
+
       case 'fs_size':
         final target = payload['path']?.toString() ?? '';
         final f = File(target);
@@ -491,6 +507,12 @@ class QuickJsBridgeService {
         mkdir: function(path) {
           return __Toolbox_syncCall('fs_mkdir', { path: path });
         },
+        remove: function(path) {
+          return __Toolbox_syncCall('fs_delete', { path: path });
+        },
+        delete: function(path) {
+          return __Toolbox_syncCall('fs_delete', { path: path });
+        },
         fileSize: function(path) {
           return __Toolbox_syncCall('fs_size', { path: path });
         }
@@ -499,22 +521,23 @@ class QuickJsBridgeService {
         base64ToBytes: function(b64) {
           var b64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
           var lookup = new Uint8Array(256);
-          for (var i = 0; i < b64Chars.length; i++) {
-            lookup[b64Chars.charCodeAt(i)] = i;
-          }
-          var rawStr = String(b64 || '');
-          var str = rawStr.replace(/[^A-Za-z0-9+/]/g, '');
-          var len = str.length;
-          var placeHolders = (rawStr.charAt(rawStr.length - 1) === '=') ? (rawStr.charAt(rawStr.length - 2) === '=' ? 2 : 1) : 0;
-          var arrLen = (len * 3 / 4) - placeHolders;
+          for (var i = 0; i < b64Chars.length; i++) lookup[b64Chars.charCodeAt(i)] = i;
+          var raw = String(b64 || '').trim();
+          var pad = 0;
+          if (raw.endsWith('==')) pad = 2;
+          else if (raw.endsWith('=')) pad = 1;
+          var clean = raw.replace(/[^A-Za-z0-9+/]/g, '');
+          var totalChars = clean.length + pad;
+          var arrLen = Math.floor(totalChars * 3 / 4) - pad;
+          if (arrLen < 0) arrLen = 0;
           var bytes = new Uint8Array(arrLen);
           var curByte = 0;
-          for (var j = 0; j < len; j += 4) {
-            var enc1 = lookup[str.charCodeAt(j)];
-            var enc2 = lookup[str.charCodeAt(j + 1)];
-            var enc3 = lookup[str.charCodeAt(j + 2)];
-            var enc4 = lookup[str.charCodeAt(j + 3)];
-            bytes[curByte++] = (enc1 << 2) | (enc2 >> 4);
+          for (var j = 0; j < clean.length; j += 4) {
+            var enc1 = lookup[clean.charCodeAt(j)];
+            var enc2 = (j + 1 < clean.length) ? lookup[clean.charCodeAt(j + 1)] : 0;
+            var enc3 = (j + 2 < clean.length) ? lookup[clean.charCodeAt(j + 2)] : 0;
+            var enc4 = (j + 3 < clean.length) ? lookup[clean.charCodeAt(j + 3)] : 0;
+            if (curByte < arrLen) bytes[curByte++] = (enc1 << 2) | (enc2 >> 4);
             if (curByte < arrLen) bytes[curByte++] = ((enc2 & 15) << 4) | (enc3 >> 2);
             if (curByte < arrLen) bytes[curByte++] = ((enc3 & 3) << 6) | enc4;
           }

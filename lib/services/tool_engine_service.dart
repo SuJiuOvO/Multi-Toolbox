@@ -295,6 +295,42 @@ class ToolEngineService {
       onProgress?.call(progress, '正在执行步骤 [${i + 1}/${steps.length}]: $op...');
 
       switch (op) {
+        // 1. 原生创建空白画布 (无需插件随身自带 canvas.png)
+        case 'canvas':
+        case 'create':
+          final cw = (step['width'] ?? step['w'] as num?)?.toInt() ?? 112;
+          final ch = (step['height'] ?? step['h'] as num?)?.toInt() ?? 112;
+          final colorStr = (step['color']?.toString() ?? 'transparent').trim();
+          currentImg = img.Image(width: cw, height: ch, numChannels: 4);
+          if (colorStr == 'transparent') {
+            img.fill(currentImg, color: img.ColorRgba8(0, 0, 0, 0));
+          } else {
+            final hex = colorStr.replaceAll('#', '');
+            int r = 255, g = 255, b = 255, a = 255;
+            if (hex.length >= 6) {
+              r = int.tryParse(hex.substring(0, 2), radix: 16) ?? 255;
+              g = int.tryParse(hex.substring(2, 4), radix: 16) ?? 255;
+              b = int.tryParse(hex.substring(4, 6), radix: 16) ?? 255;
+              if (hex.length >= 8) a = int.tryParse(hex.substring(6, 8), radix: 16) ?? 255;
+            }
+            img.fill(currentImg, color: img.ColorRgba8(r, g, b, a));
+          }
+          break;
+
+        // 2. 原生镜像翻转 (支持任意头像/手势的自由翻转)
+        case 'flip':
+        case 'flip_h':
+        case 'flip_v':
+          if (currentImg != null) {
+            final dirStr = (step['direction'] ?? step['dir'])?.toString().toLowerCase();
+            final isVertical = op == 'flip_v' || dirStr == 'vertical' || dirStr == 'v';
+            currentImg = img.copyFlip(
+              currentImg,
+              direction: isVertical ? img.FlipDirection.vertical : img.FlipDirection.horizontal,
+            );
+          }
+          break;
+
         case 'load':
           final src = step['file']?.toString() ?? step['path']?.toString() ?? '';
           if (File(src).existsSync()) {
@@ -360,9 +396,18 @@ class ToolEngineService {
               overlayImg = img.decodeImage(base64Decode(step['base64'].toString()));
             }
             if (overlayImg != null) {
+              final dstW = (step['width'] ?? step['w'] as num?)?.toInt();
+              final dstH = (step['height'] ?? step['h'] as num?)?.toInt();
               final dstX = (step['x'] as num?)?.toInt() ?? 0;
               final dstY = (step['y'] as num?)?.toInt() ?? 0;
-              img.compositeImage(currentImg, overlayImg, dstX: dstX, dstY: dstY);
+              img.compositeImage(
+                currentImg,
+                overlayImg,
+                dstX: dstX,
+                dstY: dstY,
+                dstW: dstW,
+                dstH: dstH,
+              );
             }
           }
           break;
@@ -379,7 +424,8 @@ class ToolEngineService {
         case 'add_gif_frame':
           if (gifEncoder != null && currentImg != null) {
             final durationHundredths = (100 / gifFps).round().clamp(1, 1000);
-            gifEncoder.addFrame(currentImg, duration: durationHundredths);
+            final frameToEncode = _quantizeWithTransparency(currentImg);
+            gifEncoder.addFrame(frameToEncode, duration: durationHundredths);
           }
           break;
 
@@ -394,7 +440,8 @@ class ToolEngineService {
               final q = (step['quality'] as num?)?.toInt() ?? 85;
               bytes = img.encodeJpg(currentImg, quality: q);
             } else if (format == 'gif') {
-              bytes = img.encodeGif(currentImg);
+              final frameToEncode = _quantizeWithTransparency(currentImg);
+              bytes = img.encodeGif(frameToEncode);
             } else {
               bytes = img.encodePng(currentImg);
             }
@@ -421,6 +468,55 @@ class ToolEngineService {
       message: '图像管道成功生成 ${outputFiles.length} 个文件',
       outputFiles: outputFiles,
     );
+  }
+
+  /// 针对 GIF 格式的透明通道保真量化器：
+  /// 将 Alpha < 128 的透明像素与主体颜色严格隔离，索引 0 独占为完全透明，
+  /// 其余不透明像素聚类到 1~255，彻底杜绝黑色/深色被误扣成镂空斑点的问题。
+  static img.Image _quantizeWithTransparency(img.Image src) {
+    bool hasAlpha = false;
+    for (final p in src) {
+      if (p.a < 128) {
+        hasAlpha = true;
+        break;
+      }
+    }
+    // 若原图完全无透明像素，无需特殊调色板隔离
+    if (!hasAlpha) return src;
+
+    // 仅保留 255 种颜色给不透明实体，索引 0 留给透明
+    final quantizer = img.NeuralQuantizer(src, numberOfColors: 255);
+    final srcPalette = quantizer.palette;
+    final colorsToCopy = srcPalette.numColors > 255 ? 255 : srcPalette.numColors;
+    final newPalette = img.PaletteUint8(256, 4);
+    newPalette.setRgba(0, 0, 0, 0, 0); // 索引 0: 完全透明
+    for (int i = 0; i < colorsToCopy; i++) {
+      newPalette.setRgba(
+        i + 1,
+        srcPalette.getRed(i),
+        srcPalette.getGreen(i),
+        srcPalette.getBlue(i),
+        255, // 强制实体颜色 Alpha 保持 255 不透明
+      );
+    }
+    final target = img.Image(
+      width: src.width,
+      height: src.height,
+      numChannels: 1,
+      palette: newPalette,
+    );
+    for (int y = 0; y < src.height; y++) {
+      for (int x = 0; x < src.width; x++) {
+        final p = src.getPixel(x, y);
+        if (p.a < 128) {
+          target.setPixelIndex(x, y, 0); // 透明背景
+        } else {
+          final colorIdx = quantizer.getColorIndex(p).clamp(0, colorsToCopy > 0 ? colorsToCopy - 1 : 0);
+          target.setPixelIndex(x, y, colorIdx + 1); // 实体像素
+        }
+      }
+    }
+    return target;
   }
 
   // =========================================================================

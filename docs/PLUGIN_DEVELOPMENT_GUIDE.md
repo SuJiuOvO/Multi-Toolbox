@@ -161,9 +161,10 @@ QuickJS 插件沙箱不仅支持普通的文本分析，更提供了完整的高
   - `Toolbox.fs.readBytes(path)`: 异步读取文件并直接返回 `Uint8Array` 原始二进制字节流，轻松处理图片/音频/压缩包等非文本格式。
   - `Toolbox.fs.readFile(path, isBase64)`: 读取文件为 UTF-8 文本字符串（默认）或 Base64 编码字符串（`isBase64: true`）。
   - `Toolbox.fs.writeFile(path, content, isBase64)`: 写入文本字符串或 Base64 编码的二进制字节流到磁盘。
+  - `Toolbox.fs.remove(path)` / `Toolbox.fs.delete(path)`: 安全删除指定的临时文件或递归删除临时目录，方便清理中间帧缓存。
   - `Toolbox.fs.exists(path)`: 判断文件或目录是否存在。
 - **极速编解码工具箱 (`Toolbox.utils`)**：
-  - `Toolbox.utils.base64ToBytes(b64String)`: 标准 RFC 4648 查表算法，将 Base64 字符串极速转换为 `Uint8Array`。
+  - `Toolbox.utils.base64ToBytes(b64String)`: 标准 RFC 4648 查表算法（支持末尾 `=` 填充边界自动对齐校正），将 Base64 字符串极速且无损地转换为 `Uint8Array`。
   - `Toolbox.utils.bytesToBase64(uint8Array)`: 将 `Uint8Array` 极速编码为 Base64 字符串。
 - **纯本地原生图形管道 (`Toolbox.image.pipeline`)**：
   - 无需在 JS 中费力解析复杂的 PNG/JPG 结构，通过 `await Toolbox.image.pipeline(steps, inputFiles)` 直接调用宿主纯 Dart 驱动的高性能图形流水线（缩放、裁剪、圆形裁切、图层叠放水印、生成动图 GIF）。
@@ -252,14 +253,16 @@ async function run({ inputFiles, outputDir, params }) {
   支持在 `params.steps` 列表中编排任意数量的图层运算操作：
   | 操作类型 `op` | 参数说明 | 功能说明 |
   | :--- | :--- | :--- |
+  | `canvas` / `create` | `width`, `height`, `color` (默认 `'transparent'`，支持 `#RRGGBB` / `#RRGGBBAA`) | 原生创建透明或纯色空白画布，无需随包携带占位底图 |
   | `resize` | `width` / `height` | 高质量尺寸缩放 |
   | `crop` | `x`, `y`, `width`, `height` | 矩形区域精准裁切 |
   | `circle_crop` | 无（自动按最小边计算正方形与内切圆） | 圆形头像切片，圆外自动镂空透明（Alpha = 0） |
-  | `overlay` / `composite` | `image` (路径) 或 `base64`，`x`, `y` | 水印与透明图层叠放合成 |
+  | `flip` / `flip_h` / `flip_v` | `direction` (`'horizontal'` / `'vertical'`) | 原生水平/垂直镜像翻转，轻松实现反向动作与手势变换 |
+  | `overlay` / `composite` | `image` (路径) 或 `base64`，`x`, `y`, `width`/`w`, `height`/`h` | 水印与透明图层叠放，原生支持在贴图时直接缩放形变 |
   | `init_gif` | `fps` (默认 10), `repeat` (默认 0 循环), `output` | 初始化动图序列编码器 |
-  | `add_gif_frame` | 无 | 将当前帧图像推入动图帧序列 |
+  | `add_gif_frame` | 无 | 将当前帧图像推入动图帧序列（内置 **Alpha 隔离调色板量化**，彻底杜绝黑发/黑眼抠色穿孔） |
   | `load` | `file` / `path` | 重新载入另一张源图片成为当前操作上下文 |
-  | `save` / `encode` | `format` (`png`\|`jpg`\|`gif`), `quality` (1-100), `output` | 将当前画布置入输出目录 |
+  | `save` / `encode` | `format` (`png`\|`jpg`\|`gif`), `quality` (1-100), `output` | 将当前画布置入输出目录（GIF 自动保真量化透明通道） |
 - **音视频工具箱 (`video-audio-toolbox`) v1.3.0 增强**：
   - 支持 **FLAC 原生多线程无损转码**（`-c:a flac`）。
   - 支持 **OGG (Vorbis) 高保真转码**（双重保障：首选 `libvorbis -q:a 5`，若环境缺失自动平滑回退至 FFmpeg 原生内置 `vorbis` 编码器）。
