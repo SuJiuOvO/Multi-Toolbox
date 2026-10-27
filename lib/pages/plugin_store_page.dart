@@ -42,6 +42,7 @@ class _PluginStorePageState extends State<PluginStorePage> {
   }
 
   Color _getPlatformBadgeColor(PluginManifest item) {
+    if (item.isDualAdaptivePlugin) return const Color(0xFF6366F1);
     if (item.isWindowsOnly()) return const Color(0xFF0284C7);
     if (item.isAndroidOnly()) return const Color(0xFF16A34A);
     return const Color(0xFF4F46E5);

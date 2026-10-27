@@ -81,12 +81,12 @@ class PluginInputDef {
 
   bool isWindowsOnly() {
     final lower = platforms.map((e) => e.toLowerCase()).toList();
-    return lower.contains('windows') && !lower.contains('universal');
+    return lower.contains('windows') && !lower.contains('android') && !lower.contains('universal');
   }
 
   bool isAndroidOnly() {
     final lower = platforms.map((e) => e.toLowerCase()).toList();
-    return lower.contains('android') && !lower.contains('universal');
+    return lower.contains('android') && !lower.contains('windows') && !lower.contains('universal');
   }
 
   factory PluginInputDef.fromJson(Map<String, dynamic> json) {
@@ -147,12 +147,12 @@ class PluginSelectOption {
 
   bool isWindowsOnly() {
     final lower = platforms.map((e) => e.toLowerCase()).toList();
-    return lower.contains('windows') && !lower.contains('universal');
+    return lower.contains('windows') && !lower.contains('android') && !lower.contains('universal');
   }
 
   bool isAndroidOnly() {
     final lower = platforms.map((e) => e.toLowerCase()).toList();
-    return lower.contains('android') && !lower.contains('universal');
+    return lower.contains('android') && !lower.contains('windows') && !lower.contains('universal');
   }
 
   factory PluginSelectOption.fromJson(Map<String, dynamic> json) {
@@ -475,7 +475,7 @@ class PluginManifest {
 
   /// 是否为 Windows 专属扩展工坊工具 (调度外部 exe 或外部脚本)
   bool get isWindowsExtension {
-    return isWindowsOnly() && (
+    return isWindowsOnly() && !isDualAdaptivePlugin && (
       executionType == 'native_executable' ||
       (executionType == 'script' && nativeRunner != null) ||
       nativeRunner != null ||
@@ -508,8 +508,14 @@ class PluginManifest {
         executionType == 'script';
   }
 
+  /// 是否为双端自适应合一插件 (同时配置了 Windows 原生 nativeRunner 与跨平台 wasmRunner)
+  bool get isDualAdaptivePlugin => nativeRunner != null && isWasmPlugin;
+
   String get platformBadgeText {
     final lower = platforms.map((e) => e.toLowerCase()).toList();
+    if (isDualAdaptivePlugin) {
+      return '🚀 双端自适应';
+    }
     if (isWindowsExtension) {
       return '⚡ Win 开放扩展';
     }
@@ -530,12 +536,12 @@ class PluginManifest {
 
   bool isWindowsOnly() {
     final lower = platforms.map((e) => e.toLowerCase()).toList();
-    return lower.contains('windows') && !lower.contains('universal');
+    return lower.contains('windows') && !lower.contains('android') && !lower.contains('universal');
   }
 
   bool isAndroidOnly() {
     final lower = platforms.map((e) => e.toLowerCase()).toList();
-    return lower.contains('android') && !lower.contains('universal');
+    return lower.contains('android') && !lower.contains('windows') && !lower.contains('universal');
   }
 
   factory PluginManifest.fromJson(Map<String, dynamic> json, {bool isRemote = false}) {
