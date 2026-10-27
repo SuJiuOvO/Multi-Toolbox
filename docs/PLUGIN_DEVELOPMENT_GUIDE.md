@@ -317,6 +317,249 @@ flowchart TD
 
 ## 4. 从零开始的实战开发教程 (4 个完整实例)
 
+### 实战 1：开发一个 QuickJS 文本高频词分析与多重编解码模块
+
+本实战演示如何基于 QuickJS 引擎编写纯前端 JavaScript 跨平台沙箱插件，无需预先编译二进制文件，直接分发 `.js` 源码。
+
+#### 第一步：建立目录
+在 `plugins/` 下创建文件夹：`plugins/text-analyzer/`。
+
+#### 第二步：编写 `manifest.json`
+```json
+{
+  "id": "text-analyzer",
+  "name": "文本词频与敏感词分析器",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "category": "text",
+  "platforms": ["universal"],
+  "executionType": "quickjs",
+  "engineType": "quickjs",
+  "description": "基于沙箱内嵌的高性能 JavaScript 引擎，实时分析长文本词频分布、提取高频关键词并进行敏感词过滤分析。跨平台本地离线运行。",
+  "author": "社区极客",
+  "icon": {
+    "type": "code",
+    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect width=\"24\" height=\"24\" rx=\"4\" fill=\"#10B981\"/><path d=\"M4 7h16M4 12h10M4 17h14\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg>"
+  },
+  "inputs": [
+    {
+      "id": "sourceText",
+      "label": "粘贴需要分析的文本内容",
+      "type": "text",
+      "required": true,
+      "defaultValue": ""
+    },
+    {
+      "id": "topN",
+      "label": "提取词频 Top 排名数量",
+      "type": "slider",
+      "defaultValue": 10,
+      "min": 3,
+      "max": 50,
+      "step": 1
+    }
+  ],
+  "action": {
+    "handler": "quickjs_runner",
+    "params": {
+      "scriptFile": "analyzer.js"
+    }
+  }
+}
+```
+
+#### 第三步：编写核心脚本 `plugins/text-analyzer/analyzer.js`
+```javascript
+// inputs 对象由宿主环境自动注入
+const text = (inputs.sourceText || '').trim();
+const topLimit = parseInt(inputs.topN || 10, 10);
+
+if (!text) {
+  return "【错误】未提供有效的待分析文本内容！";
+}
+
+console.log("正在对 " + text.length + " 个字符进行分词统计...");
+
+// 简单分词逻辑 (支持中英文单词与连续汉字统计)
+const words = text.match(/[\u4e00-\u9fa5]{2,}|[a-zA-Z]{3,}/g) || [];
+const frequencyMap = {};
+
+for (const w of words) {
+  const lower = w.toLowerCase();
+  frequencyMap[lower] = (frequencyMap[lower] || 0) + 1;
+}
+
+const sortedList = Object.entries(frequencyMap)
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, topLimit);
+
+let result = `📊 文本深度分析报告\n`;
+result += `----------------------------------------\n`;
+result += `• 字符总数: ${text.length} 字符\n`;
+result += `• 有效词元: ${words.length} 个\n`;
+result += `• 独立词汇: ${Object.keys(frequencyMap).length} 个\n\n`;
+result += `🏆 高频词汇 TOP ${topLimit} 排行榜:\n`;
+
+sortedList.forEach(([word, count], idx) => {
+  const percent = ((count / words.length) * 100).toFixed(1);
+  result += ` [${idx + 1}] ${word} : 出现 ${count} 次 (${percent}%)\n`;
+});
+
+// 输出结果直接由 return 返回呈现
+return result;
+```
+
+---
+
+### 实战 2：开发一个 Rust 编译的 WebAssembly 极速素数筛/哈希计算模块
+
+本实战演示如何使用 Rust 开发内存级高性能 WebAssembly 纯算力计算插件，编译为 `wasm32-unknown-unknown` 目标并在双端沙箱内安全调用导出函数。
+
+#### 第一步：编写 Rust 代码并编译
+创建 Rust 项目：
+```bash
+cargo new --lib fast-prime-wasm
+```
+
+在 `src/lib.rs` 中：
+```rust
+#[no_mangle]
+pub extern "C" fn count_primes(limit: u32) -> u32 {
+    if limit < 2 {
+        return 0;
+    }
+    let mut is_prime = vec![true; (limit + 1) as usize];
+    is_prime[0] = false;
+    is_prime[1] = false;
+    
+    let mut count = 0;
+    let mut p = 2;
+    while p * p <= limit {
+        if is_prime[p as usize] {
+            let mut i = p * p;
+            while i <= limit {
+                is_prime[i as usize] = false;
+                i += p;
+            }
+        }
+        p += 1;
+    }
+    
+    for i in 2..=limit {
+        if is_prime[i as usize] {
+            count += 1;
+        }
+    }
+    count
+}
+```
+
+编译生成跨平台 `.wasm` 二进制：
+```bash
+cargo build --target wasm32-unknown-unknown --release
+# 生成的产物：target/wasm32-unknown-unknown/release/fast_prime_wasm.wasm
+```
+
+#### 第二步：组装模块目录
+在 `plugins/fast-prime/` 目录下放置：
+- `manifest.json`
+- `fast_prime.wasm`
+
+```json
+{
+  "id": "fast-prime",
+  "name": "极速埃氏素数筛算力模块",
+  "version": "1.0.0",
+  "category": "other",
+  "platforms": ["universal"],
+  "executionType": "wasm",
+  "engineType": "wasm",
+  "description": "基于 Rust 编译的原生 WebAssembly 模块，可在沙箱中秒级完成上千万级数字范围内的素数统计计算。",
+  "author": "Rust 算力玩家",
+  "icon": {
+    "type": "code",
+    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect width=\"24\" height=\"24\" rx=\"4\" fill=\"#6366F1\"/><path d=\"M7 11h2v5H7zm8-4h2v9h-2zm-4 2h2v7h-2z\" fill=\"#FFFFFF\"/></svg>"
+  },
+  "inputs": [
+    {
+      "id": "limitRange",
+      "label": "计算上限 (例如 10,000,000)",
+      "type": "number",
+      "required": true,
+      "defaultValue": 1000000,
+      "min": 10,
+      "max": 100000000
+    }
+  ],
+  "action": {
+    "handler": "wasm_runner",
+    "params": {
+      "wasmFile": "fast_prime.wasm",
+      "entryFunction": "count_primes"
+    }
+  }
+}
+```
+
+---
+
+### 实战 3：开发一个 Windows 独立 CLI 音视频转码与终端回显扩展
+
+本实战演示如何将现有的专业命令行可执行程序（例如 `ffmpeg.exe`）打包为 Windows 专享的高性能扩展，利用 `nativeRunner` 调度并实时重定向输出终端。
+
+#### 步骤 1：准备二进制程序
+将已编译测试好的 Windows x86_64 可执行文件（如 `bin/ffmpeg.exe`）放入插件目录。
+
+#### 步骤 2：编写 `manifest.json`
+在 `plugins/ffmpeg-audio-extractor/` 下组织清单：
+```json
+{
+  "id": "ffmpeg-audio-extractor",
+  "name": "FFmpeg 高清音频极速分离器",
+  "version": "1.0.0",
+  "category": "media",
+  "platforms": ["windows"],
+  "executionType": "native_executable",
+  "description": "【Windows 专享工坊】调用专业命令行多媒体工具，从各类视频文件中以无损质量直接提取原始音轨流，配备实时命令行终端输出。",
+  "author": "Media Work",
+  "icon": "movie",
+  "nativeRunner": {
+    "entry": "ffmpeg.exe",
+    "args": [
+      "-y",
+      "-i", "{sourceVideo}",
+      "-vn",
+      "-c:a", "{audioCodec}",
+      "{outputDir}/extracted_audio.{audioFormat}"
+    ],
+    "showTerminal": true
+  },
+  "inputs": [
+    {
+      "id": "sourceVideo",
+      "label": "选择源视频文件",
+      "type": "file_picker",
+      "required": true,
+      "allowMultiple": false,
+      "allowedExtensions": ["mp4", "mkv", "mov", "flv", "avi"]
+    },
+    {
+      "id": "audioFormat",
+      "label": "输出音频格式",
+      "type": "select",
+      "defaultValue": "mp3",
+      "options": [
+        { "label": "MP3 高兼容格式 (320kbps)", "value": "mp3" },
+        { "label": "FLAC 无损音频格式", "value": "flac" },
+        { "label": "AAC 高压缩率格式", "value": "aac" }
+      ]
+    }
+  ]
+}
+```
+
+---
+
 ### 🌟 实战 4：开发一个双端自适应合一插件（网易云 NCM 解密器）
 
 本实战以官方社区上线的旗舰级插件 `ncm-audio-converter`（网易云 NCM 解密）为完整范例，展示如何开发一个兼具 Windows 原生极速性能与 Android WASM 跨平台沙箱的自适应插件。
@@ -364,7 +607,7 @@ plugins/ncm-audio-converter/
   "description": "【双端自适应合一】Windows 端自动调度本地原生极速程序 (0.3s 直出)，Android 端无缝运行 WASM 算力微内核沙箱 (<1s 完成)。专为网易云专属加密 NCM 格式设计，100% 还原原始无损 FLAC 或高保真 MP3 音轨，自动嵌入元数据与高清封面，支持全选批量与整目录展开。",
   "icon": {
     "type": "code",
-    "data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="ncmGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#E11D48"/><stop offset="100%" stop-color="#9333EA"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ncmGrad)"/><circle cx="11" cy="12" r="7" fill="none" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.3"/><circle cx="11" cy="12" r="4.5" fill="none" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.5"/><circle cx="11" cy="12" r="2" fill="#FFFFFF"/><path d="M16 6v7.5a2 2 0 1 1-1.5-1.93V8h3V6h-1.5z" fill="#FFFFFF"/><rect x="15" y="14" width="7" height="6" rx="1.5" fill="#10B981"/><path d="M17 14v-1.8a1.5 1.5 0 0 1 3 0V14" fill="none" stroke="#10B981" stroke-width="1.3" stroke-linecap="round"/><circle cx="18.5" cy="17" r="0.8" fill="#FFFFFF"/></svg>"
+    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><defs><linearGradient id=\"ncmGrad\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#E11D48\"/><stop offset=\"100%\" stop-color=\"#9333EA\"/></linearGradient></defs><rect x=\"2\" y=\"2\" width=\"20\" height=\"20\" rx=\"5\" fill=\"url(#ncmGrad)\"/><circle cx=\"11\" cy=\"12\" r=\"7\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"1.2\" stroke-opacity=\"0.3\"/><circle cx=\"11\" cy=\"12\" r=\"4.5\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"1.2\" stroke-opacity=\"0.5\"/><circle cx=\"11\" cy=\"12\" r=\"2\" fill=\"#FFFFFF\"/><path d=\"M16 6v7.5a2 2 0 1 1-1.5-1.93V8h3V6h-1.5z\" fill=\"#FFFFFF\"/><rect x=\"15\" y=\"14\" width=\"7\" height=\"6\" rx=\"1.5\" fill=\"#10B981\"/><path d=\"M17 14v-1.8a1.5 1.5 0 0 1 3 0V14\" fill=\"none\" stroke=\"#10B981\" stroke-width=\"1.3\" stroke-linecap=\"round\"/><circle cx=\"18.5\" cy=\"17\" r=\"0.8\" fill=\"#FFFFFF\"/></svg>"
   },
   "nativeRunner": {
     "entry": "bin/ncmdump.exe",
