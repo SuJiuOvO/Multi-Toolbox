@@ -1,7 +1,7 @@
-# 🛠️ Multi-Toolbox 社区功能模块（插件）全栈开发与技术架构指南 (Manifest v2.0)
+# 🛠️ Multi-Toolbox 社区功能模块（插件）全栈开发与技术架构指南 (Manifest v2.2)
 
-> **版本**：`Manifest v2.0`  
-> **适用对象**：核心维护人员、第三方工具开发者、系统与脚本工程师（Rust/C++/JS/Python/CLI）  
+> **当前规范版本**：`Manifest v2.2` (全面支持 WASI Preview 1 VFS 虚拟文件系统与双端自适应合一架构)  
+> **适用对象**：核心维护人员、第三方工具开发者、系统与脚本工程师（Rust / C++ / WebAssembly / JavaScript / Python / CLI）  
 > **核心哲学**：**客户端极致精简稳定，海量功能按需沙箱热插拔；100% 纯本地离线执行，全面保障用户隐私与数据安全。**
 
 ---
@@ -9,20 +9,24 @@
 ## 目录 (Table of Contents)
 
 1. [系统整体架构与沙箱底座全貌](#1-系统整体架构与沙箱底座全貌)
-2. [四大执行模式与运行时深度解析](#2-四大执行模式与运行时深度解析)
-   - [2.1 WebAssembly (Wasm) 二进制算力沙箱](#21-webassembly-wasm-二进制算力沙箱-executiontype-wasm)
+2. [五大执行模式与运行时深度解析](#2-五大执行模式与运行时深度解析)
+   - [2.1 WebAssembly (Wasm) 二进制算力与 WASI Preview 1 虚拟文件系统 (VFS) 沙箱](#21-webassembly-wasm-二进制算力与-wasi-preview-1-虚拟文件系统-vfs-沙箱)
    - [2.2 QuickJS 跨平台动态脚本沙箱](#22-quickjs-跨平台动态脚本沙箱-executiontype-quickjs)
-   - [2.3 Windows 开放扩展工坊](#23-windows-开放扩展工坊-executiontype-native_executable--script)
-   - [2.4 客户端内置原生算法流水线](#24-客户端内置原生算法流水线-executiontype-internal)
-3. [Manifest v2.0 清单规范全字段完整参考](#3-manifest-v20-清单规范全字段完整参考)
+   - [2.3 Windows 开放扩展工坊 (Native CLI / Script)](#23-windows-开放扩展工坊-executiontype-native_executable--script)
+   - [2.4 🚀 双端自适应合一架构 (Dual-Adaptive: Win 原生 + Android WASM)](#24--双端自适应合一架构-dual-adaptive-win-原生--android-wasm)
+   - [2.5 客户端内置原生算法与多媒体流水线](#25-客户端内置原生算法与多媒体流水线-executiontype-internal)
+3. [Manifest v2.2 清单规范全字段完整参考](#3-manifest-v22-清单规范全字段完整参考)
    - [3.1 核心元数据配置](#31-核心元数据配置)
-   - [3.2 图标系统完整规范 (图片限制与代码渲染)](#32-图标系统完整规范-图片限制与代码渲染)
+   - [3.2 图标系统完整规范 (图片限制与 SVG 矢量代码渲染)](#32-图标系统完整规范-图片限制与-svg-矢量代码渲染)
    - [3.3 动态表单组件系统 (Inputs)](#33-动态表单组件系统-inputs)
+     - *文件选择器特性：Android 专有后缀容错、文件夹递归展开与符号链接防死循环*
    - [3.4 动态条件联动展示 (visibleIf)](#34-动态条件联动展示-visibleif)
-4. [从零开始的实战开发教程 (3 个完整实例)](#4-从零开始的实战开发教程-3-个完整实例)
+   - [3.5 完整的 dual-adaptive 双 Runner 声明结构](#35-完整的-dual-adaptive-双-runner-声明结构)
+4. [从零开始的实战开发教程 (4 个完整实例)](#4-从零开始的实战开发教程-4-个完整实例)
    - [实战 1：开发一个 QuickJS 文本高频词分析与多重编解码模块](#实战-1开发一个-quickjs-文本高频词分析与多重编解码模块)
    - [实战 2：开发一个 Rust 编译的 WebAssembly 极速素数筛/哈希计算模块](#实战-2开发一个-rust-编译的-webassembly-极速素数筛哈希计算模块)
    - [实战 3：开发一个 Windows 独立 CLI 音视频转码与终端回显扩展](#实战-3开发一个-windows-独立-cli-音视频转码与终端回显扩展)
+   - [🌟 实战 4：开发一个双端自适应合一插件（网易云 NCM 解密器）](#-实战-4开发一个双端自适应合一插件网易云-ncm-解密器)
 5. [本地开发、打包与自动化测试规范](#5-本地开发打包与自动化测试规范)
 6. [社区注册中心提交与合入发布规范 (PR 流程)](#6-社区注册中心提交与合入发布规范-pr-流程)
 
@@ -44,70 +48,93 @@ flowchart TD
         subgraph UI["表现层 (Schema-Driven UI)"]
             Home["首页功能看板 (响应式卡片流)"]
             Store["模块市场 (一键在线发现/安装)"]
+            Mgr["已安装管理中心 (搜索/分类/一键卸载/内置保护)"]
             Runner["动态运行器 (DynamicToolRunnerPage)"]
             IconSys["图标渲染引擎 (SVG代码/Base64/Material/默认兜底)"]
         end
 
-        subgraph Core["生命周期调度层"]
+        subgraph Core["生命周期与智能路由调度层"]
             PM["模块管理器 (PluginManagerService)"]
-            Update["自动更新与节点测速竞速池"]
+            EngineRouter["双端自适应智能路由器 (resolveExecutionEngine)"]
+            FolderFlatten["宿主层文件夹扁平化展开 & 路径去重防环"]
         end
 
-        subgraph Runtimes["四大隔离算力与执行沙箱"]
-            WasmRuntime["🦀 WebAssembly (Wasm) 微核\n(纯本地运行 C/C++/Rust 字节码)"]
-            JsRuntime["⚡ QuickJS 引擎\n(跨平台动态执行 ES2020 脚本)"]
-            WinRuntime["🪟 Windows 开放工坊\n(CLI Exe/PowerShell/Python + 终端回显)"]
-            NativePipeline["🖼️ 本地算法引擎\n(逆向 Alpha 混合去水印/PDF/图像/DXF)"]
+        subgraph Runtimes["多引擎隔离算力与执行沙箱"]
+            WasmVfs["🦀 WASI Preview 1 虚拟文件系统 (VFS) 沙箱
+(全平台 POSIX 文件流 / Rust 字节码)"]
+            JsRuntime["⚡ QuickJS 引擎
+(跨平台动态执行 ES2020 脚本)"]
+            WinRuntime["🪟 Windows 开放工坊
+(原生机器码 EXE / PowerShell / Python + 实时终端回显)"]
+            NativePipeline["🖼️ 本地算法引擎
+(逆向 Alpha 混合去水印 / FFmpeg FLAC+OGG 转码 / PDF / 归档)"]
         end
     end
 
     Registry -->|三源竞速拉取 index.json| PM
     Registry -->|静默下载模块 .zip| PM
-    PM -->|解析 Manifest v2.0| Runner
-    Runner -->|根据 executionType 分发执行| Runtimes
+    PM -->|解析 Manifest v2.2| Runner
+    Runner --> EngineRouter
+    EngineRouter -->|Windows 原生优先| WinRuntime
+    EngineRouter -->|Android / 通用算力| WasmVfs
+    EngineRouter -->|脚本逻辑| JsRuntime
+    EngineRouter -->|底层流水线| NativePipeline
     Runner --> IconSys
+    Runner --> FolderFlatten
 ```
 
 ### 为什么开发者无需为客户端重新发版？
 1. **界面全声明化**：开发者无需编写 Flutter Widget。只需在 `manifest.json` 中以 JSON 声明输入表单（文件选择、滑块、下拉选择、联动条件等），客户端在运行时自动渲染。
-2. **多沙箱直接执行**：无论是 JS 脚本还是编译好的 `.wasm` 二进制，均能直接在客户端底座提供的虚拟机沙箱中离线运行，零编译步骤、零发版周期。
-3. **安全隔离与无感更新**：模块以独立的 `.zip` 包发布与缓存。新增、更新或卸载功能，只需操作对应的模块目录，绝不影响客户端本体。
+2. **多沙箱直接执行**：无论是编译好的 WebAssembly 二进制还是 JS 脚本，均能在客户端沙箱中离线运行，零发版周期。
+3. **双端自适应合一 (Dual-Adaptive)**：一个插件包同时容纳 Windows 原生二进制与 Android WASM 字节码，客户端根据操作系统自动选择最优执行链路，兼具极致性能与全平台便携性。
+4. **安全隔离与无感更新**：模块以独立的 `.zip` 包发布与缓存。新增、更新或卸载功能，只需操作对应的模块目录，绝不影响客户端本体。
 
 ---
 
-## 2. 四大执行模式与运行时深度解析
+## 2. 五大执行模式与运行时深度解析
 
-开发者可根据自己的技术栈与任务特点，在 `manifest.json` 中配置 `executionType`：
+开发者可根据任务特点与技术栈，在 `manifest.json` 中灵活选择执行模式：
 
-| 执行模式 (`executionType`) | 核心技术栈 | 跨平台兼容性 | 适用典型场景 |
+| 执行模式 (`executionType`) | 核心技术栈 | 跨平台支持 | 适用典型场景 |
 | :--- | :--- | :---: | :--- |
-| **`wasm`** | C / C++ / Rust / Go | 🌐 Windows / Android 全兼容 | 密集数学计算、密码学、音视频编解码、物理模拟、图像/音频信号处理 |
-| **`quickjs`** | JavaScript (ES2020) | 🌐 Windows / Android 全兼容 | 文本处理、数据清洗、JSON/XML 转换、敏感词过滤、自动化规则运算 |
-| **`native_executable` / `script`** | CLI 可执行程序、PowerShell、Python | 🪟 Windows 专享 | 挂接现成的大型工具（如 ffmpeg, yt-dlp, pandoc）、系统级自动化任务 |
-| **`internal`** | 客户端内置高效算法 | 🌐 Windows / Android 全兼容 | 逆向 Alpha 混合无损去水印、图像格式压缩/缩放、PDF 矢量拆分合并、CAD DXF |
+| **`wasm` (WASI CLI / VFS)** | C / C++ / Rust / Go (`wasm32-wasip1`) | 🌐 Windows / Android 全兼容 | 密集计算、二进制流转换、音视频音频解密、大文件流式加解密 |
+| **`quickjs`** | JavaScript (ES2020) | 🌐 Windows / Android 全兼容 | 纯文本分析、数据清洗、正则解析、轻量算法规则 |
+| **`native_executable` / `script`** | CLI 可执行程序、PowerShell、Python | 🪟 Windows 专享 | 挂接现成大型 Windows 命令行工具（如 ffmpeg, yt-dlp, pandoc） |
+| **🚀 双端自适应合一 (Dual-Adaptive)** | Win 原生 EXE + Android WASM | 🌐 双端最优解 | **强烈推荐**：Windows 跑裸机原生二进制（0.3s 直出），Android 跑 WASM 沙箱（<1s 完成） |
+| **`internal`** | 客户端底层图形/音视频引擎 | 🌐 Windows / Android 全兼容 | 逆向 Alpha 混合去水印、FFmpeg 原生转码（新增 FLAC / OGG）、PDF 矢量重构 |
 
 ---
 
-### 2.1 WebAssembly (Wasm) 二进制算力沙箱 (`executionType: "wasm"`)
+### 2.1 WebAssembly (Wasm) 二进制算力与 WASI Preview 1 虚拟文件系统 (VFS) 沙箱
 
-客户端底座内置了完整的 WebAssembly 解释与执行内核，支持直接在内存沙箱中加载并运行 `.wasm` 二进制与 `.wat` 文本模块。
+在最新架构中，Multi-Toolbox 将底座升级为支持 **WASI Preview 1 规范与虚拟文件系统 (VFS)** 的高性能引擎（基于 Rust `wasm_run` 底座，预编译包含全架构原生动态库）：
 
-#### 开发特点与优势：
-- **近乎原生性能**：利用 C/C++/Rust 极致的执行速度。
-- **天然内存强隔离**：运行在独立的线性内存空间，不存在任何指针逃逸或系统提权风险。
-- **全平台零依赖**：一次编译，在 Android（arm64-v8a、armeabi-v7a、x86_64）与 Windows 上完全一致运行。
+#### 核心技术优势：
+- **物理磁盘虚拟目录映射**：
+  客户端自动将宿主主机的真实工作路径无缝挂载为沙箱内部的标准 POSIX 路径：
+  - 宿主输入文件父目录 $	o$ 沙箱 `/input`
+  - 宿主任务输出目录 $	o$ 沙箱 `/output` 及当前工作目录 `.`
+  - 宿主临时目录 $	o$ 沙箱 `/tmp`
+- **真正的流式 I/O**：
+  C/C++（`fopen` / `fread` / `fwrite`）或 Rust（`std::fs::File`）编译到 `wasm32-wasip1` 目标后，标准 I/O 调用直接桥接到宿主磁盘。百兆级别音频与大型二进制文件可直接以 1MB~4MB 分块流式读写，彻底告别旧版 QuickJS/纯内存传输引发的内存暴涨与 UTF-8 乱码限制。
+- **CLI 批处理全生命周期调度**：
+  支持 `executionMode: "wasi_cli"`，自动寻找 `_start` 入口，支持参数占位符模板（如 `-i {input} -o {outputDir}`）与 `batchMode: true` 自动多文件流式批处理。
 
-#### Manifest 配置要点：
+#### Manifest 配置结构：
 ```json
 {
   "executionType": "wasm",
   "engineType": "wasm",
+  "wasmRunner": {
+    "entry": "bin/tool.wasm",
+    "executionMode": "wasi_cli",
+    "args": ["-i", "{input}", "-o", "{outputDir}"],
+    "batchMode": true,
+    "showTerminal": true
+  },
   "action": {
-    "handler": "wasm_runner",
-    "params": {
-      "wasmFile": "module.wasm",
-      "entryFunction": "process_data"
-    }
+    "handler": "wasm_universal",
+    "params": {}
   }
 }
 ```
@@ -116,471 +143,259 @@ flowchart TD
 
 ### 2.2 QuickJS 跨平台动态脚本沙箱 (`executionType: "quickjs"`)
 
-客户端底座内嵌了轻量高效的 QuickJS 引擎，并打通了 Dart 与 JS 之间的宿主双向调用通道。
+客户端内嵌轻量纯本地 QuickJS 运行时，打通了 Dart 与 JS 之间的双向宿主通信。
 
 #### 开发特点与优势：
-- **热插拔极速调试**：直接编辑 `.js` 文件，客户端重新进入页面即刻生效，无需编译。
+- **热插拔极速调试**：直接编辑 `.js` 文件，重新进入工具页面即刻生效，无需任何编译工具链。
 - **标准语法支持**：完整支持 ES2020 语法（包括箭头函数、解构赋值、BigInt、Promise 等）。
-- **宿主环境注入能力**：
-  - 自动将用户在 UI 表单中填写的参数注入为全局对象 `inputs`（例如 `inputs.sourceText`、`inputs.format`）。
-  - 支持 `console.log(...)`，日志将流式捕获并在客户端界面或终端面板中回显。
-  - 支持直接将计算结果存入返回变量或以 `return` 返回。
-
-#### Manifest 配置要点：
-```json
-{
-  "executionType": "quickjs",
-  "engineType": "quickjs",
-  "action": {
-    "handler": "quickjs_runner",
-    "params": {
-      "scriptFile": "main.js"
-    }
-  }
-}
-```
+- **宿主环境自动注入**：
+  - UI 表单参数自动注入为全局对象 `inputs`（例如 `inputs.sourceText`、`inputs.format`）。
+  - 支持 `console.log(...)`，终端面板实时捕获回显。
+  - 最终结果直接以 `return` 语句返回字符串呈现给用户。
 
 ---
 
 ### 2.3 Windows 开放扩展工坊 (`executionType: "native_executable" | "script"`)
 
-针对 Windows 桌面端的大型生产力工具与自动化运维，Multi-Toolbox 提供了开放扩展工坊。
+针对 Windows 桌面端的大型生产力工具与自动化运维，直接以机器码调度外部程序。
 
 #### 开发特点与优势：
-- **自由集成现有 CLI 工具**：无需重写代码，直接声明参数占位符模板调度 `.exe`。
-- **多源二进制静默分发与哈希校验**：
-  若用户本地未安装该依赖程序，工坊支持通过 `downloadUrls`（自动竞速 Gitee/jsDelivr/GitHub 源）一键静默拉取，并通过 `sha256` 确保二进制未被篡改。
-- **实时终端流捕获 (Live Terminal)**：
-  配置 `"showTerminal": true`，执行时界面会自动展开实时终端黑框，逐行流式捕获 Standard Output 与 Standard Error，并提供一键中止进程（Kill Switch）能力。
+- **自由集成现有 CLI 工具**：无需重写代码，声明参数占位符模板即可调度 `.exe`。
+- **多源二进制静默分发与哈希校验**：支持配置 `downloadUrls` 与 `sha256` 自动下载缺失的二进制依赖。
+- **实时终端黑框控制台**：配置 `"showTerminal": true`，流式捕获标准输出与标准错误，支持一键中止进程。
 
-#### Manifest 配置要点：
+---
+
+### 2.4 🚀 双端自适应合一架构 (Dual-Adaptive: Win 原生 + Android WASM)
+
+这是 Multi-Toolbox 极具竞争力的前沿架构。**以往开发者在兼顾多端时往往面临两难**：
+- 如果只用 WASM：Android 表现优秀，但在 Windows 上由于系统过滤驱动拦截（Defender实时扫描每一次虚拟系统调用），百兆大文件处理不如原生裸机程序流畅；
+- 如果只用 EXE：Android 平台完全无法运行；
+- 如果拆分为两个插件：商店中充斥重复插件，用户下载和维护极其困惑。
+
+#### 双端自适应解决方案：
+开发者仅需在单个插件中**同时声明 `nativeRunner` 与 `wasmRunner`**：
 ```json
 {
-  "executionType": "native_executable",
-  "platforms": ["windows"],
+  "id": "my-tool",
+  "name": "极速音频转换",
+  "version": "1.0.0",
+  "platforms": ["windows", "android"],
   "nativeRunner": {
     "entry": "bin/tool.exe",
-    "args": ["-i", "{inputFile}", "-o", "{outputDir}", "--quality", "{quality}"],
-    "showTerminal": true,
-    "downloadUrls": {
-      "github": "https://github.com/.../tool.exe",
-      "gitee": "https://gitee.com/.../tool.exe"
-    },
-    "sha256": "3a8b...7f",
-    "binSize": 10485760
+    "args": ["-o", "{outputDir}", "{inputs}"]
+  },
+  "wasmRunner": {
+    "entry": "bin/tool.wasm",
+    "executionMode": "wasi_cli",
+    "args": ["-i", "{input}", "-o", "{outputDir}"],
+    "batchMode": true
   }
 }
 ```
 
+#### 客户端智能调度行为：
+1. **Windows 桌面端**：检测到存在 `nativeRunner`，优先调用 `WindowsExtensionRunnerService` 运行 `bin/tool.exe`，直接以裸机多线程运行，160MB 文件实测 **0.3 秒** 秒级直出！
+2. **Android 移动端**：自动无缝落入 `WasmUniversalService` 运行 `bin/tool.wasm`，在 WASI VFS 沙箱中安全隔离运行，**<1 秒** 高效转换！
+3. **商店与界面呈现**：在插件商店与管理页均展示统一的 **`🚀 双端自适应`** 徽标；在运行器顶部标题栏实时显示当前生效的工作状态：
+   - Windows 显示：**`🚀 Win 原生极速模式`**
+   - Android 显示：**`🦀 Android Wasm 沙箱模式`**
+
 ---
 
-## 3. Manifest v2.0 清单规范全字段完整参考
+### 2.5 客户端内置原生算法与多媒体流水线 (`executionType: "internal"`)
 
-每个功能模块的唯一核心配置文件为 `manifest.json`。
+客户端内置了经过严苛优化的图形、文档与音视频流水线：
+- **音视频工具箱 (`video-audio-toolbox`) v1.3.0 增强**：
+  - 支持 **FLAC 原生多线程无损转码**（`-c:a flac`）。
+  - 支持 **OGG (Vorbis) 高保真转码**（双重保障：首选 `libvorbis -q:a 5`，若环境缺失自动平滑回退至 FFmpeg 原生内置 `vorbis` 编码器）。
+  - 文件选择器支持 `.ogg`、`.m4a`、`.flac`、`.wav`、`.mp3` 等多种格式。
+- **Gemini-Banana 无损去水印**：采用逆向 Alpha 混合数学解算算法（Reverse Alpha Blending），逐像素精准解算原底色。
+- **万能解压缩**：支持分卷压缩包智能串联、GBK 乱码自动探测修复与防双重嵌套展开。
+
+---
+
+## 3. Manifest v2.2 清单规范全字段完整参考
+
+每个功能模块的唯一配置文件为 `manifest.json`。
 
 ### 3.1 核心元数据配置
 
 ```json
 {
-  "id": "demo-tool",
-  "name": "示例工具名称",
+  "id": "my-awesome-tool",
+  "name": "工具中文名称",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
-  "category": "image",
-  "platforms": ["universal"],
-  "description": "模块的详细功能介绍，支持在客户端中被关键词和深度参数扫描检索。",
-  "author": "开发者昵称",
+  "category": "media",
+  "platforms": ["windows", "android"],
+  "description": "详细阐述功能与算法特性，关键词会被模块管理与市场实时检索覆盖。",
+  "author": "开发者署名",
   "executionType": "wasm",
   "engineType": "wasm"
 }
 ```
 
-- **`id`** *(必填, String)*：模块唯一英文标识符，必须与插件所在文件夹名完全一致。只允许小写字母、数字和中划线 `-`。
-- **`name`** *(必填, String)*：展示在工具卡片与详情页的中文名称。
-- **`version`** *(必填, String)*：语义化版本号，例如 `1.0.1`。
-- **`minAppVersion`** *(可选, String)*：最低客户端版本要求，默认 `1.0.0`。
-- **`category`** *(必填, String)*：分类筛选标签，可选值：`image` (图片), `media` (音视频), `text` (文本/数据), `document` (文档/CAD), `other` (实用工具/算力)。
-- **`platforms`** *(必填, Array\<String\>)*：支持的平台列表，可选值：`["universal"]` (全平台通用), `["windows"]` (Win专享), `["android"]` (安卓专享)。
+- **`id`** *(必填, String)*：模块唯一英文标识符，必须与所在文件夹名完全相同。仅允许小写字母、数字和中划线 `-`。
+- **`platforms`** *(必填, Array\<String\>)*：
+  - `["windows", "android"]` 或 `["universal"]`：全平台兼容（若同时声明双 runner 即为双端自适应）。
+  - `["windows"]`：Windows 专享扩展。
+  - `["android"]`：Android 专享。
 
 ---
 
-### 3.2 图标系统完整规范 (图片限制与代码渲染)
+### 3.2 图标系统完整规范 (图片限制与 SVG 矢量代码渲染)
 
-在 `Manifest v2.0` 中，图标属性全面升级，支持 **矢量 SVG 代码直接渲染**、**图片格式（严格限制大小与分辨率）** 与 **系统关键词快捷映射**：
-
-#### 方案一：SVG 代码渲染模式 (`type: "code"`) —— 推荐首选 🌟
-直接内联纯文本 SVG 矢量代码，无需额外附带图片文件，缩放清晰、体积仅几百字节：
+#### 方案一：SVG 代码渲染模式 (`type: "code"`) —— 强烈推荐首选 🌟
+直接内联纯文本 SVG 矢量 XML，缩放清晰不失真、包体仅数百字节：
 ```json
 "icon": {
   "type": "code",
-  "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"2\" width=\"20\" height=\"20\" rx=\"4\" fill=\"#3B82F6\"/><path d=\"M8 12h8M12 8v8\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg>"
+  "data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" fill="#6366F1"/><path d="M8 12h8M12 8v8" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/></svg>"
 }
 ```
-> **限制规范**：SVG 字符串大小不得超过 **64 KB**。
+> **安全规范**：SVG 文本大小不得超过 **64 KB**。
 
 #### 方案二：图片模式 (`type: "image"`)
-支持将图标作为 Base64 内联字符串、本地打包的相对文件路径或网络图片：
 ```json
 "icon": {
   "type": "image",
-  "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA...",
+  "data": "data:image/png;base64,iVBORw0KGgo...",
   "maxPixels": 256,
   "maxSizeBytes": 102400
 }
 ```
-> **严格安全限制**：
-> 1. **大小限制 (`maxSizeBytes`)**：图片字节大小默认不得超过 **512 KB**（可由字段进一步调小）。超限将自动拒绝加载并平滑降级。
-> 2. **像素分辨率限制 (`maxPixels`)**：图片解码后的宽和高默认不得超过 **$512 \times 512$** 像素。超限将拒绝加载并平滑降级，杜绝误引入数千像素超大图导致客户端内存溢出和列表掉帧。
-
-#### 方案三：Material 图标关键词模式 (`type: "material"`)
-如果不需要自定义图形，可以直接使用系统预置的 Material 图标别名：
-```json
-"icon": "compress"
-```
-或：
-```json
-"icon": {
-  "type": "material",
-  "data": "folder_zip"
-}
-```
-**系统常用别名列表**：
-- 图片类：`image`, `compress`, `aspect_ratio`, `badge`, `watermark`, `transform`
-- 媒体类：`movie`, `video`, `gif`, `motion_photo`, `download`
-- 文档类：`pdf`, `doc_converter`
-- 归档/数据：`folder_zip`, `zip`, `archive`, `code`, `terminal`, `memory`, `wasm`, `cpu`
-- 实用类：`qr_code`, `text`
-
-#### 优雅安全降级保障：
-若未声明 `icon`，或者图片超限、损坏、代码语法错误，客户端将**统一平滑降级为官方默认功能模块图标（`Icons.extension_rounded` 拼图模块图标）**，绝不抛出任何未捕获异常。
+> **安全限制**：图片大小不得超过 **512 KB**，分辨率建议 $\le 512 	imes 512$ 像素。超限将自动安全降级为官方拼图图标。
 
 ---
 
 ### 3.3 动态表单组件系统 (Inputs)
 
-`inputs` 数组定义了用户在界面上所能操作的控件。客户端提供了 5 种核心输入组件：
-
 #### 1. 文件选择器 (`file_picker`)
 ```json
 {
-  "id": "inputFiles",
-  "label": "选择待处理图片",
+  "id": "musicFiles",
+  "label": "选择待处理文件 (支持批量多选与整目录展开)",
   "type": "file_picker",
   "required": true,
   "allowMultiple": true,
-  "allowedExtensions": ["jpg", "jpeg", "png", "webp"]
+  "allowedExtensions": ["ncm", "flac", "mp3"]
 }
 ```
-- `allowMultiple`: `true` 为多选（批量），`false` 为单文件模式。
-- `allowedExtensions`: 允许的后缀名列表（不含 `.`）。
+- **Android 端专有未知后缀安全降级**：
+  在 Android 系统下，某些私有后缀（如 `.ncm`、`.qmc`、`.dat`）没有被注册到系统的 MimeTypeMap 中，直接使用 `FileType.custom` 会导致系统 SAF 选择器无响应或文件置灰。Multi-Toolbox 客户端在底层实现了智能捕获与 `FileType.any` 安全平滑降级，并在宿主层完成后缀校验，开发者无需写任何防御胶水代码！
+- **文件夹扁平化展开与防环机制 (`flattenInputEntries`)**：
+  若用户选择或拖拽了整个文件夹，客户端会在宿主层自动进行目录递归扫描、排除隐藏与系统垃圾文件（如 `.DS_Store`、`Thumbs.db`、`desktop.ini`），并执行规范化路径去重与符号链接防死循环保护（`followLinks: false`），将目录中的真实目标文件整齐喂给 WASI 沙箱或 CLI 批处理调度器。
 
-#### 2. 滑动条 (`slider`)
-```json
-{
-  "id": "quality",
-  "label": "输出画质因子",
-  "type": "slider",
-  "defaultValue": 80,
-  "min": 1,
-  "max": 100,
-  "step": 1
-}
-```
-
-#### 3. 下拉单选题 (`select`)
-```json
-{
-  "id": "algorithm",
-  "label": "采样插值算法",
-  "type": "select",
-  "defaultValue": "lanczos",
-  "options": [
-    { "label": "Lanczos3 (印刷级极高清)", "value": "lanczos" },
-    { "label": "Bilinear (双线性极速插值)", "value": "bilinear" },
-    { "label": "Nearest (邻近保留像素风格)", "value": "nearest" }
-  ]
-}
-```
-- `options[i].platforms`: 可单独限制某个选项仅在特定平台呈现（如 `["windows"]`）。
-
-#### 4. 数字输入框 (`number`)
-```json
-{
-  "id": "targetWidth",
-  "label": "目标宽度 (px)",
-  "type": "number",
-  "defaultValue": 1920,
-  "min": 1,
-  "max": 7680
-}
-```
-
-#### 5. 文本输入框 (`text`)
-```json
-{
-  "id": "password",
-  "label": "解密密钥 (若无保护可留空)",
-  "type": "text",
-  "required": false,
-  "defaultValue": ""
-}
-```
+#### 2. 其他输入组件
+- `slider`：数值滑块（支持 `defaultValue`, `min`, `max`, `step`）。
+- `select`：下拉单选（选项支持 `options: [{label, value, platforms}]`）。
+- `number`：数字输入框。
+- `text`：文本域输入框。
 
 ---
 
 ### 3.4 动态条件联动展示 (visibleIf)
 
-通过在输入项中配置 `visibleIf`，可以根据其他控件的取值，动态控制当前控件的隐藏或显现（例如切换“高级设置”或切换模式）：
-
 ```json
 {
-  "id": "customWidth",
-  "label": "自定义指定宽度",
-  "type": "number",
-  "visibleIf": {
-    "field": "resizeMode",
-    "equals": "custom_pixel"
-  }
-}
-```
-
-**支持的条件操作符**：
-- `equals`: 当前置字段等于指定值时显现。
-- `notEquals`: 当前置字段不等于指定值时显现。
-- `in`: 当前置字段的值在指定集合中时显现（如 `"in": ["mode_a", "mode_b"]`）。
-- `and`: 多条件组合（数组形式，所有子条件均满足时显现）。
-
----
-
-## 4. 从零开始的实战开发教程 (3 个完整实例)
-
-### 实战 1：开发一个 QuickJS 文本高频词分析与多重编解码模块
-
-#### 第一步：建立目录
-在 `plugins/` 下创建文件夹：`plugins/text-analyzer/`。
-
-#### 第二步：编写 `manifest.json`
-```json
-{
-  "id": "text-analyzer",
-  "name": "文本词频与敏感词分析器",
-  "version": "1.0.0",
-  "minAppVersion": "1.0.0",
-  "category": "text",
-  "platforms": ["universal"],
-  "executionType": "quickjs",
-  "engineType": "quickjs",
-  "description": "基于沙箱内嵌的高性能 JavaScript 引擎，实时分析长文本词频分布、提取高频关键词并进行敏感词过滤分析。跨平台本地离线运行。",
-  "author": "社区极客",
-  "icon": {
-    "type": "code",
-    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect width=\"24\" height=\"24\" rx=\"4\" fill=\"#10B981\"/><path d=\"M4 7h16M4 12h10M4 17h14\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg>"
-  },
-  "inputs": [
-    {
-      "id": "sourceText",
-      "label": "粘贴需要分析的文本内容",
-      "type": "text",
-      "required": true,
-      "defaultValue": ""
-    },
-    {
-      "id": "topN",
-      "label": "提取词频 Top 排名数量",
-      "type": "slider",
-      "defaultValue": 10,
-      "min": 3,
-      "max": 50,
-      "step": 1
-    }
+  "id": "bitrate",
+  "label": "自定义音频码率",
+  "type": "select",
+  "options": [
+    { "label": "320 kbps (极致音质)", "value": "320k" },
+    { "label": "192 kbps (标准均衡)", "value": "192k" }
   ],
-  "action": {
-    "handler": "quickjs_runner",
-    "params": {
-      "scriptFile": "analyzer.js"
-    }
+  "visibleIf": {
+    "field": "format",
+    "equals": "mp3"
   }
 }
 ```
 
-#### 第三步：编写核心脚本 `plugins/text-analyzer/analyzer.js`
-```javascript
-// inputs 对象由宿主环境自动注入
-const text = (inputs.sourceText || '').trim();
-const topLimit = parseInt(inputs.topN || 10, 10);
-
-if (!text) {
-  return "【错误】未提供有效的待分析文本内容！";
-}
-
-console.log("正在对 " + text.length + " 个字符进行分词统计...");
-
-// 简单分词逻辑 (支持中英文单词与连续汉字统计)
-const words = text.match(/[\u4e00-\u9fa5]{2,}|[a-zA-Z]{3,}/g) || [];
-const frequencyMap = {};
-
-for (const w of words) {
-  const lower = w.toLowerCase();
-  frequencyMap[lower] = (frequencyMap[lower] || 0) + 1;
-}
-
-const sortedList = Object.entries(frequencyMap)
-  .sort((a, b) => b[1] - a[1])
-  .slice(0, topLimit);
-
-let result = `📊 文本深度分析报告\n`;
-result += `----------------------------------------\n`;
-result += `• 字符总数: ${text.length} 字符\n`;
-result += `• 有效词元: ${words.length} 个\n`;
-result += `• 独立词汇: ${Object.keys(frequencyMap).length} 个\n\n`;
-result += `🏆 高频词汇 TOP ${topLimit} 排行榜:\n`;
-
-sortedList.forEach(([word, count], idx) => {
-  const percent = ((count / words.length) * 100).toFixed(1);
-  result += ` [${idx + 1}] ${word} : 出现 ${count} 次 (${percent}%)\n`;
-});
-
-// 输出结果直接由 return 返回呈现
-return result;
-```
-
 ---
 
-### 实战 2：开发一个 Rust 编译的 WebAssembly 极速素数筛/哈希计算模块
+## 4. 从零开始的实战开发教程 (4 个完整实例)
 
-#### 第一步：编写 Rust 代码并编译
-创建 Rust 项目：
+### 🌟 实战 4：开发一个双端自适应合一插件（网易云 NCM 解密器）
+
+本实战以官方社区上线的旗舰级插件 `ncm-audio-converter`（网易云 NCM 解密）为完整范例，展示如何开发一个兼具 Windows 原生极速性能与 Android WASM 跨平台沙箱的自适应插件。
+
+#### 步骤 1：编写核心解密逻辑 (Rust)
+在 Rust 中实现解密内核，注意：
+- 避免小缓冲读写，采用 1MB~4MB 块缓冲，减少 WASI 系统调用开销；
+- 预计算密钥流，避免逐字节重复异或算术；
+- 遍历目录时务必严格过滤 `.`（当前目录）和 `..`（父目录），防止 Android Linux POSIX `readdir` 引发死递归。
+
+#### 步骤 2：交叉编译双端产物
 ```bash
-cargo new --lib fast-prime-wasm
+# 1. 编译 Windows 原生二进制 (x86_64 机器码)
+cargo build --target x86_64-pc-windows-msvc --release
+# 产物：target/x86_64-pc-windows-msvc/release/ncmdump.exe
+
+# 2. 编译跨平台 WebAssembly 字节码 (WASI Preview 1 规范)
+cargo build --target wasm32-wasip1 --release
+# 产物：target/wasm32-wasip1/release/ncmdump.wasm
 ```
 
-在 `src/lib.rs` 中：
-```rust
-#[no_mangle]
-pub extern "C" fn count_primes(limit: u32) -> u32 {
-    if limit < 2 {
-        return 0;
-    }
-    let mut is_prime = vec![true; (limit + 1) as usize];
-    is_prime[0] = false;
-    is_prime[1] = false;
-    
-    let mut count = 0;
-    let mut p = 2;
-    while p * p <= limit {
-        if is_prime[p as usize] {
-            let mut i = p * p;
-            while i <= limit {
-                is_prime[i as usize] = false;
-                i += p;
-            }
-        }
-        p += 1;
-    }
-    
-    for i in 2..=limit {
-        if is_prime[i as usize] {
-            count += 1;
-        }
-    }
-    count
-}
+#### 步骤 3：组装目录结构
+在 `plugins/ncm-audio-converter/` 下组织文件：
+```text
+plugins/ncm-audio-converter/
+  ├── manifest.json
+  ├── README.md
+  └── bin/
+        ├── ncmdump.exe     (约 399 KB)
+        └── ncmdump.wasm    (约 362 KB)
 ```
 
-编译生成跨平台 `.wasm` 二进制：
-```bash
-cargo build --target wasm32-unknown-unknown --release
-# 生成的 target/wasm32-unknown-unknown/release/fast_prime_wasm.wasm
-```
-
-#### 第二步：组装模块目录
-在 `plugins/fast-prime/` 目录下放置：
-- `manifest.json`
-- `fast_prime.wasm`
-
+#### 步骤 4：编写完整 `manifest.json`
 ```json
 {
-  "id": "fast-prime",
-  "name": "极速埃氏素数筛算力模块",
-  "version": "1.0.0",
-  "category": "other",
-  "platforms": ["universal"],
+  "id": "ncm-audio-converter",
+  "name": "网易云 NCM 解密",
+  "version": "2.2.0",
+  "minAppVersion": "1.0.0",
+  "category": "media",
+  "platforms": ["windows", "android"],
   "executionType": "wasm",
   "engineType": "wasm",
-  "description": "基于 Rust 编译的原生 WebAssembly 模块，可在沙箱中秒级完成上千万级数字范围内的素数统计计算。",
-  "author": "Rust 算力玩家",
+  "author": "taurusxin / 社区移植",
+  "description": "【双端自适应合一】Windows 端自动调度本地原生极速程序 (0.3s 直出)，Android 端无缝运行 WASM 算力微内核沙箱 (<1s 完成)。专为网易云专属加密 NCM 格式设计，100% 还原原始无损 FLAC 或高保真 MP3 音轨，自动嵌入元数据与高清封面，支持全选批量与整目录展开。",
   "icon": {
     "type": "code",
-    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect width=\"24\" height=\"24\" rx=\"4\" fill=\"#6366F1\"/><path d=\"M7 11h2v5H7zm8-4h2v9h-2zm-4 2h2v7h-2z\" fill=\"#FFFFFF\"/></svg>"
+    "data": "<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="ncmGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#E11D48"/><stop offset="100%" stop-color="#9333EA"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ncmGrad)"/><circle cx="11" cy="12" r="7" fill="none" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.3"/><circle cx="11" cy="12" r="4.5" fill="none" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.5"/><circle cx="11" cy="12" r="2" fill="#FFFFFF"/><path d="M16 6v7.5a2 2 0 1 1-1.5-1.93V8h3V6h-1.5z" fill="#FFFFFF"/><rect x="15" y="14" width="7" height="6" rx="1.5" fill="#10B981"/><path d="M17 14v-1.8a1.5 1.5 0 0 1 3 0V14" fill="none" stroke="#10B981" stroke-width="1.3" stroke-linecap="round"/><circle cx="18.5" cy="17" r="0.8" fill="#FFFFFF"/></svg>"
   },
-  "inputs": [
-    {
-      "id": "limitRange",
-      "label": "计算上限 (例如 10,000,000)",
-      "type": "number",
-      "required": true,
-      "defaultValue": 1000000,
-      "min": 10,
-      "max": 100000000
-    }
-  ],
-  "action": {
-    "handler": "wasm_runner",
-    "params": {
-      "wasmFile": "fast_prime.wasm",
-      "entryFunction": "count_primes"
-    }
-  }
-}
-```
-
----
-
-### 实战 3：开发一个 Windows 独立 CLI 音视频转码与终端回显扩展
-
-```json
-{
-  "id": "ffmpeg-audio-extractor",
-  "name": "FFmpeg 高清音频极速分离器",
-  "version": "1.0.0",
-  "category": "media",
-  "platforms": ["windows"],
-  "executionType": "native_executable",
-  "description": "【Windows 专享工坊】调用专业命令行多媒体工具，从各类视频文件中以无损质量直接提取原始音轨流，配备实时命令行终端输出。",
-  "author": "Media Work",
-  "icon": "movie",
   "nativeRunner": {
-    "entry": "ffmpeg.exe",
+    "entry": "bin/ncmdump.exe",
     "args": [
-      "-y",
-      "-i", "{sourceVideo}",
-      "-vn",
-      "-c:a", "{audioCodec}",
-      "{outputDir}/extracted_audio.{audioFormat}"
+      "-o", "{outputDir}", "{inputs}"
     ],
+    "showTerminal": true
+  },
+  "wasmRunner": {
+    "entry": "bin/ncmdump.wasm",
+    "executionMode": "wasi_cli",
+    "args": [
+      "-i", "{input}", "-o", "{outputDir}"
+    ],
+    "batchMode": true,
     "showTerminal": true
   },
   "inputs": [
     {
-      "id": "sourceVideo",
-      "label": "选择源视频文件",
+      "id": "musicFiles",
+      "label": "选择待解锁的 NCM 音乐文件 (支持批量多选与整目录)",
       "type": "file_picker",
       "required": true,
-      "allowMultiple": false,
-      "allowedExtensions": ["mp4", "mkv", "mov", "flv", "avi"]
-    },
-    {
-      "id": "audioFormat",
-      "label": "输出音频格式",
-      "type": "select",
-      "defaultValue": "mp3",
-      "options": [
-        { "label": "MP3 高兼容格式 (320kbps)", "value": "mp3" },
-        { "label": "FLAC 无损音频格式", "value": "flac" },
-        { "label": "AAC 高压缩率格式", "value": "aac" }
-      ]
+      "allowMultiple": true,
+      "allowedExtensions": ["ncm"]
     }
-  ]
+  ],
+  "action": {
+    "handler": "wasm_universal",
+    "params": {}
+  }
 }
 ```
 
@@ -588,42 +403,38 @@ cargo build --target wasm32-unknown-unknown --release
 
 ## 5. 本地开发、打包与自动化测试规范
 
-社区注册表仓库自带了自动化检查和编译脚本 `tools/build_registry.py`。
+社区注册表仓库自带本地校验与构建工具 `tools/build_registry.py`。
 
 ### 运行自动化构建与检查
-在 `community_registry_repo/` 根目录下执行：
+在 `Toolbox-Community-Registry-Repo/` 根目录下执行：
 ```bash
 python tools/build_registry.py
 ```
 
-### 校验规则清单：
-1. **文件夹与 ID 强一致性**：`plugins/<plugin_id>/` 目录名必须与 `manifest.json` 中的 `"id"` 完全相同。
+### 校验项清单：
+1. **文件夹与 ID 一致性**：`plugins/<plugin_id>/` 目录名与 `manifest.json` 中的 `"id"` 必须完全对齐。
 2. **必填元数据校验**：必须包含 `id`、`name`、`version`、`category`、`description` 字段。
-3. **图标安全规范校验**：
-   - 若 `icon` 为代码渲染，SVG 代码长度不得超过 64KB。
-   - 若 `icon` 为图片模式，Base64 数据或文件字节不得超过 512KB（且像素限制建议 $\le$ 512px）。
-4. **包体压缩**：脚本自动为每个模块生成纯净的 `packages/<plugin_id>.zip`，并计算 MD5、SHA256 和字节大小。
+3. **图标安全校验**：SVG 代码大小 $\le$ 64KB；图片数据 $\le$ 512KB。
+4. **包体压缩**：脚本自动生成 `packages/<plugin_id>.zip` 并生成标准哈希。
 5. **多源镜像索引聚合**：自动更新 `registry/index.json`，补充 Gitee、jsDelivr CDN 与 GitHub 直连三重下载源。
 
 ---
 
 ## 6. 社区注册中心提交与合入发布规范 (PR 流程)
 
-百宝箱完全秉承开源社区共建共享精神，欢迎任何人向官方仓库提交实用的新模块！
-
 ```mermaid
 flowchart LR
-    A["1. Fork 官方仓库"] --> B["2. 在 plugins/ 建立模块目录"]
-    B --> C["3. 编写 manifest.json 与脚本/资源"]
-    C --> D["4. 运行 python tools/build_registry.py 校验"]
+    A["1. Fork 官方仓库"] --> B["2. plugins/ 建立模块目录"]
+    B --> C["3. 编写 manifest.json 与产物"]
+    C --> D["4. 运行 python tools/build_registry.py"]
     D --> E["5. 提交 PR 发起合入申请"]
-    E --> F["6. CI 自动安全扫描 & 管理员审查"]
-    F --> G["7. 合入发布，全球三节点秒级分发"]
+    E --> F["6. CI 自动扫描 & 维护者审查"]
+    F --> G["7. 合入 main，多源镜像秒级同步"]
 ```
 
-### 提交要求与安全准则：
-- 🟢 **纯本地执行原则**：严禁向任何未经用户授权的第三方服务器私自回传数据、文件或环境信息。
-- 🟢 **包体控制**：模块包源码应当轻巧精悍。大于 50MB 的独立外部二进制程序请通过 `downloadUrls` 配置远程静默拉取，切勿直接将大二进制提交入 Git。
-- 🟢 **版权与原创**：请在清单中如实标注 `author`。若引用开源算法或工具，请注明上游协议。
+### 开发者守则：
+- 🟢 **纯本地执行**：严禁向任何第三方服务器私自上载用户文件、个人数据或隐私信息。
+- 🟢 **包体控制**：模块包源码应当轻巧精悍。单包体积建议控制在合理范围内。
+- 🟢 **尊重版权**：如实标注 `author` 与引用开源项目的许可协议（如 MIT、Apache-2.0）。
 
-🎉 **当您的 Pull Request 合入 `main` 分支后，GitHub Actions 将自动触发多镜像构建同步，全球所有 Multi-Toolbox 用户在打开客户端「模块市场」时即可即时发现并一键安装您的作品！**
+🎉 **当您的 Pull Request 合入 `main` 分支后，GitHub Actions 将自动执行多源构建，全球所有 Multi-Toolbox 用户在打开客户端「模块市场」时即可即时发现并一键安装您的作品！**
