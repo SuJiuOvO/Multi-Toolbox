@@ -385,5 +385,43 @@ void main() {
       expect(find.text('社区插件'), findsOneWidget);
       expect(find.text('官方认证'), findsNothing);
     });
+
+    testWidgets('ImageCompareSliderWidget renders before/after images and handles drag events', (tester) async {
+      final tempDir = Directory.systemTemp.createTempSync('compare_test_');
+      final f1 = File(p.join(tempDir.path, 'before.png'))..writeAsBytesSync([137, 80, 78, 71, 13, 10, 26, 10]);
+      final f2 = File(p.join(tempDir.path, 'after.png'))..writeAsBytesSync([137, 80, 78, 71, 13, 10, 26, 10]);
+
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ImageCompareSliderWidget(
+                beforeImagePath: f1.path,
+                afterImagePath: f2.path,
+                beforeLabel: '测试前',
+                afterLabel: '测试后',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('测试前'), findsOneWidget);
+        expect(find.text('测试后'), findsOneWidget);
+        expect(find.byIcon(Icons.compare_arrows), findsOneWidget);
+
+        // 模拟横向拖动滑块
+        await tester.drag(find.byIcon(Icons.compare_arrows), const Offset(50, 0));
+        await tester.pumpAndSettle();
+
+        final clipper = HorizontalRectClipper(0.7);
+        final rect = clipper.getClip(const Size(100, 100));
+        expect(rect.width, 70);
+        expect(clipper.shouldReclip(HorizontalRectClipper(0.5)), isTrue);
+        expect(clipper.shouldReclip(HorizontalRectClipper(0.7)), isFalse);
+      } finally {
+        if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+      }
+    });
   });
 }

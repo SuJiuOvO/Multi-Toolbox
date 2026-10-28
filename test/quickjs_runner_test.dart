@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_js/flutter_js.dart';
 import 'package:app/models/plugin_manifest.dart';
 import 'package:app/services/quickjs_bridge_service.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -537,6 +538,143 @@ void main() {
         expect(result.success, true);
         expect(result.resultText, 'Jail assertion passed');
       } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('QuickJsBridgeService Path Jail blocks reading sibling files in parent directory without permission', () async {
+      if (!canRunQuickJs) return;
+      final tempFolder = Directory.systemTemp.createTempSync('qjs_jail_parent_');
+      final outDir = Directory.systemTemp.createTempSync('qjs_jail_out2_');
+      final selectedFile = File(p.join(tempFolder.path, 'selected.txt'))..writeAsStringSync('allowed content');
+      File(p.join(tempFolder.path, 'secret_sibling.txt')).writeAsStringSync('super secret content');
+
+      try {
+        final manifest = PluginManifest(
+          id: 'test-parent-jail-plugin',
+          name: 'Parent Jail Test',
+          version: '1.0.0',
+          category: 'other',
+          description: 'Testing parent folder traversal protection',
+          icon: 'security',
+          author: 'Security Auditor',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          permissions: [],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ inputFiles, outputDir }) {
+                  const allowedFile = inputFiles[0];
+                  const siblingFile = allowedFile.replace('selected.txt', 'secret_sibling.txt');
+                  
+                  // 1. Reading explicitly selected file must succeed
+                  const allowedContent = Toolbox.fs.readFile(allowedFile);
+                  
+                  // 2. Reading sibling file without permission must be blocked
+                  let blockedSibling = false;
+                  try {
+                    Toolbox.fs.readFile(siblingFile);
+                  } catch (e) {
+                    blockedSibling = e.message.includes('沙箱安全拦截');
+                  }
+                  
+                  // 3. Listing parent dir without permission must be blocked
+                  let blockedList = false;
+                  try {
+                    const lastSlash = Math.max(allowedFile.lastIndexOf('/'), allowedFile.lastIndexOf('\\\\'));
+                    const parentDir = allowedFile.substring(0, lastSlash);
+                    Toolbox.fs.readDir(parentDir);
+                  } catch (e) {
+                    blockedList = e.message.includes('沙箱安全拦截');
+                  }
+
+                  return {
+                    success: allowedContent === 'allowed content' && blockedSibling && blockedList,
+                    data: { blockedSibling, blockedList },
+                    text: 'Parent jail protection passed'
+                  };
+                }
+              """
+            },
+          ),
+        );
+
+        final logs = <String>[];
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [selectedFile.path],
+          outputDir: outDir.path,
+          onProgress: (p, s) {},
+          onLog: (l, e) => logs.add(l),
+        );
+
+        if (!result.success) {
+          print('Parent Jail test failed: ${result.message}, logs: $logs');
+        }
+
+        expect(result.success, true);
+        expect(result.resultText, 'Parent jail protection passed');
+      } finally {
+        if (tempFolder.existsSync()) tempFolder.deleteSync(recursive: true);
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('QuickJsBridgeService allows sibling files when fs:read_directory permission is declared', () async {
+      if (!canRunQuickJs) return;
+      final tempFolder = Directory.systemTemp.createTempSync('qjs_jail_perm_');
+      final outDir = Directory.systemTemp.createTempSync('qjs_jail_out3_');
+      final selectedFile = File(p.join(tempFolder.path, 'track.mp3'))..writeAsStringSync('audio data');
+      File(p.join(tempFolder.path, 'track.lrc')).writeAsStringSync('lyrics data');
+
+      try {
+        final manifest = PluginManifest(
+          id: 'test-parent-perm-plugin',
+          name: 'Parent Perm Test',
+          version: '1.0.0',
+          category: 'other',
+          description: 'Testing authorized sibling folder access',
+          icon: 'security',
+          author: 'Security Auditor',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          permissions: ['fs:read_directory'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ inputFiles, outputDir }) {
+                  const audioFile = inputFiles[0];
+                  const lrcFile = audioFile.replace('track.mp3', 'track.lrc');
+                  const lrcContent = Toolbox.fs.readFile(lrcFile);
+                  return {
+                    success: lrcContent === 'lyrics data',
+                    text: 'Authorized sibling access passed'
+                  };
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [selectedFile.path],
+          outputDir: outDir.path,
+          onProgress: (p, s) {},
+          onLog: (l, e) {},
+        );
+
+        expect(result.success, true);
+        expect(result.resultText, 'Authorized sibling access passed');
+      } finally {
+        if (tempFolder.existsSync()) tempFolder.deleteSync(recursive: true);
         if (outDir.existsSync()) outDir.deleteSync(recursive: true);
       }
     });

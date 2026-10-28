@@ -146,6 +146,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   final Map<String, dynamic> _formValues = {};
   bool _isProcessing = false;
   bool _hasConfirmedNativeSecurityWarning = false;
+  final Map<String, bool> _showCompareMode = {};
   double _progress = 0.0;
   String _statusText = '';
   ProcessingResult? _result;
@@ -1339,105 +1340,163 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              ..._result!.outputFiles.map((outPath) {
-                final isImg = _isImageFile(outPath);
-                final isAudio = _isAudioFile(outPath);
-                final isVideo = _isVideoFile(outPath);
-                final lower = outPath.toLowerCase();
-                final isText = lower.endsWith('.json') ||
-                    lower.endsWith('.txt') ||
-                    lower.endsWith('.md') ||
-                    lower.endsWith('.csv') ||
-                    lower.endsWith('.log');
-                final fileExists = File(outPath).existsSync();
+              Builder(builder: (context) {
+                final firstInputImage = () {
+                  for (final input in widget.plugin.inputs) {
+                    if (input.type == 'file_picker') {
+                      final files = (_formValues[input.id] is List) ? List<String>.from(_formValues[input.id]) : <String>[];
+                      for (final f in files) {
+                        if (_isImageFile(f) && File(f).existsSync()) return f;
+                      }
+                    }
+                  }
+                  return null;
+                }();
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  elevation: 1,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      ListTile(
-                        onTap: () => _openFile(outPath),
-                        dense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                        leading: isImg && fileExists
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: Image.file(
-                                  File(outPath),
-                                  width: 44,
-                                  height: 44,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image),
-                                ),
-                              )
-                            : Icon(
-                                isAudio
-                                    ? Icons.audiotrack_rounded
-                                    : (isVideo
-                                        ? Icons.movie_creation_outlined
-                                        : (isText ? Icons.description_outlined : Icons.insert_drive_file)),
-                                color: theme.colorScheme.primary,
-                              ),
-                        title: Text(
-                          p.basename(outPath),
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textPrimary),
-                        ),
-                        subtitle: Text(
-                          outPath,
-                          style: TextStyle(fontSize: 11, color: textSecondary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.open_in_new, size: 20),
-                              tooltip: '打开或播放',
-                              onPressed: () => _openFile(outPath),
-                            ),
-                            if (Platform.isWindows)
-                              IconButton(
-                                icon: const Icon(Icons.folder_open, size: 20),
-                                tooltip: '在文件夹中定位',
-                                onPressed: () {
-                                  Process.run('explorer.exe', ['/select,', outPath]);
-                                },
-                              ),
-                          ],
-                        ),
+                return Column(
+                  children: _result!.outputFiles.map((outPath) {
+                    final isImg = _isImageFile(outPath);
+                    final isAudio = _isAudioFile(outPath);
+                    final isVideo = _isVideoFile(outPath);
+                    final lower = outPath.toLowerCase();
+                    final isText = lower.endsWith('.json') ||
+                        lower.endsWith('.txt') ||
+                        lower.endsWith('.md') ||
+                        lower.endsWith('.csv') ||
+                        lower.endsWith('.log');
+                    final fileExists = File(outPath).existsSync();
+                    final canCompare = isImg && fileExists && firstInputImage != null && firstInputImage != outPath;
+                    final isCompareActive = _showCompareMode[outPath] == true;
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB)),
                       ),
-                      if (isImg && fileExists)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                          child: GestureDetector(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ListTile(
                             onTap: () => _openFile(outPath),
-                            child: Container(
-                              constraints: const BoxConstraints(maxHeight: 220),
-                              decoration: BoxDecoration(
-                                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.file(
-                                  File(outPath),
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                            leading: isImg && fileExists
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Image.file(
+                                      File(outPath),
+                                      width: 44,
+                                      height: 44,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image),
+                                    ),
+                                  )
+                                : Icon(
+                                    isAudio
+                                        ? Icons.audiotrack_rounded
+                                        : (isVideo
+                                            ? Icons.movie_creation_outlined
+                                            : (isText ? Icons.description_outlined : Icons.insert_drive_file)),
+                                    color: theme.colorScheme.primary,
+                                  ),
+                            title: Text(
+                              p.basename(outPath),
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textPrimary),
+                            ),
+                            subtitle: Text(
+                              outPath,
+                              style: TextStyle(fontSize: 11, color: textSecondary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.open_in_new, size: 20),
+                                  tooltip: '打开或播放',
+                                  onPressed: () => _openFile(outPath),
                                 ),
-                              ),
+                                if (Platform.isWindows)
+                                  IconButton(
+                                    icon: const Icon(Icons.folder_open, size: 20),
+                                    tooltip: '在文件夹中定位',
+                                    onPressed: () {
+                                      Process.run('explorer.exe', ['/select,', outPath]);
+                                    },
+                                  ),
+                              ],
                             ),
                           ),
-                        ),
-                    ],
-                  ),
+                          if (canCompare)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton.icon(
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _showCompareMode[outPath] = !isCompareActive;
+                                      });
+                                    },
+                                    icon: Icon(
+                                      isCompareActive ? Icons.image_outlined : Icons.compare,
+                                      size: 16,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                    label: Text(
+                                      isCompareActive ? '单图预览' : '前后滑动对比',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: theme.colorScheme.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (isImg && fileExists)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                              child: (canCompare && isCompareActive)
+                                  ? ImageCompareSliderWidget(
+                                      beforeImagePath: firstInputImage,
+                                      afterImagePath: outPath,
+                                    )
+                                  : GestureDetector(
+                                      onTap: () => _openFile(outPath),
+                                      child: Container(
+                                        constraints: const BoxConstraints(maxHeight: 220),
+                                        decoration: BoxDecoration(
+                                          color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                          ),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.file(
+                                            File(outPath),
+                                            fit: BoxFit.contain,
+                                            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 );
               }),
             ],
@@ -1736,6 +1795,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       'key_value_table' => Icons.table_chart_outlined,
       'markdown' => Icons.article_outlined,
       'json_tree' => Icons.schema_outlined,
+      'image_compare' => Icons.compare_outlined,
       _ => Icons.data_object,
     };
 
@@ -1806,7 +1866,24 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               ],
             ),
             const SizedBox(height: 8),
-            if (type == 'key_value_table' && data is Map) ...[
+            if (type == 'image_compare' && data is Map) ...[
+              Builder(builder: (context) {
+                final before = data['before']?.toString() ?? data['src']?.toString() ?? '';
+                final after = data['after']?.toString() ?? data['dst']?.toString() ?? '';
+                if (before.isNotEmpty && after.isNotEmpty && File(before).existsSync() && File(after).existsSync()) {
+                  return ImageCompareSliderWidget(
+                    beforeImagePath: before,
+                    afterImagePath: after,
+                    beforeLabel: data['beforeLabel']?.toString() ?? '处理前 (Before)',
+                    afterLabel: data['afterLabel']?.toString() ?? '处理后 (After)',
+                  );
+                }
+                return Container(
+                  padding: const EdgeInsets.all(12),
+                  child: Text('无法加载对比图像: 路径不存在或尚未生成', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
+                );
+              }),
+            ] else if (type == 'key_value_table' && data is Map) ...[
               Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(6),
@@ -2744,4 +2821,179 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       });
     }
   }
+}
+
+/// Before / After 交互式图片滑动对比组件
+class ImageCompareSliderWidget extends StatefulWidget {
+  final String beforeImagePath;
+  final String afterImagePath;
+  final String beforeLabel;
+  final String afterLabel;
+
+  const ImageCompareSliderWidget({
+    super.key,
+    required this.beforeImagePath,
+    required this.afterImagePath,
+    this.beforeLabel = '处理前 (Before)',
+    this.afterLabel = '处理后 (After)',
+  });
+
+  @override
+  State<ImageCompareSliderWidget> createState() => _ImageCompareSliderWidgetState();
+}
+
+class _ImageCompareSliderWidgetState extends State<ImageCompareSliderWidget> {
+  double _sliderPosition = 0.5;
+
+  @override
+  Widget build(BuildContext context) {
+    final beforeFile = File(widget.beforeImagePath);
+    final afterFile = File(widget.afterImagePath);
+
+    if (!beforeFile.existsSync() || !afterFile.existsSync()) {
+      return Container(
+        height: 120,
+        alignment: Alignment.center,
+        child: const Text('图像文件未找到，无法生成对比', style: TextStyle(color: Colors.grey, fontSize: 12)),
+      );
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth > 0 ? constraints.maxWidth : 300.0;
+        const height = 260.0;
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            height: height,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+              border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Stack(
+              children: [
+                // 1. 底层：处理后的完整图片 (After)
+                Positioned.fill(
+                  child: Image.file(
+                    afterFile,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+
+                // 2. 顶层：处理前的图片 (Before)，使用 ClipRect 裁剪只显示左侧
+                Positioned.fill(
+                  child: ClipRect(
+                    clipper: HorizontalRectClipper(_sliderPosition),
+                    child: Image.file(
+                      beforeFile,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+
+                // 3. 标签
+                Positioned(
+                  left: 10,
+                  top: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      widget.beforeLabel,
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 10,
+                  top: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      widget.afterLabel,
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+
+                // 4. 分割线
+                Positioned(
+                  left: width * _sliderPosition - 1,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 2,
+                    color: Colors.white,
+                  ),
+                ),
+
+                // 5. 滑动手柄
+                Positioned(
+                  left: width * _sliderPosition - 16,
+                  top: height / 2 - 16,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.compare_arrows, size: 20, color: Colors.blueAccent),
+                  ),
+                ),
+
+                // 6. 全局横向拖动手势监听
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragUpdate: (details) {
+                      setState(() {
+                        _sliderPosition = (details.localPosition.dx / width).clamp(0.0, 1.0);
+                      });
+                    },
+                    onTapDown: (details) {
+                      setState(() {
+                        _sliderPosition = (details.localPosition.dx / width).clamp(0.0, 1.0);
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class HorizontalRectClipper extends CustomClipper<Rect> {
+  final double fraction;
+  HorizontalRectClipper(this.fraction);
+
+  @override
+  Rect getClip(Size size) {
+    return Rect.fromLTWH(0, 0, size.width * fraction, size.height);
+  }
+
+  @override
+  bool shouldReclip(HorizontalRectClipper oldClipper) => oldClipper.fraction != fraction;
 }

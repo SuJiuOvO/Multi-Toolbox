@@ -435,6 +435,7 @@ class QuickJsBridgeService {
     required PluginManifest plugin,
   }) {
     final isUnrestricted = plugin.hasUnrestrictedFsPermission;
+    final allowParentDir = plugin.hasReadParentDirPermission;
 
     switch (action) {
       // --- 文件系统 (fs) ---
@@ -448,6 +449,7 @@ class QuickJsBridgeService {
           pluginDataDir: pluginDataDir,
           isWrite: false,
           isUnrestricted: isUnrestricted,
+          allowParentDir: allowParentDir,
         );
         final isBase64 = payload['isBase64'] == true || payload['encoding'] == 'base64';
         final file = File(filePath);
@@ -489,6 +491,7 @@ class QuickJsBridgeService {
           pluginDataDir: pluginDataDir,
           isWrite: false,
           isUnrestricted: isUnrestricted,
+          allowParentDir: allowParentDir,
         );
         return File(target).existsSync() || Directory(target).existsSync();
 
@@ -502,6 +505,7 @@ class QuickJsBridgeService {
           pluginDataDir: pluginDataDir,
           isWrite: false,
           isUnrestricted: isUnrestricted,
+          allowParentDir: allowParentDir,
         );
         final d = Directory(dirPath);
         if (!d.existsSync()) return [];
@@ -556,6 +560,7 @@ class QuickJsBridgeService {
           pluginDataDir: pluginDataDir,
           isWrite: false,
           isUnrestricted: isUnrestricted,
+          allowParentDir: allowParentDir,
         );
         final f = File(target);
         return f.existsSync() ? f.lengthSync() : 0;
@@ -769,6 +774,12 @@ class QuickJsBridgeService {
         listFiles: function(path) {
           return __Toolbox_syncCall('fs_list', { path: path });
         },
+        readDir: function(path) {
+          return __Toolbox_syncCall('fs_list', { path: path });
+        },
+        list: function(path) {
+          return __Toolbox_syncCall('fs_list', { path: path });
+        },
         mkdir: function(path) {
           return __Toolbox_syncCall('fs_mkdir', { path: path });
         },
@@ -977,6 +988,7 @@ class QuickJsBridgeService {
     required String pluginDataDir,
     bool isWrite = false,
     bool isUnrestricted = false,
+    bool allowParentDir = false,
   }) {
     if (isUnrestricted) return;
     final trimmed = targetPath.trim();
@@ -986,24 +998,39 @@ class QuickJsBridgeService {
 
     final allowedRoots = <String>[];
     allowedRoots.add(outputDir);
-    allowedRoots.add(Directory.systemTemp.path);
+    allowedRoots.add(p.join(Directory.systemTemp.path, 'toolbox_temp'));
     allowedRoots.add(pluginDataDir);
 
     if (!isWrite) {
-      for (final f in inputFiles) {
-        allowedRoots.add(f);
-        allowedRoots.add(File(f).parent.path);
-      }
       if (pluginDirectory != null && pluginDirectory.isNotEmpty) {
         allowedRoots.add(pluginDirectory);
+      }
+      if (allowParentDir) {
+        for (final f in inputFiles) {
+          allowedRoots.add(File(f).parent.path);
+        }
       }
     }
 
     final canonicalTarget = p.canonicalize(trimmed);
-    final isAllowed = allowedRoots.any((root) => _isPathWithinRoot(canonicalTarget, root));
-    if (!isAllowed) {
-      throw Exception('沙箱安全拦截: 目标路径超出插件合法沙箱范围: $trimmed');
+    final isWithinAllowedRoot = allowedRoots.any((root) => _isPathWithinRoot(canonicalTarget, root));
+    if (isWithinAllowedRoot) return;
+
+    // 只读访问模式下，严格允许读取用户显式传入的具体输入文件，或者显式传入目录内的文件
+    if (!isWrite) {
+      final isInputFileOrInSelectedDir = inputFiles.any((f) {
+        final canF = p.canonicalize(f);
+        if (Directory(canF).existsSync()) {
+          return _isPathWithinRoot(canonicalTarget, canF);
+        }
+        return Platform.isWindows
+            ? canF.toLowerCase() == canonicalTarget.toLowerCase()
+            : canF == canonicalTarget;
+      });
+      if (isInputFileOrInSelectedDir) return;
     }
+
+    throw Exception('沙箱安全拦截: 目标路径超出插件合法沙箱范围: $trimmed');
   }
 
   static bool _isPathWithinRoot(String canonicalTarget, String rawRoot) {

@@ -399,7 +399,7 @@ class PluginIconDef {
 class PluginOutputDef {
   final String id;
   final String label;
-  final String type; // copyable_text, markdown, json_tree, key_value_table
+  final String type; // copyable_text, markdown, json_tree, key_value_table, image_compare
   final String? description;
 
   PluginOutputDef({
@@ -600,6 +600,13 @@ class PluginManifest {
 
   /// 是否声明了无限制文件系统访问权限
   bool get hasUnrestrictedFsPermission => hasPermission('fs_unrestricted') || hasPermission('fs:unrestricted');
+
+  /// 是否声明了读取选中文件同级目录 (包含同级伴随文件) 的权限
+  bool get hasReadParentDirPermission =>
+      hasPermission('fs_read_parent_dir') ||
+      hasPermission('fs:read_parent_dir') ||
+      hasPermission('fs:read_directory') ||
+      hasUnrestrictedFsPermission;
 
   factory PluginManifest.fromJson(Map<String, dynamic> json, {bool isRemote = false}) {
     var rawInputs = json['inputs'] as List?;
