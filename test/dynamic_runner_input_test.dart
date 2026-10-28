@@ -423,5 +423,50 @@ void main() {
         if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
       }
     });
+
+    testWidgets('DynamicToolRunnerPage renders generic PluginBannerDef at top-level and input-level', (tester) async {
+      final bannerPlugin = PluginManifest(
+        id: 'banner-test-tool',
+        name: 'Banner Test Tool',
+        version: '1.0.0',
+        category: 'other',
+        description: 'Testing generic banners',
+        icon: 'extension',
+        author: 'Tester',
+        engineType: 'custom',
+        executionType: 'internal',
+        platforms: ['universal'],
+        banners: [
+          PluginBannerDef(
+            message: '全局顶级测试横幅提示消息',
+            type: 'info',
+            icon: 'desktop_windows',
+          ),
+        ],
+        inputs: [
+          PluginInputDef(
+            id: 'testInput',
+            label: '测试输入组件',
+            type: 'file_picker',
+            banners: [
+              PluginBannerDef(
+                message: '组件级别专属黄色告警横幅',
+                type: 'warning',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicToolRunnerPage(plugin: bannerPlugin),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('全局顶级测试横幅提示消息'), findsOneWidget);
+      expect(find.text('组件级别专属黄色告警横幅'), findsOneWidget);
+    });
   });
 }

@@ -58,7 +58,11 @@
       "visibleIf": {
         "field": "archiveMode",
         "equals": "extract"
-      }
+      },
+      "isArchive": true,
+      "allowFolder": false,
+      "pickButtonText": "选择压缩包 / 分卷文件 (支持多选分卷 .001/.002 等)",
+      "selectionSummary": "已选定 {count} 个分卷/归档文件"
     },
     {
       "id": "archivePassword",
@@ -80,7 +84,9 @@
       "visibleIf": {
         "field": "archiveMode",
         "equals": "compress"
-      }
+      },
+      "preserveDirectoryEntries": true,
+      "selectionSummary": "已收纳 {count} 项待压缩条目 (包含文件与文件夹)"
     },
     {
       "id": "compressFormat",
@@ -155,5 +161,8 @@
       "outputArchiveName": "${outputArchiveName}",
       "splitSizeMb": "${splitSizeMb}"
     }
-  }
+  },
+  "permissions": [
+    "storage_manage"
+  ]
 }

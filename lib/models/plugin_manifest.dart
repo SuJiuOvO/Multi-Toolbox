@@ -32,6 +32,81 @@ class PluginInputCondition {
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'field': field,
+        if (equals != null) 'equals': equals,
+        if (notEquals != null) 'notEquals': notEquals,
+        if (inValues != null) 'in': inValues,
+        if (and != null) 'and': and!.map((e) => e.toJson()).toList(),
+        if (or != null) 'or': or!.map((e) => e.toJson()).toList(),
+      };
+}
+
+/// 提示横幅声明定义 (支持平台过滤与条件联动)
+class PluginBannerDef {
+  final String message;
+  final String type; // 'info', 'warning', 'success', 'tip'
+  final String? icon; // 'desktop_windows', 'phone_android', 'info_outline', 'auto_fix_high', 'table_chart_outlined', etc.
+  final String platform; // 'all', 'universal', 'windows', 'android'
+  final PluginInputCondition? visibleIf;
+
+  PluginBannerDef({
+    required this.message,
+    this.type = 'info',
+    this.icon,
+    this.platform = 'all',
+    this.visibleIf,
+  });
+
+  factory PluginBannerDef.fromJson(Map<String, dynamic> json) {
+    return PluginBannerDef(
+      message: json['message']?.toString() ?? '',
+      type: json['type']?.toString().toLowerCase() ?? 'info',
+      icon: json['icon']?.toString(),
+      platform: json['platform']?.toString().toLowerCase() ?? 'all',
+      visibleIf: json['visibleIf'] != null
+          ? PluginInputCondition.fromJson(Map<String, dynamic>.from(json['visibleIf']))
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'message': message,
+        'type': type,
+        if (icon != null) 'icon': icon,
+        'platform': platform,
+        if (visibleIf != null) 'visibleIf': visibleIf!.toJson(),
+      };
+}
+
+/// 专有或受阻格式校验提示与操作引导定义
+class PluginRejectedExtensionDef {
+  final List<String> extensions;
+  final String title;
+  final String message;
+
+  PluginRejectedExtensionDef({
+    required this.extensions,
+    required this.title,
+    required this.message,
+  });
+
+  factory PluginRejectedExtensionDef.fromJson(Map<String, dynamic> json) {
+    return PluginRejectedExtensionDef(
+      extensions: (json['extensions'] as List?)?.map((e) => e.toString().toLowerCase()).toList() ??
+          (json['exts'] as List?)?.map((e) => e.toString().toLowerCase()).toList() ??
+          [],
+      title: json['title']?.toString() ?? '格式受限说明',
+      message: json['message']?.toString() ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'extensions': extensions,
+        'title': title,
+        'message': message,
+      };
 }
 
 /// 插件输入参数定义
@@ -50,6 +125,14 @@ class PluginInputDef {
   final List<PluginSelectOption> options;
   final PluginInputCondition? visibleIf;
   final List<String> platforms; // universal, windows, android
+  final List<PluginBannerDef> banners;
+  final List<PluginRejectedExtensionDef> rejectedExtensions;
+  final bool? allowFolder;
+  final String? pickButtonText;
+  final String? selectionSummary;
+  final bool? isArchive;
+  final bool? preserveDirectoryEntries;
+  final PluginInputCondition? preserveDirectoryEntriesIf;
 
   PluginInputDef({
     required this.id,
@@ -66,6 +149,14 @@ class PluginInputDef {
     this.options = const [],
     this.visibleIf,
     this.platforms = const ['universal'],
+    this.banners = const [],
+    this.rejectedExtensions = const [],
+    this.allowFolder,
+    this.pickButtonText,
+    this.selectionSummary,
+    this.isArchive,
+    this.preserveDirectoryEntries,
+    this.preserveDirectoryEntriesIf,
   });
 
   bool isSupportedOnCurrentPlatform() {
@@ -99,6 +190,8 @@ class PluginInputDef {
   factory PluginInputDef.fromJson(Map<String, dynamic> json) {
     var rawOptions = json['options'] as List?;
     var rawPlatforms = json['platforms'] as List?;
+    var rawBanners = json['banners'] as List?;
+    var rawRejected = json['rejectedExtensions'] as List? ?? json['rejectedFormats'] as List?;
     return PluginInputDef(
       id: json['id'] ?? '',
       label: json['label'] ?? '',
@@ -120,6 +213,20 @@ class PluginInputDef {
       platforms: rawPlatforms != null
           ? rawPlatforms.map((e) => e.toString().toLowerCase()).toList()
           : const ['universal'],
+      banners: rawBanners != null
+          ? rawBanners.map((e) => PluginBannerDef.fromJson(Map<String, dynamic>.from(e))).toList()
+          : const [],
+      rejectedExtensions: rawRejected != null
+          ? rawRejected.map((e) => PluginRejectedExtensionDef.fromJson(Map<String, dynamic>.from(e))).toList()
+          : const [],
+      allowFolder: json['allowFolder'] as bool?,
+      pickButtonText: json['pickButtonText']?.toString(),
+      selectionSummary: json['selectionSummary']?.toString(),
+      isArchive: json['isArchive'] as bool?,
+      preserveDirectoryEntries: json['preserveDirectoryEntries'] as bool?,
+      preserveDirectoryEntriesIf: json['preserveDirectoryEntriesIf'] != null
+          ? PluginInputCondition.fromJson(Map<String, dynamic>.from(json['preserveDirectoryEntriesIf']))
+          : null,
     );
   }
 }
@@ -449,6 +556,7 @@ class PluginManifest {
   final List<PluginInputDef> inputs;
   final List<PluginOutputDef> outputs;
   final List<String> permissions; // e.g. 'network', 'fs_unrestricted'
+  final List<PluginBannerDef> banners;
   final PluginActionDef? action;
   final List<String> platforms; // universal, windows, android
   
@@ -480,6 +588,7 @@ class PluginManifest {
     this.inputs = const [],
     this.outputs = const [],
     this.permissions = const [],
+    this.banners = const [],
     this.action,
     this.platforms = const ['universal'],
     this.isInstalled = false,
@@ -608,11 +717,19 @@ class PluginManifest {
       hasPermission('fs:read_directory') ||
       hasUnrestrictedFsPermission;
 
+  /// 是否需要宿主提供全盘/存储文件访问权限 (如万能解压等)
+  bool get requiresStoragePermission =>
+      hasPermission('storage') ||
+      hasPermission('storage_manage') ||
+      hasPermission('storage_all_files') ||
+      hasPermission('fs_all_files');
+
   factory PluginManifest.fromJson(Map<String, dynamic> json, {bool isRemote = false}) {
     var rawInputs = json['inputs'] as List?;
     var rawOutputs = json['outputs'] as List?;
     var rawPlatforms = json['platforms'] as List?;
     var rawPerms = json['permissions'] as List?;
+    var rawBanners = json['banners'] as List?;
     final rawIcon = json['icon'] ?? json['iconDef'];
     final iconDef = PluginIconDef.fromRaw(rawIcon);
     final iconString = rawIcon is String ? rawIcon : (iconDef.data ?? 'extension');
@@ -648,6 +765,9 @@ class PluginManifest {
           : const [],
       permissions: rawPerms != null
           ? rawPerms.map((e) => e.toString().toLowerCase().trim()).toList()
+          : const [],
+      banners: rawBanners != null
+          ? rawBanners.map((e) => PluginBannerDef.fromJson(Map<String, dynamic>.from(e))).toList()
           : const [],
       action: json['action'] != null ? PluginActionDef.fromJson(json['action']) : null,
       platforms: rawPlatforms != null

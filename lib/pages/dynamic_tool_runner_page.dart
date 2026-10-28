@@ -202,7 +202,8 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         });
 
     final bool isAndroidArchivePicker = Platform.isAndroid &&
-        (input.id == 'archiveInput' ||
+        (input.isArchive == true ||
+            input.id == 'archiveInput' ||
             input.allowedExtensions.any((e) =>
                 ['001', 'z01', 'r00', 'part1', 'part01'].contains(e.toLowerCase())));
 
@@ -241,7 +242,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
 
       // 在 Android 端降级使用 FileType.any 时，若插件定义了明确的 allowedExtensions，
       // 在宿主层做安全过滤，避免用户误选其他无关类型的文件
-      if (Platform.isAndroid && (forceAnyOnAndroid || pickerType == FileType.any) && input.allowedExtensions.isNotEmpty && input.id != 'archiveInput') {
+      if (Platform.isAndroid && (forceAnyOnAndroid || pickerType == FileType.any) && input.allowedExtensions.isNotEmpty && input.isArchive != true && input.id != 'archiveInput') {
         final validExts = input.allowedExtensions
             .map((e) => e.toLowerCase().replaceFirst(RegExp(r'^\.'), ''))
             .toSet();
@@ -264,8 +265,45 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
 
       if (picked.isEmpty) return;
 
-      // 前置格式强校验拦截：若选择 CAD 时选中了 DWG 或 DWF，直接弹窗指导并拒绝，绝不生成假 PDF
-      if (input.id == 'cadInput' && picked.any((f) {
+      // 前置格式强校验拦截：若在 manifest 中声明了 rejectedExtensions，命中时弹窗指导并拒绝
+      if (input.rejectedExtensions.isNotEmpty) {
+        for (var rej in input.rejectedExtensions) {
+          final hasRejectedMatch = picked.any((f) {
+            final ext = p.extension(f).toLowerCase();
+            return rej.extensions.any((re) {
+              final clean = re.startsWith('.') ? re : '.$re';
+              return clean.toLowerCase() == ext;
+            });
+          });
+          if (hasRejectedMatch) {
+            if (mounted) {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+                      const SizedBox(width: 8),
+                      Text(rej.title, style: const TextStyle(fontSize: 16)),
+                    ],
+                  ),
+                  content: Text(
+                    rej.message,
+                    style: const TextStyle(fontSize: 13, height: 1.5),
+                  ),
+                  actions: [
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('我知道了'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return;
+          }
+        }
+      } else if (input.id == 'cadInput' && picked.any((f) {
         final ext = p.extension(f).toLowerCase();
         return ext == '.dwg' || ext == '.dwf';
       })) {
@@ -518,7 +556,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   }
 
   Future<void> _executeTool() async {
-    if (Platform.isAndroid && widget.plugin.id == 'universal-archive-extractor') {
+    if (Platform.isAndroid && (widget.plugin.requiresStoragePermission || widget.plugin.id == 'universal-archive-extractor')) {
       final hasPerm = await StoragePermissionService.checkPermission();
       if (!hasPerm && mounted) {
         final shouldRequest = await showDialog<bool>(
@@ -531,9 +569,9 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 Text('存储权限提示', style: TextStyle(fontSize: 16)),
               ],
             ),
-            content: const Text(
-              '压缩与解压模块需要读写设备公共存储区域的文件与文件夹。\n\n为确保真机环境下能正常扫描文件夹并输出压缩包，建议开启【允许管理所有文件】权限。',
-              style: TextStyle(fontSize: 14, height: 1.5),
+            content: Text(
+              '${widget.plugin.name} 需要读写设备公共存储区域的文件与文件夹。\n\n为确保真机环境下能正常扫描选定目录并完整输出处理结果，建议开启【允许管理所有文件】权限。',
+              style: const TextStyle(fontSize: 14, height: 1.5),
             ),
             actions: [
               TextButton(
@@ -919,20 +957,21 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       });
     }
 
-    final bool isArchiveCompress = (widget.plugin.action?.handler == 'archive_universal' ||
-            widget.plugin.id == 'archive_universal') &&
-        _formValues['archiveMode']?.toString() == 'compress';
-
     final effectiveInputFiles = <String>[];
     for (var fileInput in visibleFileInputs) {
       final val = _formValues[fileInput.id];
       final rawList = val is List
           ? List<String>.from(val)
           : (val is String && val.isNotEmpty ? [val] : <String>[]);
+      final bool preserveDirs = fileInput.preserveDirectoryEntries == true ||
+          (fileInput.preserveDirectoryEntriesIf != null &&
+              _evalCondition(fileInput.preserveDirectoryEntriesIf!)) ||
+          ((widget.plugin.action?.handler == 'archive_universal' || widget.plugin.id == 'archive_universal') &&
+              _formValues['archiveMode']?.toString() == 'compress');
       final flattened = DynamicToolRunnerPage.flattenInputEntries(
         rawEntries: rawList,
         allowedExtensions: fileInput.allowedExtensions,
-        isArchiveCompress: isArchiveCompress,
+        isArchiveCompress: preserveDirs,
       );
       effectiveInputFiles.addAll(flattened);
     }
@@ -1134,47 +1173,8 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           ),
         ),
         const SizedBox(height: 12),
-        if (widget.plugin.id == 'doc-converter') ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? (Platform.isWindows ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : const Color(0xFF064E3B).withValues(alpha: 0.3))
-                  : (Platform.isWindows ? Colors.blue.shade50 : Colors.green.shade50),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isDark
-                    ? (Platform.isWindows ? const Color(0xFF3B82F6) : const Color(0xFF10B981))
-                    : (Platform.isWindows ? Colors.blue.shade300 : Colors.green.shade300),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Platform.isWindows ? Icons.desktop_windows : Icons.phone_android,
-                  size: 18,
-                  color: isDark
-                      ? (Platform.isWindows ? const Color(0xFF93C5FD) : const Color(0xFF6EE7B7))
-                      : (Platform.isWindows ? Colors.blue.shade900 : Colors.green.shade900),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    Platform.isWindows
-                        ? '🪟 Windows 运行环境：PPT/Word/Excel 转 PDF 需电脑安装 Microsoft Office（PowerPoint、Word、Excel）或 WPS Office，转换可达 100% 格式无损。'
-                        : '🤖 Android 运行环境：Excel 支持【原生 WPS/Office 导出】与【本地离线轻量转换】；PPT 与 Word 调起手机 WPS 或 Office 导出，跳转前将显示详细操作指引。',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: isDark
-                          ? (Platform.isWindows ? const Color(0xFFDBEAFE) : const Color(0xFFD1FAE5))
-                          : (Platform.isWindows ? const Color(0xFF1E3A8A) : const Color(0xFF065F46)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        if (widget.plugin.banners.isNotEmpty) ...[
+          ...widget.plugin.banners.map((b) => _buildBannerCard(b, context)),
           const SizedBox(height: 12),
         ],
         ...widget.plugin.inputs.where(_isInputVisible).map((input) => _buildInputField(input, context)),
@@ -1957,6 +1957,114 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     );
   }
 
+  Widget _buildBannerCard(PluginBannerDef banner, BuildContext context) {
+    if (banner.platform == 'windows' && !Platform.isWindows) return const SizedBox.shrink();
+    if (banner.platform == 'android' && !Platform.isAndroid) return const SizedBox.shrink();
+
+    if (banner.visibleIf != null && !_evalCondition(banner.visibleIf!)) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    Color bgColor;
+    Color borderColor;
+    Color iconColor;
+    Color textColor;
+    IconData iconData;
+
+    switch (banner.type) {
+      case 'warning':
+        bgColor = isDark ? const Color(0xFF78350F).withValues(alpha: 0.3) : Colors.amber.shade50;
+        borderColor = isDark ? const Color(0xFFF59E0B) : Colors.amber.shade300;
+        iconColor = isDark ? const Color(0xFFFCD34D) : Colors.amber.shade900;
+        textColor = isDark ? const Color(0xFFFEF3C7) : const Color(0xFF78350F);
+        iconData = Icons.warning_amber_rounded;
+        break;
+      case 'success':
+        bgColor = isDark ? const Color(0xFF064E3B).withValues(alpha: 0.3) : Colors.green.shade50;
+        borderColor = isDark ? const Color(0xFF10B981) : Colors.green.shade300;
+        iconColor = isDark ? const Color(0xFF6EE7B7) : Colors.green.shade800;
+        textColor = isDark ? const Color(0xFFD1FAE5) : const Color(0xFF065F46);
+        iconData = Icons.phone_android;
+        break;
+      case 'tip':
+        bgColor = isDark ? const Color(0xFF581C87).withValues(alpha: 0.3) : Colors.purple.shade50;
+        borderColor = isDark ? const Color(0xFFA855F7) : Colors.purple.shade300;
+        iconColor = isDark ? const Color(0xFFD8B4FE) : Colors.purple.shade800;
+        textColor = isDark ? const Color(0xFFF3E8FF) : const Color(0xFF581C87);
+        iconData = Icons.lightbulb_outline_rounded;
+        break;
+      case 'info':
+      default:
+        bgColor = isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : Colors.blue.shade50;
+        borderColor = isDark ? const Color(0xFF3B82F6) : Colors.blue.shade300;
+        iconColor = isDark ? const Color(0xFF93C5FD) : Colors.blue.shade800;
+        textColor = isDark ? const Color(0xFFDBEAFE) : const Color(0xFF1E3A8A);
+        iconData = Icons.info_outline;
+        break;
+    }
+
+    if (banner.icon != null) {
+      switch (banner.icon) {
+        case 'desktop_windows':
+          iconData = Icons.desktop_windows;
+          break;
+        case 'phone_android':
+          iconData = Icons.phone_android;
+          break;
+        case 'auto_fix_high':
+          iconData = Icons.auto_fix_high;
+          break;
+        case 'table_chart_outlined':
+        case 'table_chart':
+          iconData = Icons.table_chart_outlined;
+          break;
+        case 'folder_zip_outlined':
+          iconData = Icons.folder_zip_outlined;
+          break;
+        case 'info_outline':
+          iconData = Icons.info_outline;
+          break;
+        case 'warning_amber_rounded':
+          iconData = Icons.warning_amber_rounded;
+          break;
+        case 'help_outline':
+          iconData = Icons.help_outline;
+          break;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(iconData, size: 18, color: iconColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              banner.message,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: textColor,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInputField(PluginInputDef input, BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -2002,13 +2110,13 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              if (input.id == 'archiveInput')
+              if (input.allowFolder == false || input.id == 'archiveInput')
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: () => _pickFiles(input),
-                    icon: const Icon(Icons.folder_zip_outlined, size: 20),
-                    label: const Text('选择压缩包 / 分卷文件 (支持多选分卷 .001/.002 等)'),
+                    icon: Icon(input.isArchive == true ? Icons.folder_zip_outlined : Icons.note_add_outlined, size: 20),
+                    label: Text(input.pickButtonText ?? (input.id == 'archiveInput' ? '选择压缩包 / 分卷文件 (支持多选分卷 .001/.002 等)' : '选择文件')),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -2022,7 +2130,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                       child: OutlinedButton.icon(
                         onPressed: () => _pickFiles(input),
                         icon: const Icon(Icons.note_add_outlined, size: 18),
-                        label: const Text('添加文件 (多选)'),
+                        label: Text(input.pickButtonText ?? '添加文件 (多选)'),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -2123,11 +2231,13 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    input.id == 'archiveInput'
-                        ? '已选定 ${currentFiles.length} 个分卷/归档文件'
-                        : (input.id.contains('archive') || widget.plugin.id.contains('archive'))
-                        ? '已收纳 ${currentFiles.length} 项待压缩条目 (包含文件与文件夹)'
-                        : '已选择 ${currentFiles.length} 项输入 (包含文件与文件夹)',
+                    input.selectionSummary != null
+                        ? input.selectionSummary!.replaceAll('{count}', '${currentFiles.length}')
+                        : (input.allowFolder == false || input.id == 'archiveInput'
+                            ? '已选定 ${currentFiles.length} 项文件'
+                            : (input.id.contains('archive') || widget.plugin.id.contains('archive'))
+                            ? '已收纳 ${currentFiles.length} 项待压缩条目 (包含文件与文件夹)'
+                            : '已选择 ${currentFiles.length} 项输入 (包含文件与文件夹)'),
                     style: TextStyle(fontSize: 12, color: textSecondary),
                   ),
                 ),
@@ -2239,156 +2349,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 ),
               ),
             ],
-            if (input.id == 'cadInput') ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF78350F).withValues(alpha: 0.3) : Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isDark ? const Color(0xFFF59E0B) : Colors.amber.shade300,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.info_outline, size: 18, color: isDark ? const Color(0xFFFCD34D) : Colors.amber.shade900),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '💡 格式说明：DWG / DWF 为 Autodesk 专有二进制加密格式，无法直接无损解码。请在 AutoCAD / 中望CAD / 浩辰CAD 中使用快捷命令【DXFOUT】或【另存为 -> AutoCAD DXF (*.dxf)】，本工具支持 DXF 100% 全矢量无损转换！',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? const Color(0xFFFEF3C7) : const Color(0xFF78350F),
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            if (Platform.isWindows && (input.id == 'pptxToPdfInput' || input.id == 'docxInput' || input.id == 'excelInput')) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isDark ? const Color(0xFF3B82F6) : Colors.blue.shade300,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.desktop_windows, size: 18, color: isDark ? const Color(0xFF93C5FD) : Colors.blue.shade800),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '💡 Windows 提示：本功能需电脑安装 Microsoft Office（PowerPoint、Word、Excel）或 WPS 工具。转换时将调用电脑本地原生办公套件进行 100% 格式无损导出为 PDF。',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? const Color(0xFFDBEAFE) : const Color(0xFF1E3A8A),
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            if (Platform.isAndroid && (input.id == 'pptxToPdfInput' || input.id == 'docxInput' || (input.id == 'excelInput' && curSubTool == 'excel_to_pdf_android_office') || (input.id == 'pptInput' && curSubTool == 'pptx_to_images_android_office') || (input.id == 'pdfToDocxInput' && curSubTool == 'pdf_to_docx_android_office'))) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF064E3B).withValues(alpha: 0.3) : Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isDark ? const Color(0xFF10B981) : Colors.green.shade300,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.phone_android, size: 18, color: isDark ? const Color(0xFF6EE7B7) : Colors.green.shade800),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '💡 Android 官方高保真导出指引：将为您一键调用手机已安装的【WPS Office】或【Microsoft Office】导出。执行前将显示操作步骤与 WPS 会员权限说明。',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? const Color(0xFFD1FAE5) : const Color(0xFF065F46),
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            if (Platform.isAndroid && input.id == 'pdfToDocxInput' && curSubTool == 'pdf_to_docx_android_light') ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isDark ? const Color(0xFF3B82F6) : Colors.blue.shade300,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.auto_fix_high, size: 18, color: isDark ? const Color(0xFF93C5FD) : Colors.blue.shade800),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '💡 本地离线智能排版引擎：无需第三方办公软件或 VIP 会员，直接在本地解析 PDF 文本，消除乱空格、修复折行断句，按中文排版规范生成含两字符首行缩进与 A4 版式的可编辑 Word 文档。',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? const Color(0xFFDBEAFE) : const Color(0xFF1E3A8A),
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            if (Platform.isAndroid && input.id == 'excelInput' && (curSubTool == 'excel_to_pdf_android_light' || curSubTool == 'excel_to_pdf_android')) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isDark ? const Color(0xFF3B82F6) : Colors.blue.shade300,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.table_chart_outlined, size: 18, color: isDark ? const Color(0xFF93C5FD) : Colors.blue.shade800),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '💡 纯本地轻量离线生成：无需依赖第三方办公软件，直接在本地解析 Excel 工作表数据，自动计算列宽并生成标准 A4 表格 PDF。',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? const Color(0xFFDBEAFE) : const Color(0xFF1E3A8A),
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ...input.banners.map((b) => _buildBannerCard(b, context)),
           ],
         ),
       );

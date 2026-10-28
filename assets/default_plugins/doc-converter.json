@@ -300,7 +300,24 @@
       "visibleIf": {
         "field": "subTool",
         "equals": "cad_to_pdf"
-      }
+      },
+      "banners": [
+        {
+          "type": "warning",
+          "icon": "info_outline",
+          "message": "💡 格式说明：DWG / DWF 为 Autodesk 专有二进制加密格式，无法直接无损解码。请在 AutoCAD / 中望CAD / 浩辰CAD 中使用快捷命令【DXFOUT】或【另存为 -> AutoCAD DXF (*.dxf)】，本工具支持 DXF 100% 全矢量无损转换！"
+        }
+      ],
+      "rejectedExtensions": [
+        {
+          "extensions": [
+            ".dwg",
+            ".dwf"
+          ],
+          "title": "CAD 专有格式转换提示",
+          "message": "您选择的文件属于 DWG / DWF 专有二进制加密格式。\n\n由于该格式闭源专有，移动端与跨平台端无法直接进行高保真矢量解码。\n\n【100% 全矢量无损转换操作指引】：\n1. 在 AutoCAD、中望CAD 或浩辰CAD 中打开此图纸；\n2. 命令行键入快捷命令 DXFOUT 并按回车（或点击【另存为】选择 AutoCAD DXF 格式）；\n3. 将保存后的 .dxf 文件直接拖入本工具转换，即可立即输出高质量全矢量 PDF！"
+        }
+      ]
     },
     {
       "id": "cadPageSize",
@@ -365,7 +382,21 @@
           "pptx_to_pdf",
           "pptx_to_pdf_android"
         ]
-      }
+      },
+      "banners": [
+        {
+          "platform": "windows",
+          "type": "info",
+          "icon": "desktop_windows",
+          "message": "💡 Windows 提示：本功能需电脑安装 Microsoft Office（PowerPoint、Word、Excel）或 WPS 工具。转换时将调用电脑本地原生办公套件进行 100% 格式无损导出为 PDF。"
+        },
+        {
+          "platform": "android",
+          "type": "success",
+          "icon": "phone_android",
+          "message": "💡 Android 官方高保真导出指引：将为您一键调用手机已安装的【WPS Office】或【Microsoft Office】导出。执行前将显示操作步骤与 WPS 会员权限说明。"
+        }
+      ]
     },
     {
       "id": "pdfToPptxInput",
@@ -448,7 +479,38 @@
           "excel_to_pdf_android_office",
           "excel_to_pdf_android_light"
         ]
-      }
+      },
+      "banners": [
+        {
+          "platform": "windows",
+          "type": "info",
+          "icon": "desktop_windows",
+          "message": "💡 Windows 提示：本功能需电脑安装 Microsoft Office（PowerPoint、Word、Excel）或 WPS 工具。转换时将调用电脑本地原生办公套件进行 100% 格式无损导出为 PDF。"
+        },
+        {
+          "platform": "android",
+          "type": "success",
+          "icon": "phone_android",
+          "visibleIf": {
+            "field": "subTool",
+            "equals": "excel_to_pdf_android_office"
+          },
+          "message": "💡 Android 官方高保真导出指引：将为您一键调用手机已安装的【WPS Office】或【Microsoft Office】导出。执行前将显示操作步骤与 WPS 会员权限说明。"
+        },
+        {
+          "platform": "android",
+          "type": "info",
+          "icon": "table_chart_outlined",
+          "visibleIf": {
+            "field": "subTool",
+            "in": [
+              "excel_to_pdf_android_light",
+              "excel_to_pdf_android"
+            ]
+          },
+          "message": "💡 纯本地轻量离线生成：无需依赖第三方办公软件，直接在本地解析 Excel 工作表数据，自动计算列宽并生成标准 A4 表格 PDF。"
+        }
+      ]
     },
     {
       "id": "mdInput",
@@ -525,7 +587,21 @@
           "docx_to_pdf",
           "docx_to_pdf_android"
         ]
-      }
+      },
+      "banners": [
+        {
+          "platform": "windows",
+          "type": "info",
+          "icon": "desktop_windows",
+          "message": "💡 Windows 提示：本功能需电脑安装 Microsoft Office（PowerPoint、Word、Excel）或 WPS 工具。转换时将调用电脑本地原生办公套件进行 100% 格式无损导出为 PDF。"
+        },
+        {
+          "platform": "android",
+          "type": "success",
+          "icon": "phone_android",
+          "message": "💡 Android 官方高保真导出指引：将为您一键调用手机已安装的【WPS Office】或【Microsoft Office】导出。执行前将显示操作步骤与 WPS 会员权限说明。"
+        }
+      ]
     },
     {
       "id": "pdfToDocxInput",
@@ -543,7 +619,29 @@
           "pdf_to_docx_android_office",
           "pdf_to_docx_android_light"
         ]
-      }
+      },
+      "banners": [
+        {
+          "platform": "android",
+          "type": "success",
+          "icon": "phone_android",
+          "visibleIf": {
+            "field": "subTool",
+            "equals": "pdf_to_docx_android_office"
+          },
+          "message": "💡 Android 官方高保真导出指引：将为您一键调用手机已安装的【WPS Office】或【Microsoft Office】导出。执行前将显示操作步骤与 WPS 会员权限说明。"
+        },
+        {
+          "platform": "android",
+          "type": "info",
+          "icon": "auto_fix_high",
+          "visibleIf": {
+            "field": "subTool",
+            "equals": "pdf_to_docx_android_light"
+          },
+          "message": "💡 本地离线智能排版引擎：无需第三方办公软件或 VIP 会员，直接在本地解析 PDF 文本，消除乱空格、修复折行断句，按中文排版规范生成含两字符首行缩进与 A4 版式的可编辑 Word 文档。"
+        }
+      ]
     },
     {
       "id": "preservePageBreaks",
@@ -574,5 +672,19 @@
       "txtTemplate": "${txtTemplate}",
       "preservePageBreaks": "${preservePageBreaks}"
     }
-  }
+  },
+  "banners": [
+    {
+      "platform": "windows",
+      "type": "info",
+      "icon": "desktop_windows",
+      "message": "🪟 Windows 运行环境：PPT/Word/Excel 转 PDF 需电脑安装 Microsoft Office（PowerPoint、Word、Excel）或 WPS Office，转换可达 100% 格式无损。"
+    },
+    {
+      "platform": "android",
+      "type": "success",
+      "icon": "phone_android",
+      "message": "🤖 Android 运行环境：Excel 支持【原生 WPS/Office 导出】与【本地离线轻量转换】；PPT 与 Word 调起手机 WPS 或 Office 导出，跳转前将显示详细操作指引。"
+    }
+  ]
 }
