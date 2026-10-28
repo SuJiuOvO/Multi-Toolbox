@@ -263,5 +263,127 @@ void main() {
       expect(find.text('一键复制'), findsNWidgets(3));
       expect(find.byIcon(Icons.copy), findsNWidgets(3));
     });
+
+    test('DynamicToolRunnerPage.parseHexColor parses hex, 3-char, 8-char, and transparent correctly', () {
+      expect(DynamicToolRunnerPage.parseHexColor('#FFFFFF'), const Color(0xFFFFFFFF));
+      expect(DynamicToolRunnerPage.parseHexColor('#000000'), const Color(0xFF000000));
+      expect(DynamicToolRunnerPage.parseHexColor('#FF0000'), const Color(0xFFFF0000));
+      expect(DynamicToolRunnerPage.parseHexColor('#F00'), const Color(0xFFFF0000));
+      expect(DynamicToolRunnerPage.parseHexColor('#80FF0000'), const Color(0x80FF0000));
+      expect(DynamicToolRunnerPage.parseHexColor('transparent'), Colors.transparent);
+      expect(DynamicToolRunnerPage.parseHexColor('none'), Colors.transparent);
+      expect(DynamicToolRunnerPage.parseHexColor('invalid'), Colors.white);
+    });
+
+    testWidgets('color_picker UI renders swatches, badge, and custom picker button', (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final colorPlugin = PluginManifest(
+        id: 'test-color-plugin',
+        name: 'Color Picker Demo Tool',
+        version: '1.0.0',
+        category: 'image',
+        description: 'Demonstrating color_picker input component',
+        icon: 'palette',
+        author: 'Toolbox Team',
+        isOfficial: true,
+        engineType: 'quickjs',
+        executionType: 'quickjs',
+        platforms: ['universal'],
+        inputs: [
+          PluginInputDef(
+            id: 'bgColor',
+            type: 'color_picker',
+            label: '背景填充颜色',
+            defaultValue: '#FFFFFF',
+          ),
+        ],
+        outputs: [],
+        action: PluginActionDef(
+          handler: 'quickjs_eval',
+          params: {
+            'script': "async function run(ctx) { return { success: true, text: ctx.inputs.bgColor }; }"
+          },
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicToolRunnerPage(plugin: colorPlugin),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 验证官方认证徽章正确显示
+      expect(find.text('官方认证'), findsOneWidget);
+      expect(find.byIcon(Icons.verified_user_rounded), findsOneWidget);
+
+      // 验证 color_picker 标题与默认值
+      expect(find.text('背景填充颜色'), findsOneWidget);
+      expect(find.text('#FFFFFF'), findsOneWidget);
+      expect(find.text('自定义'), findsOneWidget);
+
+      // 验证预设调色板中的图标
+      expect(find.byIcon(Icons.colorize), findsOneWidget);
+      expect(find.byIcon(Icons.check), findsOneWidget); // 选中的颜色带对勾
+
+      // 点击切换为预设红色 #EF4444
+      final redSwatchFinder = find.byTooltip('#EF4444');
+      expect(redSwatchFinder, findsOneWidget);
+      await tester.tap(redSwatchFinder);
+      await tester.pumpAndSettle();
+
+      // 状态栏应更新显示为 #EF4444
+      expect(find.text('#EF4444'), findsOneWidget);
+
+      // 点击执行，验证 QuickJS 接收到了选择的 Hex 颜色
+      await tester.tap(find.text('开始执行处理'));
+      await tester.pump();
+
+      await tester.runAsync(() async {
+        for (int i = 0; i < 15; i++) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.textContaining('#EF4444'), findsWidgets);
+    });
+
+    testWidgets('Community plugin shows community badge in AppBar', (tester) async {
+      final communityPlugin = PluginManifest(
+        id: 'test-community-plugin',
+        name: 'Community Tool',
+        version: '1.0.0',
+        category: 'other',
+        description: 'Community plugin description',
+        icon: 'extension',
+        author: 'Community Contributor',
+        isOfficial: false,
+        engineType: 'quickjs',
+        executionType: 'quickjs',
+        platforms: ['universal'],
+        inputs: [],
+        outputs: [],
+        action: PluginActionDef(
+          handler: 'quickjs_eval',
+          params: {'script': "async function run() { return { success: true }; }"},
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicToolRunnerPage(plugin: communityPlugin),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('社区插件'), findsOneWidget);
+      expect(find.text('官方认证'), findsNothing);
+    });
   });
 }

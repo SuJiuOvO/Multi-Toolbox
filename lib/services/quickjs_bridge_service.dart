@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -16,11 +17,15 @@ import 'wasm_universal_service.dart';
 /// 并向 JS 沙箱安全注入文件系统 (fs)、网络请求 (http)、加解密 (crypto) 与实时终端日志管道。
 class QuickJsBridgeService {
   static JavascriptRuntime? _activeRuntime;
+  static Completer<dynamic>? _activeCompleter;
   static bool _wasCancelled = false;
 
   /// 中止当前正在运行的 JS 脚本
   static void killCurrentExecution() {
     _wasCancelled = true;
+    if (_activeCompleter != null && !_activeCompleter!.isCompleted) {
+      _activeCompleter!.complete(null);
+    }
     try {
       _activeRuntime?.dispose();
     } catch (e) {
@@ -101,6 +106,16 @@ class QuickJsBridgeService {
           final pct = (args['progress'] as num?)?.toDouble() ?? 0.0;
           final status = args['status']?.toString() ?? '';
           onProgress(pct.clamp(0.0, 1.0), status);
+        }
+      });
+
+      final runCompleter = Completer<dynamic>();
+      _activeCompleter = runCompleter;
+
+      // 注册脚本执行完成事件管道 (Event-Driven Completion，彻底替代 20ms 密集轮询)
+      jsRuntime.onMessage('ToolboxChannel_Done', (dynamic args) {
+        if (!runCompleter.isCompleted) {
+          runCompleter.complete(args);
         }
       });
 
@@ -281,45 +296,51 @@ class QuickJsBridgeService {
       window.__runResult = null;
 
       (async function() {
+        var res = null;
         try {
           var fetch = window.fetch;
           $scriptSource
           ;
           if (typeof run === 'function') {
-            window.__runResult = await run({
+            res = await run({
               inputFiles: Toolbox.env.inputFiles,
               outputDir: Toolbox.env.outputDir,
-              params: Toolbox.env.params
+              params: Toolbox.env.params,
+              inputs: Toolbox.env.params
             });
           } else {
-            window.__runResult = { success: true, message: '执行完成' };
+            res = { success: true, message: '执行完成' };
           }
         } catch(err) {
-          window.__runResult = { success: false, message: (err && err.stack) ? err.stack : String(err) };
+          res = { success: false, message: (err && err.stack) ? err.stack : String(err) };
         } finally {
+          window.__runResult = res;
           window.__runFinished = true;
+          try {
+            sendMessage('ToolboxChannel_Done', JSON.stringify(res));
+          } catch(e) {}
         }
       })();
       """;
 
       jsRuntime.evaluate(wrappedRunner);
+      jsRuntime.executePendingJob();
 
-      // 循环等待 JS 异步任务完成
-      while (!_wasCancelled) {
-        final check = jsRuntime.evaluate("window.__runFinished === true");
-        if (check.stringResult == 'true') {
-          break;
-        }
-        await Future.delayed(const Duration(milliseconds: 20));
+      // 纯事件驱动驱动循环，免除旧版 evaluate("window.__runFinished") 每次 20ms 的 JS 字符串重编译与求值开销
+      while (!runCompleter.isCompleted && !_wasCancelled) {
+        await Future.delayed(const Duration(milliseconds: 5));
         jsRuntime.executePendingJob();
+      }
+
+      dynamic completionData;
+      if (runCompleter.isCompleted) {
+        completionData = await runCompleter.future;
       }
 
       if (_wasCancelled) {
         onLog('>>> 任务已被用户手动中止', true);
         return ProcessingResult(success: false, message: '任务已被用户手动中止');
       }
-
-      final finalResult = jsRuntime.evaluate("JSON.stringify(window.__runResult)");
 
       onProgress(0.9, '正在校验产物...');
 
@@ -332,43 +353,52 @@ class QuickJsBridgeService {
       dynamic resultData;
       String? resultText;
 
-      if (finalResult.isError) {
-        isSuccess = false;
-        message = 'JavaScript 执行异常: ${finalResult.stringResult}';
-        onLog('>>> $message', true);
-      } else {
-        onLog('>>> 脚本执行返回: ${finalResult.stringResult}', false);
+      dynamic decoded = completionData;
+      if (decoded is String) {
         try {
-          final decoded = jsonDecode(finalResult.stringResult);
-          if (decoded is Map) {
-            if (decoded['success'] == false) {
-              isSuccess = false;
-            }
-            if (decoded['message'] != null) {
-              message = decoded['message'].toString();
-            }
-            if (decoded.containsKey('data')) {
-              resultData = decoded['data'];
-            }
-            if (decoded.containsKey('text')) {
-              resultText = decoded['text']?.toString();
-            } else if (resultData != null && resultData is! String) {
-              resultText = const JsonEncoder.withIndent('  ').convert(resultData);
-            } else if (resultData is String) {
-              resultText = resultData;
-            }
-          } else {
-            resultData = decoded;
-            resultText = decoded.toString();
-          }
-        } catch (_) {
-          resultText = finalResult.stringResult;
+          decoded = jsonDecode(decoded);
+        } catch (_) {}
+      }
+      if (decoded == null) {
+        final fallback = jsRuntime.evaluate("JSON.stringify(window.__runResult)");
+        if (!fallback.isError && fallback.stringResult.isNotEmpty && fallback.stringResult != 'null') {
+          try {
+            decoded = jsonDecode(fallback.stringResult);
+          } catch (_) {}
         }
+      }
+
+      if (decoded is Map) {
+        onLog('>>> 脚本执行返回: ${jsonEncode(decoded)}', false);
+        if (decoded['success'] == false) {
+          isSuccess = false;
+        }
+        if (decoded['message'] != null) {
+          message = decoded['message'].toString();
+        }
+        if (decoded.containsKey('data')) {
+          resultData = decoded['data'];
+        }
+        if (decoded.containsKey('text')) {
+          resultText = decoded['text']?.toString();
+        } else if (resultData != null && resultData is! String) {
+          resultText = const JsonEncoder.withIndent('  ').convert(resultData);
+        } else if (resultData is String) {
+          resultText = resultData;
+        }
+      } else if (decoded != null) {
+        resultData = decoded;
+        resultText = decoded.toString();
+        onLog('>>> 脚本执行返回: $decoded', false);
+      } else {
+        isSuccess = false;
+        message = 'JavaScript 执行异常或无返回值';
+        onLog('>>> $message', true);
+      }
 
         if (generatedFiles.isNotEmpty && isSuccess && (message == '脚本执行完成' || message.isEmpty)) {
           message = '处理成功！共生成 ${generatedFiles.length} 个输出文件';
         }
-      }
 
       onProgress(1.0, isSuccess ? '执行完成！' : '执行失败');
 
@@ -386,6 +416,7 @@ class QuickJsBridgeService {
         message: 'QuickJS 沙箱运行异常: $e',
       );
     } finally {
+      _activeCompleter = null;
       _activeRuntime = null;
       try {
         jsRuntime.dispose();

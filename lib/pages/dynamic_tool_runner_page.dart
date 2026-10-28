@@ -117,6 +117,27 @@ class DynamicToolRunnerPage extends StatefulWidget {
     return effective;
   }
 
+  /// 将 Hex 颜色字符串解析为 Flutter Color 对象。
+  /// 支持 #RGB, #RRGGBB, #AARRGGBB，以及 'transparent' / 'none'。
+  static Color parseHexColor(String hexStr) {
+    final clean = hexStr.trim().toLowerCase();
+    if (clean == 'transparent' || clean == 'none') {
+      return Colors.transparent;
+    }
+    String hex = clean.startsWith('#') ? clean.substring(1) : clean;
+    if (hex.length == 3) {
+      hex = '${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}';
+    }
+    if (hex.length == 6) {
+      hex = 'ff$hex';
+    }
+    if (hex.length == 8) {
+      final val = int.tryParse(hex, radix: 16);
+      if (val != null) return Color(val);
+    }
+    return Colors.white;
+  }
+
   @override
   State<DynamicToolRunnerPage> createState() => _DynamicToolRunnerPageState();
 }
@@ -124,6 +145,7 @@ class DynamicToolRunnerPage extends StatefulWidget {
 class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   final Map<String, dynamic> _formValues = {};
   bool _isProcessing = false;
+  bool _hasConfirmedNativeSecurityWarning = false;
   double _progress = 0.0;
   String _statusText = '';
   ProcessingResult? _result;
@@ -153,6 +175,8 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           }
         }
         _formValues[input.id] = input.defaultValue;
+      } else if (input.type == 'color_picker') {
+        _formValues[input.id] = '#FFFFFF';
       }
     }
   }
@@ -782,6 +806,51 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           return;
         }
       }
+    }
+
+    if (Platform.isWindows &&
+        (widget.plugin.isWindowsExtension || widget.plugin.nativeRunner != null) &&
+        !widget.plugin.isOfficial &&
+        !_hasConfirmedNativeSecurityWarning &&
+        !Platform.environment.containsKey('FLUTTER_TEST')) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.shield_outlined, color: Colors.orange, size: 24),
+              SizedBox(width: 8),
+              Text('第三方原生扩展安全提示', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Text(
+            '当前工具「${widget.plugin.name}」属于第三方/社区原生执行模块（.exe / 外部子进程），将在 Windows 本地直接启动独立进程并拥有当前系统的用户执行权限。\n\n'
+            '• 请确保该插件来自您信任的开发者或社区来源。\n'
+            '• 宿主底座已启用输入参数转义与路径规范化，但无法约束未受信任外部二进制程序本身的内部行为。\n\n'
+            '是否确认继续运行？',
+            style: const TextStyle(fontSize: 13, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.orange.shade700,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('信任并继续运行'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) {
+        return;
+      }
+      _hasConfirmedNativeSecurityWarning = true;
     }
 
     setState(() {
@@ -1491,6 +1560,42 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                   child: const Text(
                     '🦀 Wasm 沙箱',
                     style: TextStyle(fontSize: 10, color: Colors.deepOrange, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+              if (widget.plugin.isOfficial) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.verified_user_rounded, size: 10, color: Colors.green),
+                      SizedBox(width: 3),
+                      Text(
+                        '官方认证',
+                        style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.grey.withValues(alpha: 0.4)),
+                  ),
+                  child: const Text(
+                    '社区插件',
+                    style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
@@ -2414,8 +2519,229 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
           ),
         ),
       );
+    } else if (input.type == 'color_picker') {
+      final curVal = (_formValues[input.id] ?? input.defaultValue ?? '#FFFFFF').toString();
+      final curColor = DynamicToolRunnerPage.parseHexColor(curVal);
+      final isTransparent = curVal.trim().toLowerCase() == 'transparent' || curVal.trim().toLowerCase() == 'none';
+
+      const presetColors = [
+        'transparent',
+        '#FFFFFF',
+        '#000000',
+        '#EF4444',
+        '#F97316',
+        '#F59E0B',
+        '#10B981',
+        '#3B82F6',
+        '#6366F1',
+        '#EC4899',
+        '#64748B',
+      ];
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  input.label,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => _showCustomColorDialog(input, curVal),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: inputBg,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: inputBorderColor),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isTransparent ? Colors.transparent : curColor,
+                            border: Border.all(color: Colors.grey.shade400, width: 1),
+                          ),
+                          child: isTransparent
+                              ? const Icon(Icons.block, size: 12, color: Colors.red)
+                              : null,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isTransparent ? '透明' : curVal.toUpperCase(),
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.edit, size: 12, color: textSecondary),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ...presetColors.map((hex) {
+                  final isTrans = hex == 'transparent';
+                  final color = DynamicToolRunnerPage.parseHexColor(hex);
+                  final isSelected = isTrans
+                      ? isTransparent
+                      : (!isTransparent &&
+                          curVal.replaceAll('#', '').toLowerCase() == hex.replaceAll('#', '').toLowerCase());
+                  return Tooltip(
+                    message: isTrans ? '透明' : hex,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () {
+                        setState(() {
+                          _formValues[input.id] = hex;
+                        });
+                      },
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isTrans ? Colors.transparent : color,
+                          border: Border.all(
+                            color: isSelected
+                                ? theme.colorScheme.primary
+                                : (isTrans ? Colors.redAccent.withValues(alpha: 0.5) : Colors.grey.withValues(alpha: 0.3)),
+                            width: isSelected ? 2.5 : 1,
+                          ),
+                        ),
+                        child: isSelected
+                            ? Icon(
+                                Icons.check,
+                                size: 18,
+                                color: isTrans || color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
+                              )
+                            : (isTrans ? const Icon(Icons.block, size: 14, color: Colors.redAccent) : null),
+                      ),
+                    ),
+                  );
+                }),
+                ActionChip(
+                  avatar: const Icon(Icons.colorize, size: 14),
+                  label: const Text('自定义', style: TextStyle(fontSize: 12)),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _showCustomColorDialog(input, curVal),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
     }
 
     return const SizedBox();
+  }
+
+  Future<void> _showCustomColorDialog(PluginInputDef input, String initialVal) async {
+    final controller = TextEditingController(text: initialVal);
+    Color previewColor = DynamicToolRunnerPage.parseHexColor(initialVal);
+    bool isTransparent = initialVal.trim().toLowerCase() == 'transparent' || initialVal.trim().toLowerCase() == 'none';
+
+    final res = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text('自定义颜色代码 (Hex)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: isTransparent ? Colors.transparent : previewColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade400),
+                        ),
+                        child: isTransparent
+                            ? const Icon(Icons.block, color: Colors.red, size: 24)
+                            : null,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: TextField(
+                          controller: controller,
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            hintText: '如 #FF5722 或 transparent',
+                            labelText: 'Hex 颜色值',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          onChanged: (val) {
+                            setDialogState(() {
+                              isTransparent = val.trim().toLowerCase() == 'transparent' || val.trim().toLowerCase() == 'none';
+                              previewColor = DynamicToolRunnerPage.parseHexColor(val);
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    '支持 #RGB, #RRGGBB, #AARRGGBB 或 transparent',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final txt = controller.text.trim();
+                    if (txt.isNotEmpty) {
+                      Navigator.pop(ctx, txt);
+                    } else {
+                      Navigator.pop(ctx);
+                    }
+                  },
+                  child: const Text('确定'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (res != null && mounted) {
+      setState(() {
+        _formValues[input.id] = res;
+      });
+    }
   }
 }
