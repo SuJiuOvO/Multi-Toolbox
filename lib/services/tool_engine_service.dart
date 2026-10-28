@@ -22,11 +22,15 @@ class ProcessingResult {
   final bool success;
   final String message;
   final List<String> outputFiles;
+  final dynamic resultData;
+  final String? resultText;
 
   ProcessingResult({
     required this.success,
     required this.message,
     this.outputFiles = const [],
+    this.resultData,
+    this.resultText,
   });
 }
 

@@ -848,6 +848,12 @@ class PluginManagerService {
       if (targetPluginDir.existsSync()) {
         await targetPluginDir.delete(recursive: true);
       }
+      final pluginDataDir = Directory(p.join(pluginsDirectory.parent.path, 'toolbox_plugin_data', pluginId));
+      if (pluginDataDir.existsSync()) {
+        try {
+          await pluginDataDir.delete(recursive: true);
+        } catch (_) {}
+      }
       await loadInstalledPlugins();
       return true;
     } catch (e) {

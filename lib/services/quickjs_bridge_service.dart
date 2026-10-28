@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_js/flutter_js.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:sync_http/sync_http.dart';
 import '../models/plugin_manifest.dart';
 import 'tool_engine_service.dart';
@@ -50,12 +51,29 @@ class QuickJsBridgeService {
       );
     }
 
-    // 2. 准备输出目录并建立执行前快照
+    // 2. 准备输出目录与插件专属持久化数据目录
     final outDir = Directory(outputDir);
     if (!outDir.existsSync()) {
       outDir.createSync(recursive: true);
     }
     final preExecutionFiles = _scanDirectory(outputDir);
+
+    String pluginDataDir;
+    try {
+      Directory baseDir;
+      if (Platform.isWindows) {
+        baseDir = await getApplicationSupportDirectory();
+      } else {
+        baseDir = await getApplicationDocumentsDirectory();
+      }
+      pluginDataDir = p.join(baseDir.path, 'toolbox_plugin_data', plugin.id);
+    } catch (_) {
+      pluginDataDir = p.join(Directory.systemTemp.path, 'toolbox_plugin_data', plugin.id);
+    }
+    final dataDirObj = Directory(pluginDataDir);
+    if (!dataDirObj.existsSync()) {
+      dataDirObj.createSync(recursive: true);
+    }
 
     // 3. 初始化 JavascriptRuntime
     final jsRuntime = getJavascriptRuntime();
@@ -96,6 +114,10 @@ class QuickJsBridgeService {
             action: action,
             payload: payload,
             outputDir: outputDir,
+            inputFiles: inputFiles,
+            pluginDirectory: plugin.localDir,
+            pluginDataDir: pluginDataDir,
+            plugin: plugin,
           );
         } catch (e) {
           result = {'__error': e.toString()};
@@ -253,6 +275,8 @@ class QuickJsBridgeService {
 
       bool isSuccess = true;
       String message = '脚本执行完成';
+      dynamic resultData;
+      String? resultText;
 
       if (finalResult.isError) {
         isSuccess = false;
@@ -269,10 +293,25 @@ class QuickJsBridgeService {
             if (decoded['message'] != null) {
               message = decoded['message'].toString();
             }
+            if (decoded.containsKey('data')) {
+              resultData = decoded['data'];
+            }
+            if (decoded.containsKey('text')) {
+              resultText = decoded['text']?.toString();
+            } else if (resultData != null && resultData is! String) {
+              resultText = const JsonEncoder.withIndent('  ').convert(resultData);
+            } else if (resultData is String) {
+              resultText = resultData;
+            }
+          } else {
+            resultData = decoded;
+            resultText = decoded.toString();
           }
-        } catch (_) {}
+        } catch (_) {
+          resultText = finalResult.stringResult;
+        }
 
-        if (generatedFiles.isNotEmpty && isSuccess) {
+        if (generatedFiles.isNotEmpty && isSuccess && (message == '脚本执行完成' || message.isEmpty)) {
           message = '处理成功！共生成 ${generatedFiles.length} 个输出文件';
         }
       }
@@ -283,6 +322,8 @@ class QuickJsBridgeService {
         success: isSuccess,
         message: message,
         outputFiles: generatedFiles,
+        resultData: resultData,
+        resultText: resultText,
       );
     } catch (e, stack) {
       onLog('>>> 运行时异常: $e\n$stack', true);
@@ -303,11 +344,26 @@ class QuickJsBridgeService {
     required String action,
     required Map payload,
     required String outputDir,
+    required List<String> inputFiles,
+    String? pluginDirectory,
+    required String pluginDataDir,
+    required PluginManifest plugin,
   }) {
+    final isUnrestricted = plugin.hasUnrestrictedFsPermission;
+
     switch (action) {
       // --- 文件系统 (fs) ---
       case 'fs_read':
         final filePath = payload['path']?.toString() ?? '';
+        _assertPathInJail(
+          filePath,
+          outputDir: outputDir,
+          inputFiles: inputFiles,
+          pluginDirectory: pluginDirectory,
+          pluginDataDir: pluginDataDir,
+          isWrite: false,
+          isUnrestricted: isUnrestricted,
+        );
         final isBase64 = payload['isBase64'] == true || payload['encoding'] == 'base64';
         final file = File(filePath);
         if (!file.existsSync()) throw Exception('文件不存在: $filePath');
@@ -318,6 +374,15 @@ class QuickJsBridgeService {
 
       case 'fs_write':
         final filePath = payload['path']?.toString() ?? '';
+        _assertPathInJail(
+          filePath,
+          outputDir: outputDir,
+          inputFiles: inputFiles,
+          pluginDirectory: pluginDirectory,
+          pluginDataDir: pluginDataDir,
+          isWrite: true,
+          isUnrestricted: isUnrestricted,
+        );
         final content = payload['content']?.toString() ?? '';
         final isBase64 = payload['isBase64'] == true;
         final file = File(filePath);
@@ -331,16 +396,43 @@ class QuickJsBridgeService {
 
       case 'fs_exists':
         final target = payload['path']?.toString() ?? '';
+        _assertPathInJail(
+          target,
+          outputDir: outputDir,
+          inputFiles: inputFiles,
+          pluginDirectory: pluginDirectory,
+          pluginDataDir: pluginDataDir,
+          isWrite: false,
+          isUnrestricted: isUnrestricted,
+        );
         return File(target).existsSync() || Directory(target).existsSync();
 
       case 'fs_list':
         final dirPath = payload['path']?.toString() ?? '';
+        _assertPathInJail(
+          dirPath,
+          outputDir: outputDir,
+          inputFiles: inputFiles,
+          pluginDirectory: pluginDirectory,
+          pluginDataDir: pluginDataDir,
+          isWrite: false,
+          isUnrestricted: isUnrestricted,
+        );
         final d = Directory(dirPath);
         if (!d.existsSync()) return [];
         return d.listSync().map((e) => e.path).toList();
 
       case 'fs_mkdir':
         final dirPath = payload['path']?.toString() ?? '';
+        _assertPathInJail(
+          dirPath,
+          outputDir: outputDir,
+          inputFiles: inputFiles,
+          pluginDirectory: pluginDirectory,
+          pluginDataDir: pluginDataDir,
+          isWrite: true,
+          isUnrestricted: isUnrestricted,
+        );
         Directory(dirPath).createSync(recursive: true);
         return true;
 
@@ -348,6 +440,15 @@ class QuickJsBridgeService {
       case 'fs_remove':
         final target = payload['path']?.toString()?.trim() ?? '';
         if (target.isEmpty) return false;
+        _assertPathInJail(
+          target,
+          outputDir: outputDir,
+          inputFiles: inputFiles,
+          pluginDirectory: pluginDirectory,
+          pluginDataDir: pluginDataDir,
+          isWrite: true,
+          isUnrestricted: isUnrestricted,
+        );
         final file = File(target);
         if (file.existsSync()) {
           file.deleteSync();
@@ -362,8 +463,64 @@ class QuickJsBridgeService {
 
       case 'fs_size':
         final target = payload['path']?.toString() ?? '';
+        _assertPathInJail(
+          target,
+          outputDir: outputDir,
+          inputFiles: inputFiles,
+          pluginDirectory: pluginDirectory,
+          pluginDataDir: pluginDataDir,
+          isWrite: false,
+          isUnrestricted: isUnrestricted,
+        );
         final f = File(target);
         return f.existsSync() ? f.lengthSync() : 0;
+
+      // --- 插件专属持久化存储 (storage) ---
+      case 'storage_get':
+        final key = payload['key']?.toString() ?? '';
+        final storageFile = File(p.join(pluginDataDir, 'storage.json'));
+        if (!storageFile.existsSync()) return null;
+        try {
+          final map = jsonDecode(storageFile.readAsStringSync()) as Map?;
+          return map?[key];
+        } catch (_) {
+          return null;
+        }
+
+      case 'storage_set':
+        final key = payload['key']?.toString() ?? '';
+        final val = payload['value'];
+        final storageFile = File(p.join(pluginDataDir, 'storage.json'));
+        storageFile.parent.createSync(recursive: true);
+        Map<String, dynamic> map = {};
+        if (storageFile.existsSync()) {
+          try {
+            map = Map<String, dynamic>.from(jsonDecode(storageFile.readAsStringSync()) as Map);
+          } catch (_) {}
+        }
+        map[key] = val;
+        storageFile.writeAsStringSync(jsonEncode(map));
+        return true;
+
+      case 'storage_delete':
+        final key = payload['key']?.toString() ?? '';
+        final storageFile = File(p.join(pluginDataDir, 'storage.json'));
+        if (!storageFile.existsSync()) return true;
+        try {
+          final map = Map<String, dynamic>.from(jsonDecode(storageFile.readAsStringSync()) as Map);
+          map.remove(key);
+          storageFile.writeAsStringSync(jsonEncode(map));
+        } catch (_) {}
+        return true;
+
+      case 'storage_getAll':
+        final storageFile = File(p.join(pluginDataDir, 'storage.json'));
+        if (!storageFile.existsSync()) return {};
+        try {
+          return jsonDecode(storageFile.readAsStringSync());
+        } catch (_) {
+          return {};
+        }
 
       // --- 加解密与哈希 (crypto) ---
       case 'crypto_md5':
@@ -384,6 +541,9 @@ class QuickJsBridgeService {
 
       // --- 网络请求 (http) ---
       case 'http_get':
+        if (!plugin.hasPermission('network')) {
+          throw Exception('沙箱安全拦截: 插件未在 manifest.json 中声明 "network" 权限，已阻止发起外部 HTTP 请求');
+        }
         final urlStr = payload['url']?.toString() ?? '';
         final req = SyncHttpClient.getUrl(Uri.parse(urlStr));
         final headers = (payload['headers'] as Map?) ?? {};
@@ -397,6 +557,9 @@ class QuickJsBridgeService {
         };
 
       case 'http_post':
+        if (!plugin.hasPermission('network')) {
+          throw Exception('沙箱安全拦截: 插件未在 manifest.json 中声明 "network" 权限，已阻止发起外部 HTTP 请求');
+        }
         final urlStr = payload['url']?.toString() ?? '';
         final req = SyncHttpClient.postUrl(Uri.parse(urlStr));
         final headers = (payload['headers'] as Map?) ?? {};
@@ -515,6 +678,24 @@ class QuickJsBridgeService {
         },
         fileSize: function(path) {
           return __Toolbox_syncCall('fs_size', { path: path });
+        }
+      },
+      storage: {
+        get: function(key, defaultValue) {
+          var res = __Toolbox_syncCall('storage_get', { key: key });
+          return (res !== undefined && res !== null) ? res : defaultValue;
+        },
+        set: function(key, value) {
+          return __Toolbox_syncCall('storage_set', { key: key, value: value });
+        },
+        remove: function(key) {
+          return __Toolbox_syncCall('storage_delete', { key: key });
+        },
+        delete: function(key) {
+          return __Toolbox_syncCall('storage_delete', { key: key });
+        },
+        getAll: function() {
+          return __Toolbox_syncCall('storage_getAll', {}) || {};
         }
       },
       utils: {
@@ -643,6 +824,58 @@ class QuickJsBridgeService {
       return d.listSync(recursive: false).whereType<File>().map((e) => e.path).toSet();
     } catch (_) {
       return {};
+    }
+  }
+
+  /// 校验目标路径是否受限于沙箱合法目录 (Path Jail)
+  /// 严禁任意越权访问用户系统敏感目录 (如 .ssh, 操作系统关键文件等)
+  static void _assertPathInJail(
+    String targetPath, {
+    required String outputDir,
+    required List<String> inputFiles,
+    String? pluginDirectory,
+    required String pluginDataDir,
+    bool isWrite = false,
+    bool isUnrestricted = false,
+  }) {
+    if (isUnrestricted) return;
+    final trimmed = targetPath.trim();
+    if (trimmed.isEmpty) {
+      throw Exception('沙箱安全拦截: 路径不能为空');
+    }
+
+    final allowedRoots = <String>[];
+    allowedRoots.add(outputDir);
+    allowedRoots.add(Directory.systemTemp.path);
+    allowedRoots.add(pluginDataDir);
+
+    if (!isWrite) {
+      for (final f in inputFiles) {
+        allowedRoots.add(f);
+        allowedRoots.add(File(f).parent.path);
+      }
+      if (pluginDirectory != null && pluginDirectory.isNotEmpty) {
+        allowedRoots.add(pluginDirectory);
+      }
+    }
+
+    final canonicalTarget = p.canonicalize(trimmed);
+    final isAllowed = allowedRoots.any((root) => _isPathWithinRoot(canonicalTarget, root));
+    if (!isAllowed) {
+      throw Exception('沙箱安全拦截: 目标路径超出插件合法沙箱范围: $trimmed');
+    }
+  }
+
+  static bool _isPathWithinRoot(String canonicalTarget, String rawRoot) {
+    final canonicalRoot = p.canonicalize(rawRoot);
+    if (Platform.isWindows) {
+      final targetLower = canonicalTarget.toLowerCase();
+      final rootLower = canonicalRoot.toLowerCase();
+      return targetLower == rootLower ||
+          targetLower.startsWith(rootLower.endsWith('\\') ? rootLower : '$rootLower\\');
+    } else {
+      return canonicalTarget == canonicalRoot ||
+          canonicalTarget.startsWith(canonicalRoot.endsWith('/') ? canonicalRoot : '$canonicalRoot/');
     }
   }
 }

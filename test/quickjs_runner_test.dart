@@ -460,5 +460,180 @@ void main() {
       expect(manifest.hasTerminal, true);
       expect(manifest.platformBadgeText, '⚡ JS 动态插件');
     });
+
+    test('QuickJsBridgeService Path Jail blocks unauthorized file access outside allowed roots', () async {
+      if (!canRunQuickJs) return;
+      final outDir = Directory.systemTemp.createTempSync('qjs_jail_out_');
+
+      try {
+        final manifest = PluginManifest(
+          id: 'test-jail-plugin',
+          name: 'Jail Test',
+          version: '1.0.0',
+          category: 'other',
+          description: 'Testing sandbox path security jail',
+          icon: 'security',
+          author: 'Security Auditor',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ outputDir }) {
+                  let blockedRead = false;
+                  let blockedWrite = false;
+                  
+                  // Try reading unauthorized path outside sandbox
+                  try {
+                    Toolbox.fs.readFile('C:/Windows/System32/drivers/etc/hosts');
+                  } catch (e) {
+                    blockedRead = e.message.includes('沙箱安全拦截');
+                  }
+                  
+                  // Try writing unauthorized path outside sandbox
+                  try {
+                    Toolbox.fs.writeFile('C:/unauthorized_secret.txt', 'evil payload');
+                  } catch (e) {
+                    blockedWrite = e.message.includes('沙箱安全拦截');
+                  }
+
+                  return {
+                    success: blockedRead && blockedWrite,
+                    data: { blockedRead: blockedRead, blockedWrite: blockedWrite },
+                    text: 'Jail assertion passed'
+                  };
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [],
+          outputDir: outDir.path,
+          onProgress: (p, s) {},
+          onLog: (l, e) {},
+        );
+
+        expect(result.success, true);
+        expect(result.resultText, 'Jail assertion passed');
+      } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('QuickJsBridgeService Toolbox.storage persists and retrieves values per-plugin', () async {
+      if (!canRunQuickJs) return;
+      final outDir = Directory.systemTemp.createTempSync('qjs_storage_out_');
+
+      try {
+        final manifest = PluginManifest(
+          id: 'test-storage-plugin',
+          name: 'Storage Test',
+          version: '1.0.0',
+          category: 'other',
+          description: 'Testing isolated plugin storage',
+          icon: 'storage',
+          author: 'Test Team',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ outputDir }) {
+                  Toolbox.storage.set('apiKey', 'sk_live_test_12345');
+                  Toolbox.storage.set('themeMode', 'dark');
+                  
+                  const savedKey = Toolbox.storage.get('apiKey');
+                  const savedTheme = Toolbox.storage.get('themeMode');
+                  const defVal = Toolbox.storage.get('nonExistent', 'fallback');
+                  
+                  Toolbox.storage.remove('themeMode');
+                  const all = Toolbox.storage.getAll();
+
+                  return {
+                    success: (savedKey === 'sk_live_test_12345' && savedTheme === 'dark' && defVal === 'fallback' && all.apiKey === 'sk_live_test_12345' && all.themeMode === undefined),
+                    data: all,
+                    text: 'Storage roundtrip verified'
+                  };
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [],
+          outputDir: outDir.path,
+          onProgress: (p, s) {},
+          onLog: (l, e) {},
+        );
+
+        expect(result.success, true);
+        expect(result.resultData is Map, true);
+        expect((result.resultData as Map)['apiKey'], 'sk_live_test_12345');
+      } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('QuickJsBridgeService blocks network requests when network permission is missing', () async {
+      if (!canRunQuickJs) return;
+      final outDir = Directory.systemTemp.createTempSync('qjs_net_out_');
+
+      try {
+        final manifest = PluginManifest(
+          id: 'test-no-network-plugin',
+          name: 'No Network Test',
+          version: '1.0.0',
+          category: 'other',
+          description: 'Testing network permission guard',
+          icon: 'wifi_off',
+          author: 'Test Team',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          permissions: [], // No network permission!
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run() {
+                  let blocked = false;
+                  try {
+                    Toolbox.http.get('https://example.com/api');
+                  } catch (e) {
+                    blocked = e.message.includes('network') || e.message.includes('网络');
+                  }
+                  return { success: blocked, text: 'Network interception verified' };
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [],
+          outputDir: outDir.path,
+          onProgress: (p, s) {},
+          onLog: (l, e) {},
+        );
+
+        expect(result.success, true);
+        expect(result.resultText, 'Network interception verified');
+      } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
   });
 }

@@ -679,5 +679,46 @@ void main() {
         } catch (_) {}
       }
     });
+
+    test('WasmUniversalService buildGuestInputPathMap maps files across multiple directories accurately', () {
+      final files = [
+        'C:/folderA/file1.txt',
+        'C:/folderB/file2.txt',
+        'C:/folderA/file3.txt',
+        'C:/folderC/file4.txt',
+      ];
+      final map = WasmUniversalService.buildGuestInputPathMap(files);
+      expect(map['C:/folderA/file1.txt'], '/input/file1.txt');
+      expect(map['C:/folderB/file2.txt'], '/input_1/file2.txt');
+      expect(map['C:/folderA/file3.txt'], '/input/file3.txt');
+      expect(map['C:/folderC/file4.txt'], '/input_2/file4.txt');
+    });
+
+    test('WasmUniversalService does not drop wasm_report.json when exportJson is omitted or not yes', () async {
+      if (!canRunWasm) return;
+      final tempDir = Directory.systemTemp.createTempSync('wasm_noreport_test_');
+
+      try {
+        final in1 = File(p.join(tempDir.path, 'sample.txt'))..writeAsStringSync('hello world');
+
+        final result = await WasmUniversalService.execute(
+          formValues: {
+            'executionMode': 'memory_stream',
+            'functionName': 'process',
+          },
+          inputFiles: [in1.path],
+          outputDir: tempDir.path,
+        );
+
+        expect(result.success, true);
+        expect(result.outputFiles.any((f) => f.endsWith('wasm_report.json')), false);
+        final reportFile = File(p.join(tempDir.path, 'wasm_report.json'));
+        expect(reportFile.existsSync(), false);
+      } finally {
+        try {
+          tempDir.deleteSync(recursive: true);
+        } catch (_) {}
+      }
+    });
   });
 }

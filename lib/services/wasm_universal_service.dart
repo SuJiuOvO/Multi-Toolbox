@@ -438,6 +438,23 @@ class WasmUniversalService {
     return result;
   }
 
+  /// 构建输入文件在 WASI 虚拟沙箱内的对应路径映射 (支持跨不同父目录自动分流至 /input, /input_1, ...)
+  static Map<String, String> buildGuestInputPathMap(List<String> inputFiles) {
+    final parentToGuest = <String, String>{};
+    final filePathToGuest = <String, String>{};
+    int parentCounter = 0;
+    for (final file in inputFiles) {
+      final pPath = File(file).parent.path;
+      if (!parentToGuest.containsKey(pPath)) {
+        parentToGuest[pPath] = parentCounter == 0 ? '/input' : '/input_$parentCounter';
+        parentCounter++;
+      }
+      final guestPrefix = parentToGuest[pPath]!;
+      filePathToGuest[file] = '$guestPrefix/${p.basename(file)}';
+    }
+    return filePathToGuest;
+  }
+
   /// 构造宿主真实文件系统到 WASI 虚拟沙箱 (VFS) 的完整映射配置
   static WasiConfig buildWasiConfig({
     required String outputDir,
@@ -727,8 +744,14 @@ class WasmUniversalService {
       }
     } else {
       // 单文件或多输入全量展开模式
+      final guestMap = buildGuestInputPathMap(inputFiles);
       final firstInput = inputFiles.isNotEmpty ? inputFiles.first : '';
-      final inputsGuestPaths = inputFiles.map((f) => '/input/${p.basename(f)}').join(' ');
+      final firstInputGuest = firstInput.isNotEmpty
+          ? (guestMap[firstInput] ?? '/input/${p.basename(firstInput)}')
+          : '';
+      final inputsGuestPaths = inputFiles
+          .map((f) => guestMap[f] ?? '/input/${p.basename(f)}')
+          .join(' ');
 
       final replacements = <String, String>{
         '{outputDir}': '/output',
@@ -738,8 +761,8 @@ class WasmUniversalService {
         '{inputs}': inputsGuestPaths,
         '{inputFiles}': inputsGuestPaths,
         if (firstInput.isNotEmpty) ...{
-          '{input}': '/input/${p.basename(firstInput)}',
-          '{input_file}': '/input/${p.basename(firstInput)}',
+          '{input}': firstInputGuest,
+          '{input_file}': firstInputGuest,
           '{input_name}': p.basename(firstInput),
           '{input_base}': p.basenameWithoutExtension(firstInput),
           '{output}': '/output/${p.basenameWithoutExtension(firstInput)}_out${p.extension(firstInput)}',
@@ -755,7 +778,7 @@ class WasmUniversalService {
       } else {
         cliArgs = [
           moduleTitle,
-          if (firstInput.isNotEmpty) '/input/${p.basename(firstInput)}',
+          if (firstInput.isNotEmpty) firstInputGuest,
           '/output/output_result',
         ];
       }
@@ -763,7 +786,14 @@ class WasmUniversalService {
       onLog?.call('【WASI 虚拟沙箱 VFS 映射就绪】', false);
       onLog?.call('  • 宿主输出目录 [$outputDir] -> 沙箱挂载点 [/output] & [.]', false);
       if (inputFiles.isNotEmpty) {
-        onLog?.call('  • 宿主输入目录 [${File(firstInput).parent.path}] -> 沙箱挂载点 [/input]', false);
+        final mountedDirs = <String>{};
+        for (final f in inputFiles) {
+          final pPath = File(f).parent.path;
+          final gPath = (guestMap[f] ?? '/input').split('/').take(2).join('/');
+          if (mountedDirs.add(pPath)) {
+            onLog?.call('  • 宿主输入目录 [$pPath] -> 沙箱挂载点 [$gPath]', false);
+          }
+        }
       }
       if (pluginDirectory != null && pluginDirectory.isNotEmpty) {
         onLog?.call('  • 插件内部资产 [$pluginDirectory] -> 沙箱挂载点 [/plugin]', false);
@@ -801,7 +831,10 @@ class WasmUniversalService {
 
     final outFiles = <String>[...allGeneratedFiles];
 
-    if (formValues['exportJson']?.toString() != 'no') {
+    final bool shouldExportJson = formValues['exportJson']?.toString() == 'yes' ||
+        formValues['exportJson'] == true ||
+        formValues['exportReport'] == true;
+    if (shouldExportJson) {
       final jsonFile = File(p.join(outputDir, 'wasm_report.json'));
       final payload = {
         'timestamp': DateTime.now().toIso8601String(),
@@ -954,7 +987,10 @@ class WasmUniversalService {
     stopwatch.stop();
     onLog?.call('>>> 内存流处理完成！耗时: ${stopwatch.elapsedMilliseconds} ms，共生成 ${outFiles.length} 个产物', false);
 
-    if (formValues['exportJson']?.toString() != 'no') {
+    final bool shouldExportJson = formValues['exportJson']?.toString() == 'yes' ||
+        formValues['exportJson'] == true ||
+        formValues['exportReport'] == true;
+    if (shouldExportJson) {
       final jsonFile = File(p.join(outputDir, 'wasm_report.json'));
       final payload = {
         'timestamp': DateTime.now().toIso8601String(),
@@ -1092,7 +1128,9 @@ class WasmUniversalService {
     final executionMode = formValues['executionMode']?.toString() ?? 'call_func';
     final targetFunc = formValues['functionName']?.toString().trim() ?? 'fib';
     final rawArgs = formValues['functionArgs']?.toString().trim() ?? '10';
-    final exportJson = formValues['exportJson']?.toString() != 'no';
+    final exportJson = formValues['exportJson']?.toString() == 'yes' ||
+        formValues['exportJson'] == true ||
+        formValues['exportReport'] == true;
     final resolvedPluginDir = pluginDirectory ?? formValues['pluginDirectory']?.toString();
 
     onLog?.call('【Wasm 微内核引擎】沙箱准备就绪...', false);

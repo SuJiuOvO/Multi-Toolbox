@@ -395,6 +395,37 @@ class PluginIconDef {
   };
 }
 
+/// 插件结果输出项声明定义 (Manifest v2.4 规范)
+class PluginOutputDef {
+  final String id;
+  final String label;
+  final String type; // copyable_text, markdown, json_tree, key_value_table
+  final String? description;
+
+  PluginOutputDef({
+    required this.id,
+    required this.label,
+    this.type = 'copyable_text',
+    this.description,
+  });
+
+  factory PluginOutputDef.fromJson(Map<String, dynamic> json) {
+    return PluginOutputDef(
+      id: json['id']?.toString() ?? 'output',
+      label: json['label']?.toString() ?? '执行产出',
+      type: json['type']?.toString() ?? 'copyable_text',
+      description: json['description']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'label': label,
+    'type': type,
+    if (description != null) 'description': description,
+  };
+}
+
 /// 插件本地/远程实体
 class PluginManifest {
   final String id;
@@ -416,6 +447,8 @@ class PluginManifest {
   final int? size;
   final String? md5;
   final List<PluginInputDef> inputs;
+  final List<PluginOutputDef> outputs;
+  final List<String> permissions; // e.g. 'network', 'fs_unrestricted'
   final PluginActionDef? action;
   final List<String> platforms; // universal, windows, android
   
@@ -445,6 +478,8 @@ class PluginManifest {
     this.size,
     this.md5,
     this.inputs = const [],
+    this.outputs = const [],
+    this.permissions = const [],
     this.action,
     this.platforms = const ['universal'],
     this.isInstalled = false,
@@ -557,9 +592,20 @@ class PluginManifest {
     return lower.contains('android') && !lower.contains('windows') && !lower.contains('universal');
   }
 
+  /// 检查插件是否声明了某项受控权限
+  bool hasPermission(String perm) => permissions.contains(perm.toLowerCase().trim());
+
+  /// 是否具备联网请求权限
+  bool get hasNetworkPermission => hasPermission('network');
+
+  /// 是否声明了无限制文件系统访问权限
+  bool get hasUnrestrictedFsPermission => hasPermission('fs_unrestricted') || hasPermission('fs:unrestricted');
+
   factory PluginManifest.fromJson(Map<String, dynamic> json, {bool isRemote = false}) {
     var rawInputs = json['inputs'] as List?;
+    var rawOutputs = json['outputs'] as List?;
     var rawPlatforms = json['platforms'] as List?;
+    var rawPerms = json['permissions'] as List?;
     final rawIcon = json['icon'] ?? json['iconDef'];
     final iconDef = PluginIconDef.fromRaw(rawIcon);
     final iconString = rawIcon is String ? rawIcon : (iconDef.data ?? 'extension');
@@ -590,6 +636,12 @@ class PluginManifest {
       inputs: rawInputs != null
           ? rawInputs.map((e) => PluginInputDef.fromJson(e)).toList()
           : [],
+      outputs: rawOutputs != null
+          ? rawOutputs.map((e) => PluginOutputDef.fromJson(Map<String, dynamic>.from(e))).toList()
+          : const [],
+      permissions: rawPerms != null
+          ? rawPerms.map((e) => e.toString().toLowerCase().trim()).toList()
+          : const [],
       action: json['action'] != null ? PluginActionDef.fromJson(json['action']) : null,
       platforms: rawPlatforms != null
           ? rawPlatforms.map((e) => e.toString().toLowerCase()).toList()

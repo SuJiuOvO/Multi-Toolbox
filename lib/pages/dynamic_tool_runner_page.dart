@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
@@ -1238,6 +1239,9 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               ),
             ),
             const SizedBox(height: 12),
+            if ((_result!.resultText != null && _result!.resultText!.trim().isNotEmpty) ||
+                _result!.resultData != null)
+              _buildDataResultCard(result: _result!, isDark: isDark, theme: theme),
             if (_result!.outputFiles.isNotEmpty) ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1529,6 +1533,152 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+
+  Widget _buildDataResultCard({
+    required ProcessingResult result,
+    required bool isDark,
+    required ThemeData theme,
+  }) {
+    final text = result.resultText?.trim() ?? '';
+    final data = result.resultData;
+    if (text.isEmpty && data == null) return const SizedBox.shrink();
+
+    final outputLabel = widget.plugin.outputs.isNotEmpty
+        ? widget.plugin.outputs.first.label
+        : '执行产出与结果数据';
+    final outputType = widget.plugin.outputs.isNotEmpty
+        ? widget.plugin.outputs.first.type
+        : (data is Map ? 'key_value_table' : 'copyable_text');
+
+    return Card(
+      margin: const EdgeInsets.only(top: 8, bottom: 12),
+      elevation: 0.5,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      outputType == 'key_value_table'
+                          ? Icons.table_chart_outlined
+                          : Icons.data_object,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      outputLabel,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: isDark ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                  ],
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: text));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('已复制结果内容到剪贴板'),
+                        duration: Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.copy, size: 14),
+                  label: const Text('一键复制', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (outputType == 'key_value_table' && data is Map) ...[
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  children: data.entries.map((entry) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 120,
+                            child: Text(
+                              entry.key.toString(),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: SelectableText(
+                              entry.value?.toString() ?? '',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? const Color(0xFFF1F5F9) : const Color(0xFF0F172A),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ] else ...[
+              Container(
+                constraints: const BoxConstraints(maxHeight: 280),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    text,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      height: 1.4,
+                      color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
