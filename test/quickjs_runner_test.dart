@@ -363,14 +363,19 @@ void main() {
           ),
         );
 
+        final logs = <String>[];
         final result = await QuickJsBridgeService.execute(
           plugin: manifest,
           formValues: {},
           inputFiles: [],
           outputDir: outDir.path,
           onProgress: (p, s) {},
-          onLog: (l, e) {},
+          onLog: (l, e) => logs.add(l),
         );
+
+        if (!result.success) {
+          print('Execution failed: ${result.message}, logs: $logs');
+        }
 
         expect(result.success, true);
       } finally {
@@ -426,14 +431,19 @@ void main() {
           ),
         );
 
+        final logs = <String>[];
         final result = await QuickJsBridgeService.execute(
           plugin: manifest,
           formValues: {},
           inputFiles: [],
           outputDir: outDir.path,
           onProgress: (p, s) {},
-          onLog: (l, e) {},
+          onLog: (l, e) => logs.add(l),
         );
+
+        if (!result.success) {
+          print('Execution failed: ${result.message}, logs: $logs');
+        }
 
         expect(result.success, true);
       } finally {
@@ -510,14 +520,19 @@ void main() {
           ),
         );
 
+        final logs = <String>[];
         final result = await QuickJsBridgeService.execute(
           plugin: manifest,
           formValues: {},
           inputFiles: [],
           outputDir: outDir.path,
           onProgress: (p, s) {},
-          onLog: (l, e) {},
+          onLog: (l, e) => logs.add(l),
         );
+
+        if (!result.success) {
+          print('Execution failed: ${result.message}, logs: $logs');
+        }
 
         expect(result.success, true);
         expect(result.resultText, 'Jail assertion passed');
@@ -568,14 +583,19 @@ void main() {
           ),
         );
 
+        final logs = <String>[];
         final result = await QuickJsBridgeService.execute(
           plugin: manifest,
           formValues: {},
           inputFiles: [],
           outputDir: outDir.path,
           onProgress: (p, s) {},
-          onLog: (l, e) {},
+          onLog: (l, e) => logs.add(l),
         );
+
+        if (!result.success) {
+          print('Execution failed: ${result.message}, logs: $logs');
+        }
 
         expect(result.success, true);
         expect(result.resultData is Map, true);
@@ -607,31 +627,136 @@ void main() {
             params: {
               'script': """
                 async function run() {
-                  let blocked = false;
+                  let syncBlocked = false;
                   try {
                     Toolbox.http.get('https://example.com/api');
                   } catch (e) {
-                    blocked = e.message.includes('network') || e.message.includes('网络');
+                    syncBlocked = e.message.includes('network') || e.message.includes('网络');
                   }
-                  return { success: blocked, text: 'Network interception verified' };
+
+                  let asyncBlocked = false;
+                  try {
+                    await fetch('https://example.com/api');
+                  } catch (e) {
+                    asyncBlocked = e.message.includes('network') || e.message.includes('网络');
+                  }
+
+                  return { 
+                    success: (syncBlocked && asyncBlocked), 
+                    text: 'Network interception verified' 
+                  };
                 }
               """
             },
           ),
         );
 
+        final logs = <String>[];
         final result = await QuickJsBridgeService.execute(
           plugin: manifest,
           formValues: {},
           inputFiles: [],
           outputDir: outDir.path,
           onProgress: (p, s) {},
-          onLog: (l, e) {},
+          onLog: (l, e) => logs.add(l),
         );
+
+        if (!result.success) {
+          print('Execution failed: ${result.message}, logs: $logs');
+        }
 
         expect(result.success, true);
         expect(result.resultText, 'Network interception verified');
       } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('QuickJsBridgeService Toolbox.http.fetch and getAsync execute non-blocking HTTP successfully with permission', () async {
+      if (!canRunQuickJs) return;
+      final prevOverrides = HttpOverrides.current;
+      HttpOverrides.global = null; // 解除 flutter_test 对真实本地 HttpClient 的 400 拦截
+      final outDir = Directory.systemTemp.createTempSync('qjs_async_net_');
+
+      // 启动本地测试 HTTP 服务
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((HttpRequest request) {
+        if (request.uri.path == '/api/greet') {
+          request.response
+            ..statusCode = 200
+            ..headers.contentType = ContentType.json
+            ..write('{"greeting": "Hello Async Host Bridge!"}')
+            ..close();
+        } else {
+          request.response
+            ..statusCode = 404
+            ..close();
+        }
+      });
+
+      final port = server.port;
+
+      try {
+        final manifest = PluginManifest(
+          id: 'test-async-network-plugin',
+          name: 'Async Network Test',
+          version: '1.0.0',
+          category: 'other',
+          description: 'Testing async fetch & getAsync',
+          icon: 'wifi',
+          author: 'Test Team',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          permissions: ['network'], // 明确授权 network
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run() {
+                  const url = 'http://127.0.0.1:$port/api/greet';
+                  
+                  // 1. 测试异步 Toolbox.http.getAsync (支持 .json() 与 .body)
+                  const res1 = await Toolbox.http.getAsync(url);
+                  Toolbox.log('res1:', JSON.stringify(res1));
+                  const parsed1 = await res1.json();
+                  
+                  // 2. 测试全局标准 fetch (自动路由到 Toolbox.http.fetch 异步宿主桥)
+                  const res2 = await fetch(url);
+                  Toolbox.log('res2:', JSON.stringify(res2));
+                  const parsed2 = await res2.json();
+
+                  return {
+                    success: (res1.statusCode === 200 && res1.ok === true && parsed1.greeting === 'Hello Async Host Bridge!' && res2.status === 200 && res2.ok === true && parsed2.greeting === 'Hello Async Host Bridge!'),
+                    data: { res1: parsed1, res2: parsed2 },
+                    text: parsed2.greeting
+                  };
+                }
+              """
+            },
+          ),
+        );
+
+        final logs = <String>[];
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [],
+          outputDir: outDir.path,
+          onProgress: (p, s) {},
+          onLog: (l, e) => logs.add(l),
+        );
+
+        if (!result.success) {
+          print('Execution failed: ${result.message}, logs: $logs');
+        }
+
+        expect(result.success, true);
+        expect(result.resultText, 'Hello Async Host Bridge!');
+        expect(result.resultData is Map, true);
+      } finally {
+        HttpOverrides.global = prevOverrides;
+        await server.close(force: true);
         if (outDir.existsSync()) outDir.deleteSync(recursive: true);
       }
     });

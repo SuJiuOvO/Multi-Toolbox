@@ -61,7 +61,9 @@ class QuickJsBridgeService {
     String pluginDataDir;
     try {
       Directory baseDir;
-      if (Platform.isWindows) {
+      if (Platform.environment.containsKey('FLUTTER_TEST')) {
+        baseDir = Directory.systemTemp;
+      } else if (Platform.isWindows) {
         baseDir = await getApplicationSupportDirectory();
       } else {
         baseDir = await getApplicationDocumentsDirectory();
@@ -75,8 +77,8 @@ class QuickJsBridgeService {
       dataDirObj.createSync(recursive: true);
     }
 
-    // 3. 初始化 JavascriptRuntime
-    final jsRuntime = getJavascriptRuntime();
+    // 3. 初始化 JavascriptRuntime (禁用 flutter_js 内部未受权限约束的 XHR 轮询计时器，统一采用 Host Bridge)
+    final jsRuntime = getJavascriptRuntime(xhr: false);
     _activeRuntime = jsRuntime;
 
     try {
@@ -136,7 +138,57 @@ class QuickJsBridgeService {
 
         dynamic result;
         try {
-          if (action == 'archive_extract') {
+          if (action == 'http_get' || action == 'http_post' || action == 'http_request') {
+            if (!plugin.hasPermission('network')) {
+              throw Exception('沙箱安全拦截: 插件未在 manifest.json 中声明 "network" 权限，已阻止发起外部网络请求');
+            }
+            final urlStr = payload['url']?.toString() ?? '';
+            final uri = Uri.parse(urlStr);
+            final method = (payload['method']?.toString() ?? (action == 'http_post' ? 'POST' : 'GET')).toUpperCase();
+            final headers = (payload['headers'] as Map?) ?? {};
+            final body = payload['body']?.toString();
+
+            final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+            final HttpClientRequest request;
+            switch (method) {
+              case 'POST':
+                request = await client.postUrl(uri);
+                break;
+              case 'PUT':
+                request = await client.putUrl(uri);
+                break;
+              case 'DELETE':
+                request = await client.deleteUrl(uri);
+                break;
+              case 'HEAD':
+                request = await client.headUrl(uri);
+                break;
+              default:
+                request = await client.getUrl(uri);
+            }
+
+            headers.forEach((k, v) {
+              request.headers.set(k.toString(), v.toString());
+            });
+
+            if (body != null && body.isNotEmpty) {
+              request.write(body);
+            }
+
+            final response = await request.close().timeout(const Duration(seconds: 30));
+            final responseBody = await response.transform(utf8.decoder).join();
+            final responseHeaders = <String, String>{};
+            response.headers.forEach((k, v) {
+              responseHeaders[k] = v.join('; ');
+            });
+            client.close();
+
+            result = {
+              'statusCode': response.statusCode,
+              'body': responseBody,
+              'headers': responseHeaders,
+            };
+          } else if (action == 'archive_extract') {
             final archivePath = payload['archivePath']?.toString() ?? '';
             final destDir = payload['outputDir']?.toString() ?? outputDir;
             final pwd = payload['password']?.toString();
@@ -216,6 +268,7 @@ class QuickJsBridgeService {
         outputDir: outputDir,
         inputFiles: inputFiles,
         formValues: formValues,
+        hasNetworkPermission: plugin.hasPermission('network'),
       );
       jsRuntime.evaluate(bootstrapScript);
 
@@ -229,6 +282,7 @@ class QuickJsBridgeService {
 
       (async function() {
         try {
+          var fetch = window.fetch;
           $scriptSource
           ;
           if (typeof run === 'function') {
@@ -586,6 +640,7 @@ class QuickJsBridgeService {
     required String outputDir,
     required List<String> inputFiles,
     required Map<String, dynamic> formValues,
+    bool hasNetworkPermission = false,
   }) {
     final platformName = Platform.isAndroid ? 'android' : (Platform.isWindows ? 'windows' : 'other');
     final envJson = jsonEncode({
@@ -611,6 +666,22 @@ class QuickJsBridgeService {
         }
       }
     };
+
+    function __wrapResponse(res) {
+      if (!res) return res;
+      res.status = res.statusCode || 200;
+      res.ok = (res.status >= 200 && res.status < 300);
+      res.statusText = res.ok ? 'OK' : 'Error';
+      res.text = function() { return Promise.resolve(res.body || ''); };
+      res.json = function() {
+        try {
+          return Promise.resolve(JSON.parse(res.body || ''));
+        } catch (e) {
+          return Promise.reject(e);
+        }
+      };
+      return res;
+    }
 
     function __Toolbox_asyncCall(action, payload) {
       return new Promise(function(resolve, reject) {
@@ -780,14 +851,52 @@ class QuickJsBridgeService {
         }
       },
       http: {
+        // 现代标准异步非阻塞网络接口 (Promise-based)
+        getAsync: function(url, headers) {
+          return __Toolbox_asyncCall('http_get', { url: url, headers: headers || {} }).then(__wrapResponse);
+        },
+        postAsync: function(url, body, headers) {
+          return __Toolbox_asyncCall('http_post', { url: url, body: body || '', headers: headers || {} }).then(__wrapResponse);
+        },
+        fetch: function(url, options) {
+          options = options || {};
+          var method = (options.method || 'GET').toUpperCase();
+          var body = options.body;
+          if (body && typeof body === 'object') {
+            body = JSON.stringify(body);
+          }
+          return __Toolbox_asyncCall('http_request', {
+            url: url,
+            method: method,
+            headers: options.headers || {},
+            body: body || ''
+          }).then(__wrapResponse);
+        },
+        // 向后兼容同步方法
         get: function(url, headers) {
-          return __Toolbox_syncCall('http_get', { url: url, headers: headers });
+          return __Toolbox_syncCall('http_get', { url: url, headers: headers || {} });
         },
         post: function(url, body, headers) {
-          return __Toolbox_syncCall('http_post', { url: url, body: body, headers: headers });
+          return __Toolbox_syncCall('http_post', { url: url, body: body || '', headers: headers || {} });
         }
       }
     };
+
+    if ($hasNetworkPermission) {
+      fetch = Toolbox.http.fetch;
+      window.fetch = Toolbox.http.fetch;
+      global.fetch = Toolbox.http.fetch;
+    } else {
+      var __blockNet = function() {
+        throw new Error('沙箱安全拦截: 插件未在 manifest.json 中声明 "network" 权限，已阻止发起网络请求');
+      };
+      fetch = __blockNet;
+      window.fetch = __blockNet;
+      global.fetch = __blockNet;
+      XMLHttpRequest = __blockNet;
+      window.XMLHttpRequest = __blockNet;
+      global.XMLHttpRequest = __blockNet;
+    }
 
     console.log = Toolbox.log;
     console.error = Toolbox.error;

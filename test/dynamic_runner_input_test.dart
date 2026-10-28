@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:app/models/plugin_manifest.dart';
 import 'package:app/pages/dynamic_tool_runner_page.dart';
@@ -157,6 +158,110 @@ void main() {
       expect(cond.and?.length, 1);
       expect(cond.and?[0].field, 'stereo');
       expect(cond.and?[0].equals, true);
+    });
+
+    testWidgets('Multi-Output Streaming layout renders distinct sequential cards mapped by id', (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final plugin = PluginManifest(
+        id: 'test-multi-output-plugin',
+        name: 'Multi Output Demo Tool',
+        version: '1.0.0',
+        category: 'text',
+        description: 'Demonstrating sequential compound outputs',
+        icon: 'text_snippet',
+        author: 'Toolbox Team',
+        engineType: 'quickjs',
+        executionType: 'quickjs',
+        platforms: ['universal'],
+        inputs: [],
+        outputs: [
+          PluginOutputDef(
+            id: 'summary',
+            type: 'copyable_text',
+            label: '摘要概览信息',
+            description: '任务简要描述',
+          ),
+          PluginOutputDef(
+            id: 'metrics',
+            type: 'key_value_table',
+            label: '性能指标参数',
+            description: '耗时与吞吐量表格',
+          ),
+          PluginOutputDef(
+            id: 'raw_json',
+            type: 'json_tree',
+            label: '原始 JSON 详情',
+          ),
+        ],
+        action: PluginActionDef(
+          handler: 'quickjs_eval',
+          params: {
+            'script': """
+              async function run() {
+                return {
+                  success: true,
+                  message: '全流程执行完毕',
+                  data: {
+                    summary: 'All nodes processed in 42ms with 0 failures',
+                    metrics: {
+                      'duration_ms': 42,
+                      'throughput_rps': 9900,
+                      'status': 'HEALTHY'
+                    },
+                    raw_json: {
+                      'node_id': 'cluster-alpha-01',
+                      'active': true
+                    }
+                  }
+                };
+              }
+            """
+          },
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicToolRunnerPage(plugin: plugin),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Multi Output Demo Tool'), findsOneWidget);
+      expect(find.text('开始执行处理'), findsOneWidget);
+
+      // 点击“开始执行处理”
+      await tester.tap(find.text('开始执行处理'));
+      await tester.pump();
+
+      // 在真实异步区域中等待 QuickJS 原生执行完毕
+      await tester.runAsync(() async {
+        for (int i = 0; i < 20; i++) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // 验证三大独立复合输出卡片按顺序流式排布呈现
+      expect(find.text('摘要概览信息'), findsOneWidget);
+      expect(find.text('All nodes processed in 42ms with 0 failures'), findsOneWidget);
+
+      expect(find.text('性能指标参数'), findsOneWidget);
+      expect(find.text('duration_ms'), findsOneWidget);
+      expect(find.text('42'), findsOneWidget);
+      expect(find.text('throughput_rps'), findsOneWidget);
+
+      expect(find.text('原始 JSON 详情'), findsOneWidget);
+      expect(find.textContaining('cluster-alpha-01'), findsWidgets);
+
+      // 验证一键复制按钮均正常渲染
+      expect(find.text('一键复制'), findsNWidgets(3));
+      expect(find.byIcon(Icons.copy), findsNWidgets(3));
     });
   });
 }

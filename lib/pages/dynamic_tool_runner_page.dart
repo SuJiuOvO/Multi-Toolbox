@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -792,17 +793,25 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     });
 
     Directory? baseDir;
-    if (Platform.isWindows) {
-      baseDir = await getDownloadsDirectory();
-    } else if (Platform.isAndroid) {
-      final pubDownload = Directory('/storage/emulated/0/Download');
-      if (pubDownload.existsSync()) {
-        baseDir = pubDownload;
-      } else {
-        baseDir = await getExternalStorageDirectory();
+    try {
+      if (Platform.environment.containsKey('FLUTTER_TEST')) {
+        baseDir = Directory.systemTemp;
+      } else if (Platform.isWindows) {
+        baseDir = await getDownloadsDirectory();
+      } else if (Platform.isAndroid) {
+        final pubDownload = Directory('/storage/emulated/0/Download');
+        if (pubDownload.existsSync()) {
+          baseDir = pubDownload;
+        } else {
+          baseDir = await getExternalStorageDirectory();
+        }
       }
+    } catch (_) {}
+    try {
+      baseDir ??= await getApplicationDocumentsDirectory();
+    } catch (_) {
+      baseDir = Directory.systemTemp;
     }
-    baseDir ??= await getApplicationDocumentsDirectory();
 
     final outDir = p.join(baseDir.path, 'Toolbox_Outputs');
 
@@ -966,20 +975,24 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     }
 
     // 发送任务处理完成系统通知（即使用户已退回主界面或将 App 放至后台）
-    if (res.success) {
-      NotificationService().showTaskNotification(
-        title: '【${widget.plugin.name}】处理完成',
-        body: res.message.isNotEmpty
-            ? res.message
-            : '输出文件已保存至: $outDir',
-        isSuccess: true,
-      );
-    } else {
-      NotificationService().showTaskNotification(
-        title: '【${widget.plugin.name}】处理失败',
-        body: res.message.isNotEmpty ? res.message : '处理过程中发生异常',
-        isSuccess: false,
-      );
+    try {
+      if (res.success) {
+        NotificationService().showTaskNotification(
+          title: '【${widget.plugin.name}】处理完成',
+          body: res.message.isNotEmpty
+              ? res.message
+              : '输出文件已保存至: $outDir',
+          isSuccess: true,
+        );
+      } else {
+        NotificationService().showTaskNotification(
+          title: '【${widget.plugin.name}】处理失败',
+          body: res.message.isNotEmpty ? res.message : '处理过程中发生异常',
+          isSuccess: false,
+        );
+      }
+    } catch (e) {
+      debugPrint('通知服务调度跳过或异常: $e');
     }
 
     if (!mounted) return;
@@ -1241,7 +1254,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
             const SizedBox(height: 12),
             if ((_result!.resultText != null && _result!.resultText!.trim().isNotEmpty) ||
                 _result!.resultData != null)
-              _buildDataResultCard(result: _result!, isDark: isDark, theme: theme),
+              ..._buildDataResultCards(result: _result!, isDark: isDark, theme: theme),
             if (_result!.outputFiles.isNotEmpty) ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1537,21 +1550,89 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     );
   }
 
-  Widget _buildDataResultCard({
+  List<Widget> _buildDataResultCards({
     required ProcessingResult result,
     required bool isDark,
     required ThemeData theme,
   }) {
     final text = result.resultText?.trim() ?? '';
     final data = result.resultData;
-    if (text.isEmpty && data == null) return const SizedBox.shrink();
+    if (text.isEmpty && data == null) return [];
 
-    final outputLabel = widget.plugin.outputs.isNotEmpty
-        ? widget.plugin.outputs.first.label
-        : '执行产出与结果数据';
-    final outputType = widget.plugin.outputs.isNotEmpty
-        ? widget.plugin.outputs.first.type
-        : (data is Map ? 'key_value_table' : 'copyable_text');
+    final outputs = widget.plugin.outputs;
+
+    // 模式 A: 复合输出模式 (Manifest 显式配置了多个 outputs 输出项，且返回的数据为 Map)
+    // 宿主按 output.id 自动从 data 中提取对应子项并流式顺序排布
+    if (outputs.length > 1 && data is Map) {
+      final cards = <Widget>[];
+      for (final outDef in outputs) {
+        final itemData = data[outDef.id];
+        if (itemData == null) continue;
+
+        String itemText;
+        if (itemData is String) {
+          itemText = itemData;
+        } else if (itemData is Map || itemData is List) {
+          itemText = JsonEncoder.withIndent('  ').convert(itemData);
+        } else {
+          itemText = itemData.toString();
+        }
+
+        cards.add(
+          _renderSingleResultCard(
+            label: outDef.label,
+            type: outDef.type,
+            description: outDef.description,
+            text: itemText,
+            data: itemData,
+            isDark: isDark,
+            theme: theme,
+          ),
+        );
+      }
+      if (cards.isNotEmpty) return cards;
+    }
+
+    // 模式 B: 单项输出或未显式匹配 id 的默认回退展示
+    final firstDef = outputs.isNotEmpty ? outputs.first : null;
+    final outputLabel = firstDef?.label ?? '执行产出与结果数据';
+    final outputType = firstDef?.type ?? (data is Map ? 'key_value_table' : 'copyable_text');
+    final outputDesc = firstDef?.description;
+
+    return [
+      _renderSingleResultCard(
+        label: outputLabel,
+        type: outputType,
+        description: outputDesc,
+        text: text,
+        data: data,
+        isDark: isDark,
+        theme: theme,
+      ),
+    ];
+  }
+
+  Widget _renderSingleResultCard({
+    required String label,
+    required String type,
+    String? description,
+    required String text,
+    dynamic data,
+    required bool isDark,
+    required ThemeData theme,
+  }) {
+    // 拷贝文本构造
+    String copyContent = text;
+    if (copyContent.isEmpty && data is Map) {
+      copyContent = data.entries.map((e) => '${e.key}: ${e.value}').join('\n');
+    }
+
+    final IconData iconData = switch (type) {
+      'key_value_table' => Icons.table_chart_outlined,
+      'markdown' => Icons.article_outlined,
+      'json_tree' => Icons.schema_outlined,
+      _ => Icons.data_object,
+    };
 
     return Card(
       margin: const EdgeInsets.only(top: 8, bottom: 12),
@@ -1568,33 +1649,44 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      outputType == 'key_value_table'
-                          ? Icons.table_chart_outlined
-                          : Icons.data_object,
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      outputLabel,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: isDark ? Colors.white : const Color(0xFF1E293B),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(iconData, size: 18, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: isDark ? Colors.white : const Color(0xFF1E293B),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                  ],
+                      if (description != null && description.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Tooltip(
+                          message: description,
+                          child: Icon(
+                            Icons.info_outline,
+                            size: 14,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
                 TextButton.icon(
                   onPressed: () {
-                    Clipboard.setData(ClipboardData(text: text));
+                    Clipboard.setData(ClipboardData(text: copyContent));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('已复制结果内容到剪贴板'),
-                        duration: Duration(seconds: 2),
+                      SnackBar(
+                        content: Text('已复制【$label】到剪贴板'),
+                        duration: const Duration(seconds: 2),
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
@@ -1609,7 +1701,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               ],
             ),
             const SizedBox(height: 8),
-            if (outputType == 'key_value_table' && data is Map) ...[
+            if (type == 'key_value_table' && data is Map) ...[
               Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(6),
