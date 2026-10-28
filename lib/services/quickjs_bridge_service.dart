@@ -762,11 +762,25 @@ class QuickJsBridgeService {
         readBytes: function(path) {
           return __Toolbox_syncCall('fs_read', { path: path, isBase64: true });
         },
+        readBinary: function(path) {
+          var b64 = __Toolbox_syncCall('fs_read', { path: path, isBase64: true });
+          return Toolbox.utils.base64ToBytes(b64);
+        },
         readText: function(path) {
           return __Toolbox_syncCall('fs_read', { path: path, isBase64: false });
         },
         writeFile: function(path, content, isBase64) {
+          if (content && typeof content === 'object' && (content instanceof Uint8Array || (content.buffer && content.buffer instanceof ArrayBuffer))) {
+            content = Toolbox.utils.bytesToBase64(content);
+            isBase64 = true;
+          }
           return __Toolbox_syncCall('fs_write', { path: path, content: content, isBase64: !!isBase64 });
+        },
+        writeBinary: function(path, bytes) {
+          var b64 = (bytes && typeof bytes === 'object' && (bytes instanceof Uint8Array || (bytes.buffer && bytes.buffer instanceof ArrayBuffer)))
+            ? Toolbox.utils.bytesToBase64(bytes)
+            : String(bytes || '');
+          return __Toolbox_syncCall('fs_write', { path: path, content: b64, isBase64: true });
         },
         exists: function(path) {
           return __Toolbox_syncCall('fs_exists', { path: path });
@@ -840,17 +854,24 @@ class QuickJsBridgeService {
         bytesToBase64: function(bytes) {
           var b64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
           var len = bytes ? (bytes.length || bytes.byteLength || 0) : 0;
-          var base64 = '';
+          if (len === 0) return '';
+          var parts = [];
+          var chunk = '';
           for (var i = 0; i < len; i += 3) {
             var b1 = bytes[i];
             var b2 = i + 1 < len ? bytes[i + 1] : 0;
             var b3 = i + 2 < len ? bytes[i + 2] : 0;
-            base64 += b64Chars.charAt(b1 >> 2);
-            base64 += b64Chars.charAt(((b1 & 3) << 4) | (b2 >> 4));
-            base64 += (i + 1 < len) ? b64Chars.charAt(((b2 & 15) << 2) | (b3 >> 6)) : '=';
-            base64 += (i + 2 < len) ? b64Chars.charAt(b3 & 63) : '=';
+            chunk += b64Chars.charAt(b1 >> 2);
+            chunk += b64Chars.charAt(((b1 & 3) << 4) | (b2 >> 4));
+            chunk += (i + 1 < len) ? b64Chars.charAt(((b2 & 15) << 2) | (b3 >> 6)) : '=';
+            chunk += (i + 2 < len) ? b64Chars.charAt(b3 & 63) : '=';
+            if (chunk.length >= 8192) {
+              parts.push(chunk);
+              chunk = '';
+            }
           }
-          return base64;
+          if (chunk.length > 0) parts.push(chunk);
+          return parts.join('');
         }
       },
       crypto: {

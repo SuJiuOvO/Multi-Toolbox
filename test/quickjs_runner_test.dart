@@ -320,6 +320,78 @@ void main() {
       }
     });
 
+    test('QuickJsBridgeService supports readBinary and writeBinary with direct Uint8Array', () async {
+      final outDir = Directory.systemTemp.createTempSync('qjs_binary_u8_test_');
+      try {
+        final binarySource = File('${outDir.path}/input.bin');
+        binarySource.writeAsBytesSync([10, 20, 30, 40, 50, 60]);
+
+        final manifest = PluginManifest(
+          id: 'test-binary-u8',
+          name: 'Binary Uint8Array Test',
+          version: '1.0.0',
+          category: 'developer',
+          description: 'Testing direct Uint8Array I/O',
+          icon: 'code',
+          author: 'Test',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ inputFiles, outputDir, params }) {
+                  const srcPath = outputDir + '/input.bin';
+                  // Read directly into Uint8Array
+                  const u8 = Toolbox.fs.readBinary(srcPath);
+                  Toolbox.log('u8 length: ' + u8.length);
+                  
+                  const isMatch = (u8 instanceof Uint8Array && u8.length === 6 && u8[0] === 10);
+                  
+                  // Double the values
+                  const outU8 = new Uint8Array(u8.length);
+                  for (let i = 0; i < u8.length; i++) {
+                    outU8[i] = u8[i] * 2;
+                  }
+                  
+                  // Write directly via writeBinary
+                  const destPath1 = outputDir + '/out_binary.bin';
+                  Toolbox.fs.writeBinary(destPath1, outU8);
+                  
+                  // Also write directly via writeFile with Uint8Array
+                  const destPath2 = outputDir + '/out_writefile.bin';
+                  Toolbox.fs.writeFile(destPath2, outU8);
+                  
+                  return { success: isMatch, message: 'Uint8Array test pass' };
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [],
+          outputDir: outDir.path,
+          onProgress: (pct, stage) {},
+          onLog: (line, isError) {},
+        );
+
+        expect(result.success, true);
+        final f1 = File('${outDir.path}/out_binary.bin');
+        expect(f1.existsSync(), true);
+        expect(f1.readAsBytesSync(), [20, 40, 60, 80, 100, 120]);
+
+        final f2 = File('${outDir.path}/out_writefile.bin');
+        expect(f2.existsSync(), true);
+        expect(f2.readAsBytesSync(), [20, 40, 60, 80, 100, 120]);
+      } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
     test('QuickJsBridgeService base64ToBytes accurately decodes padded base64 without byte loss', () async {
       if (!canRunQuickJs) return;
       final outDir = Directory.systemTemp.createTempSync('qjs_b64_pad_test_');
