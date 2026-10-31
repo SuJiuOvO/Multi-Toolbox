@@ -1,10 +1,10 @@
 {
   "id": "qr-toolbox",
   "name": "二维码工坊",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minAppVersion": "1.0.0",
   "category": "utility",
-  "description": "纯原生 Dart 离线实现的专业二维码生成与扫描识别引擎。支持 L/M/Q/H 多档容错率、自定义图片分辨率 (200~1600px)、像素级静区位图渲染，以及灰度增强智能反解图片中的二维码与条码。",
+  "description": "纯原生 Dart 离线实现的专业二维码生成与扫描识别引擎。支持 L/M/Q/H 多档容错率、自定义图片分辨率 (200~1600px)、自由自定义前景色与背景底色、像素级静区位图渲染，以及灰度增强智能反解图片中的二维码与条码。",
   "icon": "qr_code",
   "author": "Toolbox Team",
   "engineType": "native_tool",
@@ -31,6 +31,26 @@
       "type": "textarea",
       "defaultValue": "https://github.com",
       "required": true,
+      "visibleIf": {
+        "field": "mode",
+        "equals": "generate"
+      }
+    },
+    {
+      "id": "darkColor",
+      "label": "二维码码点颜色 (前景色)",
+      "type": "color_picker",
+      "defaultValue": "#000000",
+      "visibleIf": {
+        "field": "mode",
+        "equals": "generate"
+      }
+    },
+    {
+      "id": "lightColor",
+      "label": "二维码背景底色",
+      "type": "color_picker",
+      "defaultValue": "#FFFFFF",
       "visibleIf": {
         "field": "mode",
         "equals": "generate"
@@ -96,13 +116,22 @@
       }
     }
   ],
+  "outputs": [
+    {
+      "id": "decodedContent",
+      "label": "二维码解析结果与内容详情",
+      "type": "copyable_text"
+    }
+  ],
   "action": {
     "handler": "qr_toolbox",
     "params": {
       "mode": "${mode}",
       "content": "${content}",
       "errorLevel": "${errorLevel}",
-      "size": "${size}"
+      "size": "${size}",
+      "darkColor": "${darkColor}",
+      "lightColor": "${lightColor}"
     }
   }
 }

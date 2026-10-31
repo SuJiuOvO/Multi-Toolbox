@@ -1,7 +1,7 @@
 {
   "id": "image-compress",
   "name": "图片批量压缩",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minAppVersion": "1.0.0",
   "category": "image",
   "description": "借鉴 Caesium 与 TinyPNG 算法体系，支持 WebP 高压、JPG 质量优化与 PNG 调色板量化。支持批量导入图片、滑动调节压缩质量、智能限制超大分辨率最长边，显著降低图片文件体积同时保持高保真画质。",
@@ -79,6 +79,19 @@
           "value": "1280"
         }
       ]
+    }
+  ],
+  "outputs": [
+    {
+      "id": "compare",
+      "label": "压缩前后画质细节对比",
+      "type": "image_compare",
+      "description": "滑动滑块可即时对比压缩前后的清晰度与细节保留"
+    },
+    {
+      "id": "stats",
+      "label": "压缩指标与空间节省统计",
+      "type": "copyable_text"
     }
   ],
   "action": {

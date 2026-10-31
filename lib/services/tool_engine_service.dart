@@ -29,9 +29,12 @@ class ProcessingResult {
     required this.success,
     required this.message,
     this.outputFiles = const [],
-    this.resultData,
+    dynamic resultData,
+    dynamic data,
     this.resultText,
-  });
+  }) : resultData = resultData ?? data;
+
+  dynamic get data => resultData;
 }
 
 class ToolEngineService {
@@ -248,10 +251,28 @@ class ToolEngineService {
         : '0';
 
     onProgress?.call(1.0, '全部图片压缩完成！');
+
+    final statsContent = '总体积: ${(totalOriginalSize / 1024).toStringAsFixed(1)} KB → ${(totalCompressedSize / 1024).toStringAsFixed(1)} KB (压缩率: $ratio%)\n'
+        '成功处理: ${results.length} 张图片\n'
+        '平均节省: ${((totalOriginalSize - totalCompressedSize) / max(1, results.length) / 1024).toStringAsFixed(1)} KB/张';
+
+    final Map<String, dynamic> dataMap = {
+      'stats': statsContent,
+    };
+    if (files.isNotEmpty && results.isNotEmpty && File(files.first).existsSync() && File(results.first).existsSync()) {
+      dataMap['compare'] = {
+        'before': files.first,
+        'after': results.first,
+        'beforeLabel': '原图 (${(File(files.first).lengthSync() / 1024).toStringAsFixed(1)} KB)',
+        'afterLabel': '压缩后 (${(File(results.first).lengthSync() / 1024).toStringAsFixed(1)} KB)',
+      };
+    }
+
     return ProcessingResult(
       success: true,
       message: '成功压缩 ${results.length} 张图片！\n总体积由 ${(totalOriginalSize / 1024).toStringAsFixed(1)} KB → ${(totalCompressedSize / 1024).toStringAsFixed(1)} KB (压缩率: $ratio%)',
       outputFiles: results,
+      data: dataMap,
     );
   }
 
@@ -951,7 +972,46 @@ class ToolEngineService {
     );
   }
 
-    // 3. 修改证件照底色 (参考 HivisionIDPhotos 架构规范)
+    /// 解析 Hex 或常规色彩名称并返回 (r, g, b, a)
+  static (int, int, int, int) parseRgba(
+    String colorStr, {
+    int defaultR = 255,
+    int defaultG = 255,
+    int defaultB = 255,
+    int defaultA = 255,
+  }) {
+    final clean = colorStr.trim().toLowerCase();
+    if (clean == 'transparent' || clean == 'none') {
+      return (0, 0, 0, 0);
+    }
+    if (clean == 'white') return (255, 255, 255, 255);
+    if (clean == 'red') return (216, 30, 30, 255);
+    if (clean == 'blue') return (67, 142, 219, 255);
+    if (clean == 'gray') return (238, 238, 238, 255);
+    if (clean == 'black') return (0, 0, 0, 255);
+
+    final rawHex = clean.replaceAll('#', '');
+    if (rawHex.length == 3) {
+      final r = int.tryParse('${rawHex[0]}${rawHex[0]}', radix: 16);
+      final g = int.tryParse('${rawHex[1]}${rawHex[1]}', radix: 16);
+      final b = int.tryParse('${rawHex[2]}${rawHex[2]}', radix: 16);
+      if (r != null && g != null && b != null) return (r, g, b, 255);
+    } else if (rawHex.length == 6) {
+      final r = int.tryParse(rawHex.substring(0, 2), radix: 16);
+      final g = int.tryParse(rawHex.substring(2, 4), radix: 16);
+      final b = int.tryParse(rawHex.substring(4, 6), radix: 16);
+      if (r != null && g != null && b != null) return (r, g, b, 255);
+    } else if (rawHex.length == 8) {
+      final a = int.tryParse(rawHex.substring(0, 2), radix: 16);
+      final r = int.tryParse(rawHex.substring(2, 4), radix: 16);
+      final g = int.tryParse(rawHex.substring(4, 6), radix: 16);
+      final b = int.tryParse(rawHex.substring(6, 8), radix: 16);
+      if (a != null && r != null && g != null && b != null) return (r, g, b, a);
+    }
+    return (defaultR, defaultG, defaultB, defaultA);
+  }
+
+  // 3. 修改证件照底色 (参考 HivisionIDPhotos 架构规范)
   //    - 多点四角自适应背景色彩空间采样
   //    - 双重梯度色彩泛洪 + 距离场计算连续 Alpha 通道 (0.0~1.0)
   //    - 边缘去溢色/色边净化 (Color Decontamination): 彻底消除蓝底/红底发丝残存反光
@@ -976,15 +1036,11 @@ class ToolEngineService {
       return ProcessingResult(success: false, message: '无法解析待处理的图片文件');
     }
 
-    // 目标背景 RGB 定义
-    int tR = 255, tG = 255, tB = 255;
-    if (colorParam == 'red') {
-      tR = 216; tG = 30; tB = 30; // 官方标准中国红
-    } else if (colorParam == 'blue') {
-      tR = 67; tG = 142; tB = 219; // 经典证件天蓝
-    } else if (colorParam == 'gray') {
-      tR = 238; tG = 238; tB = 238; // 职场轻灰底
-    }
+    // 目标背景 RGB 解析 (支持色盘 Hex 如 #438EDB，或预设名称 red/blue/gray/white)
+    final parsedRgba = parseRgba(colorParam, defaultR: 255, defaultG: 255, defaultB: 255, defaultA: 255);
+    final int tR = parsedRgba.$1;
+    final int tG = parsedRgba.$2;
+    final int tB = parsedRgba.$3;
 
     final w = original.width;
     final h = original.height;
@@ -1208,7 +1264,8 @@ class ToolEngineService {
     }
 
     onProgress?.call(0.98, '正在导出证件照成果...');
-    final outName = 'idphoto_${colorParam}_${sizeParam}_${p.basenameWithoutExtension(filePath)}.jpg';
+    final safeColorName = colorParam.replaceAll('#', '');
+    final outName = 'idphoto_${safeColorName}_${sizeParam}_${p.basenameWithoutExtension(filePath)}.jpg';
     final outPath = p.join(outputDir, outName);
     await File(outPath).writeAsBytes(img.encodeJpg(finalImage, quality: 96));
 
@@ -1217,6 +1274,15 @@ class ToolEngineService {
       success: true,
       message: '已成功将证件照更换为 $colorParam 底色并完成边缘去溢色！\n导出文件: $outName (${finalImage.width}x${finalImage.height})',
       outputFiles: [outPath],
+      data: {
+        'compare': {
+          'before': filePath,
+          'after': outPath,
+          'beforeLabel': '原图底色 (Original)',
+          'afterLabel': '新底色 ($colorParam)',
+        },
+        'summary': '目标底色: $colorParam\n冲印规格: ${finalImage.width}x${finalImage.height} px ($sizeParam)\n输出文件: $outName',
+      },
     );
   }
 
@@ -1302,6 +1368,9 @@ class ToolEngineService {
           success: true,
           message: '🎉 成功识别出二维码内容：\n\n$decodedText\n\n（识别内容已同步写入结果文本）',
           outputFiles: [outPath],
+          data: {
+            'decodedContent': decodedText,
+          },
         );
       } else {
         return ProcessingResult(
@@ -1351,10 +1420,16 @@ class ToolEngineService {
       final modulePixelSize = max(1, (targetSize / totalModules).floor());
       final actualDimension = totalModules * modulePixelSize;
 
-      final image = img.Image(width: actualDimension, height: actualDimension, numChannels: 4);
-      img.fill(image, color: img.ColorRgba8(255, 255, 255, 255)); // 纯白底
+      // 提取并解析前景色与背景色 (支持色盘 Hex)
+      final darkParam = params['darkColor']?.toString() ?? '#000000';
+      final lightParam = params['lightColor']?.toString() ?? '#FFFFFF';
+      final darkRgba = parseRgba(darkParam, defaultR: 0, defaultG: 0, defaultB: 0, defaultA: 255);
+      final lightRgba = parseRgba(lightParam, defaultR: 255, defaultG: 255, defaultB: 255, defaultA: 255);
 
-      final darkColor = img.ColorRgba8(0, 0, 0, 255); // 纯黑点
+      final image = img.Image(width: actualDimension, height: actualDimension, numChannels: 4);
+      img.fill(image, color: img.ColorRgba8(lightRgba.$1, lightRgba.$2, lightRgba.$3, lightRgba.$4)); // 自定义底色
+
+      final darkColor = img.ColorRgba8(darkRgba.$1, darkRgba.$2, darkRgba.$3, darkRgba.$4); // 自定义码点与定位角颜色
       for (int r = 0; r < moduleCount; r++) {
         for (int c = 0; c < moduleCount; c++) {
           if (qrImage.isDark(r, c)) {
@@ -1381,8 +1456,11 @@ class ToolEngineService {
       onProgress?.call(1.0, '二维码制作完成！');
       return ProcessingResult(
         success: true,
-        message: '🎉 二维码生成成功！\n尺寸: ${actualDimension}x$actualDimension px\n纠错等级: $errorLevelStr\n内容: $content',
+        message: '🎉 二维码生成成功！\n尺寸: ${actualDimension}x$actualDimension px\n前景色: $darkParam, 背景色: $lightParam\n内容: $content',
         outputFiles: [outPath],
+        data: {
+          'decodedContent': '内容: $content\n纠错等级: $errorLevelStr\n尺寸: ${actualDimension}x$actualDimension px\n前景色: $darkParam\n背景色: $lightParam',
+        },
       );
     }
   }

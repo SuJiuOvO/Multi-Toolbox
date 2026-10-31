@@ -352,4 +352,126 @@ void main() {
       }
     });
   });
+
+  group('Enhanced Plugin Handlers & Output Streaming Tests', () {
+    late Directory tempDir;
+    late File sampleImageFile;
+
+    setUp(() {
+      tempDir = Directory.systemTemp.createTempSync('enhanced_plugin_test_');
+      final image = img.Image(width: 80, height: 80);
+      img.fill(image, color: img.ColorRgba8(255, 255, 255, 255));
+      for (int y = 20; y < 60; y++) {
+        for (int x = 20; x < 60; x++) {
+          image.setPixelRgba(x, y, 200, 30, 30, 255);
+        }
+      }
+      sampleImageFile = File(p.join(tempDir.path, 'id_sample.png'));
+      sampleImageFile.writeAsBytesSync(img.encodePng(image));
+    });
+
+    tearDown(() {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('ToolEngineService.parseRgba parses color names, hex, and fallback correctly', () {
+      expect(ToolEngineService.parseRgba('white'), equals((255, 255, 255, 255)));
+      expect(ToolEngineService.parseRgba('red'), equals((216, 30, 30, 255)));
+      expect(ToolEngineService.parseRgba('blue'), equals((67, 142, 219, 255)));
+      expect(ToolEngineService.parseRgba('transparent'), equals((0, 0, 0, 0)));
+      expect(ToolEngineService.parseRgba('#FF0000'), equals((255, 0, 0, 255)));
+      // #AARRGGBB 格式: Alpha=128 (80), Red=0, Green=255 (FF), Blue=0
+      expect(ToolEngineService.parseRgba('#8000FF00'), equals((0, 255, 0, 128)));
+      expect(ToolEngineService.parseRgba('invalid_color', defaultR: 123), equals((123, 255, 255, 255)));
+    });
+
+    test('id_photo_bg accepts custom hex color and returns image_compare & summary', () async {
+      final res = await ToolEngineService.execute(
+        handler: 'id_photo_bg',
+        inputFiles: [sampleImageFile.path],
+        params: {
+          'color': '#438EDB',
+          'size': 'keep',
+          'feather': 2,
+          'tolerance': 40,
+        },
+        outputDir: tempDir.path,
+      );
+
+      expect(res.success, isTrue);
+      expect(res.outputFiles, isNotEmpty);
+      expect(res.data, isNotNull);
+      final data = res.data as Map<String, dynamic>;
+      expect(data.containsKey('compare'), isTrue);
+      expect(data.containsKey('summary'), isTrue);
+      expect(data['compare']['before'], sampleImageFile.path);
+      expect(data['compare']['after'], res.outputFiles!.first);
+      expect(data['summary'], contains('#438EDB'));
+    });
+
+    test('image_compress returns compare and stats data map', () async {
+      final res = await ToolEngineService.execute(
+        handler: 'image_compress',
+        inputFiles: [sampleImageFile.path],
+        params: {
+          'quality': 60,
+          'format': 'jpg',
+          'maxEdge': '0',
+        },
+        outputDir: tempDir.path,
+      );
+
+      expect(res.success, isTrue);
+      expect(res.outputFiles, isNotEmpty);
+      expect(res.data, isNotNull);
+      final data = res.data as Map<String, dynamic>;
+      expect(data.containsKey('compare'), isTrue);
+      expect(data.containsKey('stats'), isTrue);
+      expect(data['compare']['before'], sampleImageFile.path);
+      expect(data['compare']['after'], res.outputFiles!.first);
+      expect(data['stats'], contains('总体积'));
+    });
+
+    test('qr_toolbox supports custom darkColor and lightColor and populates decodedContent', () async {
+      final genRes = await ToolEngineService.execute(
+        handler: 'qr_toolbox',
+        inputFiles: [],
+        params: {
+          'mode': 'generate',
+          'content': 'https://antigravity.dev',
+          'errorLevel': 'M',
+          'size': 400,
+          'darkColor': '#1E3A8A',
+          'lightColor': '#F0F9FF',
+        },
+        outputDir: tempDir.path,
+      );
+
+      expect(genRes.success, isTrue);
+      expect(genRes.outputFiles, isNotEmpty);
+      expect(genRes.data, isNotNull);
+      final genData = genRes.data as Map<String, dynamic>;
+      expect(genData.containsKey('decodedContent'), isTrue);
+      expect(genData['decodedContent'], contains('https://antigravity.dev'));
+      expect(genData['decodedContent'], contains('#1E3A8A'));
+
+      final qrFile = File(genRes.outputFiles!.first);
+      expect(qrFile.existsSync(), isTrue);
+
+      final decRes = await ToolEngineService.execute(
+        handler: 'qr_toolbox',
+        inputFiles: [qrFile.path],
+        params: {
+          'mode': 'decode',
+        },
+        outputDir: tempDir.path,
+      );
+
+      expect(decRes.success, isTrue);
+      final decData = decRes.data as Map<String, dynamic>;
+      expect(decData['decodedContent'], contains('https://antigravity.dev'));
+    });
+  });
 }

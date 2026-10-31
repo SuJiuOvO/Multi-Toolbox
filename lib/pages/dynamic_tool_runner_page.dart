@@ -1725,9 +1725,9 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
 
     final outputs = widget.plugin.outputs;
 
-    // 模式 A: 复合输出模式 (Manifest 显式配置了多个 outputs 输出项，且返回的数据为 Map)
+    // 模式 A: 复合输出模式 (Manifest 显式配置了 outputs 输出项，且返回的数据为 Map)
     // 宿主按 output.id 自动从 data 中提取对应子项并流式顺序排布
-    if (outputs.length > 1 && data is Map) {
+    if (outputs.isNotEmpty && data is Map) {
       final cards = <Widget>[];
       for (final outDef in outputs) {
         final itemData = data[outDef.id];
@@ -1845,24 +1845,25 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                     ],
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: copyContent));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('已复制【$label】到剪贴板'),
-                        duration: const Duration(seconds: 2),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.copy, size: 14),
-                  label: const Text('一键复制', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                if (type != 'image_compare')
+                  TextButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: copyContent));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('已复制【$label】到剪贴板'),
+                          duration: const Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.copy, size: 14),
+                    label: const Text('一键复制', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 8),

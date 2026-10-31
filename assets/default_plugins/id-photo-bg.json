@@ -1,10 +1,10 @@
 {
   "id": "id-photo-bg",
   "name": "证件照换底",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minAppVersion": "1.0.0",
   "category": "image",
-  "description": "借鉴 HivisionIDPhotos 证件照换底算法，采用多点色彩采样 + 连续 Alpha 掩码 + 边缘去溢色技术消除杂色色边。一键更换一寸、二寸常用考试报名与工作照底色为标准白底、红底、蓝底或商务职业灰底。",
+  "description": "借鉴 HivisionIDPhotos 证件照换底算法，采用多点色彩采样 + 连续 Alpha 掩码 + 边缘去溢色技术消除杂色色边。一键更换一寸、二寸常用考试报名与工作照底色为标准白底、红底、蓝底、职业灰底或任意自定义底色。",
   "icon": "badge",
   "author": "Toolbox Team",
   "engineType": "native_image",
@@ -24,27 +24,9 @@
     },
     {
       "id": "bgColor",
-      "label": "目标底色",
-      "type": "select",
-      "defaultValue": "white",
-      "options": [
-        {
-          "label": "标准白底 (#FFFFFF 常用考试/工作证)",
-          "value": "white"
-        },
-        {
-          "label": "标准红底 (#D81E1E 婚姻登记/社保证)",
-          "value": "red"
-        },
-        {
-          "label": "标准蓝底 (#438EDB 毕业证/职业资格证)",
-          "value": "blue"
-        },
-        {
-          "label": "职业灰底 (#EEEEEE 简历/商务照)",
-          "value": "gray"
-        }
-      ]
+      "label": "目标底色 (点击调色盘或选择色块)",
+      "type": "color_picker",
+      "defaultValue": "#FFFFFF"
     },
     {
       "id": "standardSize",
@@ -87,6 +69,19 @@
       "min": 25,
       "max": 85,
       "step": 5
+    }
+  ],
+  "outputs": [
+    {
+      "id": "compare",
+      "label": "换底前后画质细节对比",
+      "type": "image_compare",
+      "description": "滑动滑块可即时对比换底前后的发丝细节与去溢色效果"
+    },
+    {
+      "id": "summary",
+      "label": "证件照处理结果摘要",
+      "type": "copyable_text"
     }
   ],
   "action": {
