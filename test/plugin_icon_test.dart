@@ -142,5 +142,34 @@ void main() {
 
       expect(find.byType(PluginIconWidget), findsOneWidget);
     });
+
+    testWidgets('Renders all redesigned duotone theme-adaptive SVG icons seamlessly', (tester) async {
+      const duotoneIcons = [
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" fill-opacity="0.22"/><path d="M12 6.5l1.3 3.7 3.7 1.3-3.7 1.3L12 16.5l-1.3-3.7L7 11.5l3.7-1.3z" fill="currentColor"/><circle cx="17" cy="7.5" r="1.3" fill="currentColor"/><circle cx="7" cy="16.5" r="1.3" fill="currentColor"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" fill-opacity="0.22"/><circle cx="10" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="12" r="2" fill="currentColor"/><path d="M10 7v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="15" y="13.5" width="5.5" height="4.5" rx="1.2" fill="currentColor"/><path d="M16.5 13.5v-1.6a1.4 1.4 0 0 1 2.8 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" fill-opacity="0.22"/><circle cx="12" cy="14" r="4.5" fill="currentColor" fill-opacity="0.32"/><path d="M7 9.5c2-2.5 6.5-3.5 10-.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M14.5 7c1.3.6 2.3 1.8 2.5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M9.5 13.8c.4-.7 1.2-.7 1.6 0m3.8 0c.4-.7 1.2-.7 1.6 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M12 16.2a1 1 0 0 1 1-.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" fill-opacity="0.22"/><path d="M8.5 8.5L5 12l3.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M15.5 8.5L19 12l-3.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M13.5 7.5l-3 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" fill-opacity="0.22"/><rect x="7.5" y="7.5" width="9" height="9" rx="2" fill="currentColor" fill-opacity="0.3"/><path d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m-2 6h2M19 9h2m-2 6h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M9.5 10l1.2 3.5 1.3-2.3 1.3 2.3 1.2-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'
+      ];
+
+      for (final svg in duotoneIcons) {
+        final def = PluginIconDef.fromRaw(svg);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+            ),
+            home: Scaffold(
+              body: PluginIconWidget(
+                iconDef: def,
+                size: 32,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(PluginIconWidget), findsOneWidget);
+      }
+    });
   });
 }

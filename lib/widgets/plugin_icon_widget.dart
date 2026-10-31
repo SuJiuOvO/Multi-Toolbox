@@ -323,22 +323,41 @@ class _PluginIconWidgetState extends State<PluginIconWidget> {
       return PluginIconWidget.buildDefaultModuleIcon(context, size: widget.size, color: primaryColor);
     }
 
-    // 2. 代码渲染模式 (SVG 矢量代码)
+    // 2. 代码渲染模式 (SVG 矢量代码，支持 currentColor 双色调与主题随动自适应)
     if (def.isCode && def.data != null && def.data!.trim().isNotEmpty) {
       final svgData = def.data!.trim();
       // 限制代码大小不超过 64KB
       if (svgData.length <= 64 * 1024) {
         try {
+          String processedSvg = svgData;
+          if (processedSvg.contains('{primary}') ||
+              processedSvg.contains('{secondary}') ||
+              processedSvg.contains('var(--primary)') ||
+              processedSvg.contains('var(--secondary)')) {
+            final hexPrimary = '#${primaryColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
+            final secondaryColor = Theme.of(context).colorScheme.primary.withValues(alpha: 0.22);
+            final hexSecondary = '#${secondaryColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
+            processedSvg = processedSvg
+                .replaceAll('{primary}', hexPrimary)
+                .replaceAll('{secondary}', hexSecondary)
+                .replaceAll('var(--primary)', hexPrimary)
+                .replaceAll('var(--secondary)', hexSecondary);
+          }
+
           return SizedBox(
             width: widget.size,
             height: widget.size,
-            child: SvgPicture.string(
-              svgData,
-              width: widget.size,
-              height: widget.size,
-              fit: BoxFit.contain,
-              placeholderBuilder: (ctx) =>
-                  PluginIconWidget.buildDefaultModuleIcon(context, size: widget.size, color: primaryColor),
+            child: IconTheme(
+              data: IconThemeData(color: primaryColor),
+              child: SvgPicture.string(
+                processedSvg,
+                width: widget.size,
+                height: widget.size,
+                fit: BoxFit.contain,
+                theme: SvgTheme(currentColor: primaryColor),
+                placeholderBuilder: (ctx) =>
+                    PluginIconWidget.buildDefaultModuleIcon(context, size: widget.size, color: primaryColor),
+              ),
             ),
           );
         } catch (_) {

@@ -11,7 +11,7 @@
   "description": "【WASM 跨平台高算力引擎】基于沙箱内嵌的 WebAssembly 微内核解释器与即时编译执行框架，支持在全隔离沙箱中运行由 C/C++/Rust 编译的 .wasm 与 .wat 算力模块。原生打通 WASI 虚拟文件系统 (VFS) 磁盘映射、标准 CLI (_start) 调度与内存流式管道，实现真正的主机文件零依赖无缝 I/O 处理。",
   "icon": {
     "type": "code",
-    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"3\" fill=\"#6366F1\"/><path fill=\"#FFFFFF\" d=\"M7 11h2v5H7zm8-4h2v9h-2zm-4 2h2v7h-2z\"/></svg>"
+    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"5\" fill=\"currentColor\" fill-opacity=\"0.22\"/><rect x=\"7.5\" y=\"7.5\" width=\"9\" height=\"9\" rx=\"2\" fill=\"currentColor\" fill-opacity=\"0.3\"/><path d=\"M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m-2 6h2M19 9h2m-2 6h2\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/><path d=\"M9.5 10l1.2 3.5 1.3-2.3 1.3 2.3 1.2-3.5\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/></svg>"
   },
   "author": "Toolbox 算力实验室",
   "engineType": "wasm",
