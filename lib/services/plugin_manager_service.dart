@@ -395,7 +395,7 @@ class PluginManagerService {
             if (local != null) {
               remote.isInstalled = true;
               remote.localDir = local.localDir;
-              if (remote.version != local.version) {
+              if (compareVersions(remote.version, local.version) > 0) {
                 remote.isUpdateAvailable = true;
               }
             } else {

@@ -83,5 +83,29 @@ void main() {
       final hasUpdate = PluginManagerService.compareVersions(latestVer, currentVer) > 0;
       expect(hasUpdate, isFalse);
     });
+
+    test('PluginManagerService.compareVersions correctly compares semantic versions', () {
+      expect(PluginManagerService.compareVersions('1.1.0', '1.0.0'), 1);
+      expect(PluginManagerService.compareVersions('1.0.0', '1.1.0'), -1);
+      expect(PluginManagerService.compareVersions('1.1.0', '1.1.0'), 0);
+      expect(PluginManagerService.compareVersions('v1.2.0', '1.1.9'), 1);
+      expect(PluginManagerService.compareVersions('1.0.1', '1.0.0+1'), 1);
+      expect(PluginManagerService.compareVersions('1.0.0', '1.0.0+2'), 0);
+    });
+
+    test('Older remote plugin version does not falsely flag isUpdateAvailable', () {
+      const localVersion = '1.1.0';
+      const remoteOlderVersion = '1.0.0';
+      const remoteSameVersion = '1.1.0';
+      const remoteNewerVersion = '1.2.0';
+
+      final bool olderTriggers = PluginManagerService.compareVersions(remoteOlderVersion, localVersion) > 0;
+      final bool sameTriggers = PluginManagerService.compareVersions(remoteSameVersion, localVersion) > 0;
+      final bool newerTriggers = PluginManagerService.compareVersions(remoteNewerVersion, localVersion) > 0;
+
+      expect(olderTriggers, isFalse, reason: 'Remote older version should never trigger update');
+      expect(sameTriggers, isFalse, reason: 'Identical version should never trigger update');
+      expect(newerTriggers, isTrue, reason: 'Strictly newer version should trigger update');
+    });
   });
 }
