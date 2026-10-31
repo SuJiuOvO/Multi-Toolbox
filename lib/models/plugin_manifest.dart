@@ -187,6 +187,24 @@ class PluginInputDef {
     return lower.contains('android') && !lower.contains('windows') && !lower.contains('universal');
   }
 
+  /// 是否为颜色输入项（显式声明为 color_picker 或具备明确颜色 Hex 语义的输入字段）
+  bool get isColorInput {
+    if (type == 'color_picker') return true;
+    if (type == 'text') {
+      final lid = id.toLowerCase();
+      final llabel = label.toLowerCase();
+      if (lid.contains('color') || lid == 'bgcolor' || lid.endsWith('color')) return true;
+      if (llabel.contains('颜色') || llabel.contains('色值') || llabel.contains('底色')) return true;
+      if (defaultValue != null) {
+        final str = defaultValue.toString().trim();
+        if (RegExp(r'^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$').hasMatch(str)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   factory PluginInputDef.fromJson(Map<String, dynamic> json) {
     var rawOptions = json['options'] as List?;
     var rawPlatforms = json['platforms'] as List?;

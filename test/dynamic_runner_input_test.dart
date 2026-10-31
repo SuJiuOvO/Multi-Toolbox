@@ -468,5 +468,74 @@ void main() {
       expect(find.text('全局顶级测试横幅提示消息'), findsOneWidget);
       expect(find.text('组件级别专属黄色告警横幅'), findsOneWidget);
     });
+
+    test('formatBytes correctly formats byte sizes', () {
+      expect(DynamicToolRunnerPage.formatBytes(0), '0 B');
+      expect(DynamicToolRunnerPage.formatBytes(512), '512 B');
+      expect(DynamicToolRunnerPage.formatBytes(1024), '1.0 KB');
+      expect(DynamicToolRunnerPage.formatBytes(1536), '1.5 KB');
+      expect(DynamicToolRunnerPage.formatBytes(1024 * 1024 * 2), '2.0 MB');
+      expect(DynamicToolRunnerPage.formatBytes(1024 * 1024 * 1024 * 3), '3.00 GB');
+    });
+
+    test('PluginInputDef isColorInput correctly identifies explicit and semantic color fields', () {
+      // 显式声明为 color_picker
+      final explicit = PluginInputDef(id: 'col', label: 'Color', type: 'color_picker');
+      expect(explicit.isColorInput, isTrue);
+
+      // 声明为 text，但 id 为 bgColor
+      final petpetColor = PluginInputDef(id: 'bgColor', label: '背景颜色', type: 'text', defaultValue: '#FFFFFF');
+      expect(petpetColor.isColorInput, isTrue);
+
+      // 声明为 text，但 label 包含底色
+      final bgLabel = PluginInputDef(id: 'custom_bg', label: '生成底色', type: 'text');
+      expect(bgLabel.isColorInput, isTrue);
+
+      // 声明为 text，但 defaultValue 为 Hex 色值
+      final hexDefault = PluginInputDef(id: 'accent', label: '强调色', type: 'text', defaultValue: '#1E40AF');
+      expect(hexDefault.isColorInput, isTrue);
+
+      // 普通文本输入框
+      final plainText = PluginInputDef(id: 'username', label: '用户名称', type: 'text', defaultValue: 'admin');
+      expect(plainText.isColorInput, isFalse);
+    });
+
+    testWidgets('Legacy text input with bgColor automatically upgrades to visual color picker UI', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final legacyColorPlugin = PluginManifest(
+        id: 'legacy-color-tool',
+        name: '旧版颜色工具',
+        version: '1.0.0',
+        minAppVersion: '1.0.0',
+        category: 'utility',
+        description: '测试向下兼容旧版 text 格式的颜色字段',
+        icon: 'palette',
+        author: 'Tester',
+        engineType: 'native_tool',
+        inputs: [
+          PluginInputDef(
+            id: 'bgColor',
+            label: '背景底色 (原 text 类型)',
+            type: 'text',
+            defaultValue: '#FFFFFF',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicToolRunnerPage(plugin: legacyColorPlugin),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 应该自动渲染出颜色选择组件的“自定义”按钮与色块
+      expect(find.text('背景底色 (原 text 类型)'), findsWidgets);
+      expect(find.text('自定义'), findsOneWidget);
+      expect(find.text('#FFFFFF'), findsWidgets);
+    });
   });
 }
