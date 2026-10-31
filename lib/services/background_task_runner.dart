@@ -144,6 +144,8 @@ class BackgroundTaskRunner {
               success: msg[1] as bool,
               message: msg[2] as String,
               outputFiles: List<String>.from(msg[3] as List),
+              resultData: msg.length > 4 ? msg[4] : null,
+              resultText: msg.length > 5 ? msg[5] as String? : null,
             ));
           }
           break;
@@ -236,8 +238,8 @@ Future<void> _isolateMain(_IsolateRequest req) async {
       },
       onLog: (line, isError) => req.port.send(['l', line, isError]),
     );
-    req.port.send(['r', result.success, result.message, result.outputFiles]);
+    req.port.send(['r', result.success, result.message, result.outputFiles, result.resultData, result.resultText]);
   } catch (e, st) {
-    req.port.send(['r', false, '处理发生异常: $e\n$st', <String>[]]);
+    req.port.send(['r', false, '处理发生异常: $e\n$st', <String>[], null, null]);
   }
 }

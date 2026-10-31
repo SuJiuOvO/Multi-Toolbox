@@ -124,6 +124,12 @@ class DynamicToolRunnerPage extends StatefulWidget {
     if (clean == 'transparent' || clean == 'none') {
       return Colors.transparent;
     }
+    if (clean == 'white') return Colors.white;
+    if (clean == 'black') return Colors.black;
+    if (clean == 'red') return const Color(0xFFD81E1E);
+    if (clean == 'blue') return const Color(0xFF438EDB);
+    if (clean == 'gray' || clean == 'grey') return const Color(0xFFEEEEEE);
+
     String hex = clean.startsWith('#') ? clean.substring(1) : clean;
     if (hex.length == 3) {
       hex = '${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}';
@@ -2563,18 +2569,20 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       final curColor = DynamicToolRunnerPage.parseHexColor(curVal);
       final isTransparent = curVal.trim().toLowerCase() == 'transparent' || curVal.trim().toLowerCase() == 'none';
 
-      const presetColors = [
-        'transparent',
-        '#FFFFFF',
-        '#000000',
-        '#EF4444',
-        '#F97316',
-        '#F59E0B',
-        '#10B981',
-        '#3B82F6',
-        '#6366F1',
-        '#EC4899',
-        '#64748B',
+      const quickIdPresets = [
+        {'label': '白底', 'value': '#FFFFFF'},
+        {'label': '天蓝', 'value': '#438EDB'},
+        {'label': '红底', 'value': '#D81E1E'},
+        {'label': '轻灰', 'value': '#EEEEEE'},
+        {'label': '纯黑', 'value': '#000000'},
+        {'label': '透明', 'value': 'transparent'},
+      ];
+
+      const inlineSwatches = [
+        '#FFFFFF', '#F1F5F9', '#94A3B8', '#1E293B',
+        '#D81E1E', '#EF4444', '#F97316', '#FBBF24',
+        '#16A34A', '#14B8A6', '#438EDB', '#1E40AF',
+        '#6366F1', '#A855F7', '#EC4899', '#EEEEEE',
       ];
 
       return Padding(
@@ -2585,78 +2593,130 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  input.label,
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
-                ),
-                InkWell(
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: () => _showCustomColorDialog(input, curVal),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: inputBg,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: inputBorderColor),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isTransparent ? Colors.transparent : curColor,
-                            border: Border.all(color: Colors.grey.shade400, width: 1),
-                          ),
-                          child: isTransparent
-                              ? const Icon(Icons.block, size: 12, color: Colors.red)
-                              : null,
+                Expanded(
+                  child: Row(
+                    children: [
+                      Text(
+                        input.label,
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
+                      ),
+                      const SizedBox(width: 8),
+                      // 当前颜色预览胶囊
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: inputBg,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: inputBorderColor),
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          isTransparent ? '透明' : curVal.toUpperCase(),
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: textPrimary,
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isTransparent ? Colors.transparent : curColor,
+                                border: Border.all(color: Colors.grey.shade400, width: 1),
+                              ),
+                              child: isTransparent
+                                  ? const Icon(Icons.block, size: 10, color: Colors.red)
+                                  : null,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              isTransparent ? '透明' : curVal.toUpperCase(),
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.edit, size: 12, color: textSecondary),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
+                ),
+                FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  ),
+                  icon: const Icon(Icons.colorize, size: 16),
+                  label: const Text('自定义', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  onPressed: () => _showCustomColorDialog(input, curVal),
                 ),
               ],
             ),
             const SizedBox(height: 8),
+            // 常用证件推荐底色快捷选择
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ...quickIdPresets.map((preset) {
+                    final pVal = preset['value']!;
+                    final pCol = DynamicToolRunnerPage.parseHexColor(pVal);
+                    final isTrans = pVal == 'transparent';
+                    final isSelected = isTrans
+                        ? isTransparent
+                        : (!isTransparent && curVal.replaceAll('#', '').toLowerCase() == pVal.replaceAll('#', '').toLowerCase());
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        avatar: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isTrans ? Colors.transparent : pCol,
+                            border: Border.all(color: Colors.grey.shade400),
+                          ),
+                          child: isTrans ? const Icon(Icons.block, size: 10, color: Colors.red) : null,
+                        ),
+                        label: Text(preset['label']!, style: const TextStyle(fontSize: 12)),
+                        selected: isSelected,
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        onSelected: (_) {
+                          setState(() {
+                            _formValues[input.id] = pVal;
+                          });
+                        },
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            // 精选色块阵列
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 6,
+              runSpacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                ...presetColors.map((hex) {
+                ...inlineSwatches.map((hex) {
                   final isTrans = hex == 'transparent';
                   final color = DynamicToolRunnerPage.parseHexColor(hex);
                   final isSelected = isTrans
                       ? isTransparent
-                      : (!isTransparent &&
-                          curVal.replaceAll('#', '').toLowerCase() == hex.replaceAll('#', '').toLowerCase());
+                      : (!isTransparent && curVal.replaceAll('#', '').toLowerCase() == hex.replaceAll('#', '').toLowerCase());
                   return Tooltip(
                     message: isTrans ? '透明' : hex,
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                       onTap: () {
                         setState(() {
                           _formValues[input.id] = hex;
                         });
                       },
                       child: Container(
-                        width: 32,
-                        height: 32,
+                        width: 28,
+                        height: 28,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: isTrans ? Colors.transparent : color,
@@ -2670,21 +2730,14 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                         child: isSelected
                             ? Icon(
                                 Icons.check,
-                                size: 18,
+                                size: 16,
                                 color: isTrans || color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
                               )
-                            : (isTrans ? const Icon(Icons.block, size: 14, color: Colors.redAccent) : null),
+                            : (isTrans ? const Icon(Icons.block, size: 12, color: Colors.redAccent) : null),
                       ),
                     ),
                   );
                 }),
-                ActionChip(
-                  avatar: const Icon(Icons.colorize, size: 14),
-                  label: const Text('自定义', style: TextStyle(fontSize: 12)),
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _showCustomColorDialog(input, curVal),
-                ),
               ],
             ),
           ],
@@ -2696,85 +2749,9 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   }
 
   Future<void> _showCustomColorDialog(PluginInputDef input, String initialVal) async {
-    final controller = TextEditingController(text: initialVal);
-    Color previewColor = DynamicToolRunnerPage.parseHexColor(initialVal);
-    bool isTransparent = initialVal.trim().toLowerCase() == 'transparent' || initialVal.trim().toLowerCase() == 'none';
-
     final res = await showDialog<String>(
       context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (dialogCtx, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Text('自定义颜色代码 (Hex)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: isTransparent ? Colors.transparent : previewColor,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade400),
-                        ),
-                        child: isTransparent
-                            ? const Icon(Icons.block, color: Colors.red, size: 24)
-                            : null,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: TextField(
-                          controller: controller,
-                          autofocus: true,
-                          decoration: InputDecoration(
-                            hintText: '如 #FF5722 或 transparent',
-                            labelText: 'Hex 颜色值',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          ),
-                          onChanged: (val) {
-                            setDialogState(() {
-                              isTransparent = val.trim().toLowerCase() == 'transparent' || val.trim().toLowerCase() == 'none';
-                              previewColor = DynamicToolRunnerPage.parseHexColor(val);
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    '支持 #RGB, #RRGGBB, #AARRGGBB 或 transparent',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final txt = controller.text.trim();
-                    if (txt.isNotEmpty) {
-                      Navigator.pop(ctx, txt);
-                    } else {
-                      Navigator.pop(ctx);
-                    }
-                  },
-                  child: const Text('确定'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (ctx) => VisualColorPickerDialog(initialColorStr: initialVal),
     );
 
     if (res != null && mounted) {
@@ -2782,6 +2759,447 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         _formValues[input.id] = res;
       });
     }
+  }
+}
+
+/// 交互式专业调色盘与颜色选择器对话框
+class VisualColorPickerDialog extends StatefulWidget {
+  final String initialColorStr;
+  const VisualColorPickerDialog({super.key, required this.initialColorStr});
+
+  @override
+  State<VisualColorPickerDialog> createState() => _VisualColorPickerDialogState();
+}
+
+class _VisualColorPickerDialogState extends State<VisualColorPickerDialog> {
+  late bool _isTransparent;
+  late double _hue;
+  late double _saturation;
+  late double _value;
+  late TextEditingController _hexController;
+
+  static const List<Map<String, dynamic>> _quickPresets = [
+    {'label': '标准白底', 'value': '#FFFFFF', 'color': Color(0xFFFFFFFF)},
+    {'label': '常用天蓝', 'value': '#438EDB', 'color': Color(0xFF438EDB)},
+    {'label': '标准红底', 'value': '#D81E1E', 'color': Color(0xFFD81E1E)},
+    {'label': '职业轻灰', 'value': '#EEEEEE', 'color': Color(0xFFEEEEEE)},
+    {'label': '国徽深蓝', 'value': '#1E40AF', 'color': Color(0xFF1E40AF)},
+    {'label': '经典纯黑', 'value': '#000000', 'color': Color(0xFF000000)},
+    {'label': '透明底色', 'value': 'transparent', 'color': Colors.transparent},
+  ];
+
+  static const List<String> _paletteSwatches = [
+    '#FFFFFF', '#F8FAFC', '#F1F5F9', '#E2E8F0', '#94A3B8', '#64748B', '#334155', '#1E293B', '#000000',
+    '#FCA5A5', '#F87171', '#EF4444', '#DC2626', '#B91C1C', '#D81E1E',
+    '#FDBA74', '#FB923C', '#F97316', '#EA580C', '#FDE047', '#FACC15',
+    '#86EFAC', '#4ADE80', '#22C55E', '#16A34A', '#5EEAD4', '#14B8A6',
+    '#67E8F9', '#38BDF8', '#0EA5E9', '#438EDB', '#3B82F6', '#1E40AF',
+    '#A5B4FC', '#6366F1', '#C084FC', '#A855F7', '#9333EA',
+    '#F472B6', '#EC4899', '#DB2777', '#FB7185', '#EEEEEE', 'transparent',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    final raw = widget.initialColorStr.trim().toLowerCase();
+    _isTransparent = raw == 'transparent' || raw == 'none';
+    final initialColor = DynamicToolRunnerPage.parseHexColor(widget.initialColorStr);
+    final hsv = HSVColor.fromColor(initialColor);
+    _hue = hsv.hue;
+    _saturation = hsv.saturation;
+    _value = hsv.value.clamp(0.05, 1.0);
+    _hexController = TextEditingController(text: _isTransparent ? 'transparent' : _colorToHex(initialColor));
+  }
+
+  @override
+  void dispose() {
+    _hexController.dispose();
+    super.dispose();
+  }
+
+  Color get _currentColor {
+    if (_isTransparent) return Colors.transparent;
+    return HSVColor.fromAHSV(1.0, _hue, _saturation, _value).toColor();
+  }
+
+  String _colorToHex(Color color) {
+    final r = color.red.toRadixString(16).padLeft(2, '0').toUpperCase();
+    final g = color.green.toRadixString(16).padLeft(2, '0').toUpperCase();
+    final b = color.blue.toRadixString(16).padLeft(2, '0').toUpperCase();
+    return '#$r$g$b';
+  }
+
+  void _applyColor(Color color, {bool isTrans = false}) {
+    setState(() {
+      _isTransparent = isTrans;
+      if (!isTrans) {
+        final hsv = HSVColor.fromColor(color);
+        _hue = hsv.hue;
+        _saturation = hsv.saturation;
+        _value = hsv.value.clamp(0.05, 1.0);
+        _hexController.text = _colorToHex(color);
+      } else {
+        _hexController.text = 'transparent';
+      }
+    });
+  }
+
+  void _onHexInput(String val) {
+    final clean = val.trim().toLowerCase();
+    if (clean == 'transparent' || clean == 'none') {
+      setState(() {
+        _isTransparent = true;
+      });
+      return;
+    }
+    final color = DynamicToolRunnerPage.parseHexColor(val);
+    final hsv = HSVColor.fromColor(color);
+    setState(() {
+      _isTransparent = false;
+      _hue = hsv.hue;
+      _saturation = hsv.saturation;
+      _value = hsv.value.clamp(0.05, 1.0);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final curColor = _currentColor;
+    final curHex = _isTransparent ? 'transparent' : _colorToHex(curColor);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 680),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 标题栏
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.palette_outlined, color: theme.colorScheme.primary, size: 22),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '专业调色盘与颜色选择器',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    splashRadius: 20,
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 1. 实时预览条
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: _isTransparent ? Colors.transparent : curColor,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.grey.shade400, width: 1.5),
+                              ),
+                              child: _isTransparent
+                                  ? const Icon(Icons.block, color: Colors.red, size: 28)
+                                  : null,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _isTransparent ? '透明背景 (Transparent)' : curHex,
+                                    style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _isTransparent
+                                        ? 'Alpha: 0 (无底色)'
+                                        : 'RGB(${curColor.red}, ${curColor.green}, ${curColor.blue})',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ActionChip(
+                              label: Text(_isTransparent ? '切回纯色' : '设为透明', style: const TextStyle(fontSize: 12)),
+                              avatar: Icon(_isTransparent ? Icons.color_lens_outlined : Icons.block, size: 14),
+                              onPressed: () {
+                                if (_isTransparent) {
+                                  _applyColor(const Color(0xFFFFFFFF));
+                                } else {
+                                  _applyColor(Colors.transparent, isTrans: true);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 2. 证件照标准推荐色
+                      const Text(
+                        '证件照标准推荐底色',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _quickPresets.map((p) {
+                          final pVal = p['value'].toString();
+                          final pCol = p['color'] as Color;
+                          final isTrans = pVal == 'transparent';
+                          final isSelected = isTrans
+                              ? _isTransparent
+                              : (!_isTransparent && curHex.toLowerCase() == pVal.toLowerCase());
+                          return ChoiceChip(
+                            label: Text(p['label'] as String, style: const TextStyle(fontSize: 12)),
+                            avatar: Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isTrans ? Colors.transparent : pCol,
+                                border: Border.all(color: Colors.grey.shade400),
+                              ),
+                              child: isTrans ? const Icon(Icons.block, size: 10, color: Colors.red) : null,
+                            ),
+                            selected: isSelected,
+                            onSelected: (_) => _applyColor(pCol, isTrans: isTrans),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 3. 滑块微调 (Hue, Saturation, Value)
+                      const Text(
+                        '色彩空间实时微调',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 10),
+                      // 色相 (Hue)
+                      Row(
+                        children: [
+                          const SizedBox(width: 48, child: Text('色相', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                          Expanded(
+                            child: Container(
+                              height: 20,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFFFF0000),
+                                    Color(0xFFFFFF00),
+                                    Color(0xFF00FF00),
+                                    Color(0xFF00FFFF),
+                                    Color(0xFF0000FF),
+                                    Color(0xFFFF00FF),
+                                    Color(0xFFFF0000),
+                                  ],
+                                ),
+                              ),
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 20,
+                                  activeTrackColor: Colors.transparent,
+                                  inactiveTrackColor: Colors.transparent,
+                                  thumbColor: Colors.white,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 0),
+                                ),
+                                child: Slider(
+                                  value: _hue,
+                                  min: 0.0,
+                                  max: 360.0,
+                                  onChanged: (v) {
+                                    setState(() {
+                                      _isTransparent = false;
+                                      _hue = v;
+                                      _hexController.text = _colorToHex(_currentColor);
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 48, child: Text('${_hue.round()}°', textAlign: TextAlign.right, style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+
+                      // 饱和度 (Saturation)
+                      Row(
+                        children: [
+                          const SizedBox(width: 48, child: Text('饱和度', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                          Expanded(
+                            child: Slider(
+                              value: _saturation,
+                              min: 0.0,
+                              max: 1.0,
+                              onChanged: (v) {
+                                setState(() {
+                                  _isTransparent = false;
+                                  _saturation = v;
+                                  _hexController.text = _colorToHex(_currentColor);
+                                });
+                              },
+                            ),
+                          ),
+                          SizedBox(width: 48, child: Text('${(_saturation * 100).round()}%', textAlign: TextAlign.right, style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+
+                      // 明度 (Value / Brightness)
+                      Row(
+                        children: [
+                          const SizedBox(width: 48, child: Text('明度', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                          Expanded(
+                            child: Slider(
+                              value: _value,
+                              min: 0.0,
+                              max: 1.0,
+                              onChanged: (v) {
+                                setState(() {
+                                  _isTransparent = false;
+                                  _value = v;
+                                  _hexController.text = _colorToHex(_currentColor);
+                                });
+                              },
+                            ),
+                          ),
+                          SizedBox(width: 48, child: Text('${(_value * 100).round()}%', textAlign: TextAlign.right, style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 4. 丰富色板网格
+                      const Text(
+                        '快速精选色彩矩阵',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _paletteSwatches.map((swatchHex) {
+                          final isTrans = swatchHex == 'transparent';
+                          final swatchCol = DynamicToolRunnerPage.parseHexColor(swatchHex);
+                          final isSelected = isTrans
+                              ? _isTransparent
+                              : (!_isTransparent && curHex.toLowerCase() == swatchHex.toLowerCase());
+                          return Tooltip(
+                            message: isTrans ? '透明' : swatchHex,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: () => _applyColor(swatchCol, isTrans: isTrans),
+                              child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: isTrans ? Colors.transparent : swatchCol,
+                                  border: Border.all(
+                                    color: isSelected ? theme.colorScheme.primary : Colors.grey.withValues(alpha: 0.35),
+                                    width: isSelected ? 2.5 : 1,
+                                  ),
+                                ),
+                                child: isSelected
+                                    ? Icon(
+                                        Icons.check,
+                                        size: 16,
+                                        color: isTrans || swatchCol.computeLuminance() > 0.5 ? Colors.black : Colors.white,
+                                      )
+                                    : (isTrans ? const Icon(Icons.block, size: 12, color: Colors.red) : null),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 5. 手动代码输入
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _hexController,
+                              decoration: InputDecoration(
+                                labelText: '十六进制代码 (Hex)',
+                                hintText: '如 #438EDB 或 transparent',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                isDense: true,
+                              ),
+                              onChanged: _onHexInput,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 14),
+              // 底部确认与取消
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.check, size: 16),
+                    label: const Text('确认应用'),
+                    onPressed: () {
+                      final resultStr = _isTransparent ? 'transparent' : _colorToHex(_currentColor);
+                      Navigator.pop(context, resultStr);
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
