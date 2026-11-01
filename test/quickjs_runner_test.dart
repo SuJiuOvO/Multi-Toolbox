@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_js/flutter_js.dart';
@@ -446,11 +447,8 @@ void main() {
           onLog: (l, e) => logs.add(l),
         );
 
-        if (!result.success) {
-          print('Execution failed: ${result.message}, logs: $logs');
-        }
-
-        expect(result.success, true);
+        expect(result.success, isTrue,
+            reason: '${result.message}, logs: $logs');
       } finally {
         if (outDir.existsSync()) outDir.deleteSync(recursive: true);
       }
@@ -514,11 +512,8 @@ void main() {
           onLog: (l, e) => logs.add(l),
         );
 
-        if (!result.success) {
-          print('Execution failed: ${result.message}, logs: $logs');
-        }
-
-        expect(result.success, true);
+        expect(result.success, isTrue,
+            reason: '${result.message}, logs: $logs');
       } finally {
         if (outDir.existsSync()) outDir.deleteSync(recursive: true);
       }
@@ -603,11 +598,8 @@ void main() {
           onLog: (l, e) => logs.add(l),
         );
 
-        if (!result.success) {
-          print('Execution failed: ${result.message}, logs: $logs');
-        }
-
-        expect(result.success, true);
+        expect(result.success, isTrue,
+            reason: '${result.message}, logs: $logs');
         expect(result.resultText, 'Jail assertion passed');
       } finally {
         if (outDir.existsSync()) outDir.deleteSync(recursive: true);
@@ -684,11 +676,8 @@ void main() {
           onLog: (l, e) => logs.add(l),
         );
 
-        if (!result.success) {
-          print('Parent Jail test failed: ${result.message}, logs: $logs');
-        }
-
-        expect(result.success, true);
+        expect(result.success, isTrue,
+            reason: '${result.message}, logs: $logs');
         expect(result.resultText, 'Parent jail protection passed');
       } finally {
         if (tempFolder.existsSync()) tempFolder.deleteSync(recursive: true);
@@ -803,11 +792,8 @@ void main() {
           onLog: (l, e) => logs.add(l),
         );
 
-        if (!result.success) {
-          print('Execution failed: ${result.message}, logs: $logs');
-        }
-
-        expect(result.success, true);
+        expect(result.success, isTrue,
+            reason: '${result.message}, logs: $logs');
         expect(result.resultData is Map, true);
         expect((result.resultData as Map)['apiKey'], 'sk_live_test_12345');
       } finally {
@@ -871,15 +857,150 @@ void main() {
           onLog: (l, e) => logs.add(l),
         );
 
-        if (!result.success) {
-          print('Execution failed: ${result.message}, logs: $logs');
-        }
-
-        expect(result.success, true);
+        expect(result.success, isTrue,
+            reason: '${result.message}, logs: $logs');
         expect(result.resultText, 'Network interception verified');
       } finally {
         if (outDir.existsSync()) outDir.deleteSync(recursive: true);
       }
+    });
+
+    group('QuickJS scheduling regressions', () {
+      test('setTimeout resumes Promise chains and nested timers', () async {
+        if (!canRunQuickJs) {
+          markTestSkipped('Native QuickJS runtime is unavailable');
+          return;
+        }
+        final outDir = Directory.systemTemp.createTempSync('qjs_timers_');
+        try {
+          final result = await QuickJsBridgeService.execute(
+            plugin: _schedulingManifest('timers', r'''
+              async function run() {
+                const events = [];
+                await Promise.resolve().then(() => events.push('microtask'));
+                const answer = await new Promise(resolve => {
+                  setTimeout(() => resolve(41), 10);
+                }).then(value => value + 1);
+                events.push('timer');
+                await new Promise(resolve => {
+                  setTimeout(() => {
+                    events.push('outer');
+                    setTimeout(() => {
+                      events.push('inner');
+                      resolve();
+                    }, 5);
+                  }, 5);
+                });
+                return { success: true, data: { answer, events } };
+              }
+            '''),
+            formValues: {},
+            inputFiles: [],
+            outputDir: outDir.path,
+            onProgress: (_, __) {},
+            onLog: (_, __) {},
+          ).timeout(const Duration(seconds: 5));
+
+          expect(result.success, isTrue, reason: result.message);
+          expect(result.resultData, {
+            'answer': 42,
+            'events': ['microtask', 'timer', 'outer', 'inner'],
+          });
+        } finally {
+          QuickJsBridgeService.killCurrentExecution();
+          outDir.deleteSync(recursive: true);
+        }
+      });
+
+      test('setTimeout rejection resumes the awaiting catch block', () async {
+        if (!canRunQuickJs) {
+          markTestSkipped('Native QuickJS runtime is unavailable');
+          return;
+        }
+        final outDir = Directory.systemTemp.createTempSync('qjs_timer_error_');
+        try {
+          final result = await QuickJsBridgeService.execute(
+            plugin: _schedulingManifest('timer-rejection', r'''
+              async function run() {
+                try {
+                  await new Promise((resolve, reject) => {
+                    setTimeout(() => reject(new Error('expected timer rejection')), 5);
+                  });
+                  return { success: false, message: 'Expected a rejection' };
+                } catch (error) {
+                  return { success: true, text: error.message };
+                }
+              }
+            '''),
+            formValues: {},
+            inputFiles: [],
+            outputDir: outDir.path,
+            onProgress: (_, __) {},
+            onLog: (_, __) {},
+          ).timeout(const Duration(seconds: 5));
+
+          expect(result.success, isTrue, reason: result.message);
+          expect(result.resultText, 'expected timer rejection');
+        } finally {
+          QuickJsBridgeService.killCurrentExecution();
+          outDir.deleteSync(recursive: true);
+        }
+      });
+
+      test('cancelling an unresolved Promise permits a subsequent execution', () async {
+        if (!canRunQuickJs) {
+          markTestSkipped('Native QuickJS runtime is unavailable');
+          return;
+        }
+        final outDir = Directory.systemTemp.createTempSync('qjs_cancel_');
+        final started = Completer<void>();
+        try {
+          // No host Timer or request is left pending after cancellation.
+          final pendingRun = QuickJsBridgeService.execute(
+            plugin: _schedulingManifest('cancel', r'''
+              async function run() {
+                Toolbox.log('awaiting unresolved promise');
+                await new Promise(() => {});
+                return { success: true, text: 'must not complete' };
+              }
+            '''),
+            formValues: {},
+            inputFiles: [],
+            outputDir: outDir.path,
+            onProgress: (_, __) {},
+            onLog: (line, _) {
+              if (line == 'awaiting unresolved promise' && !started.isCompleted) {
+                started.complete();
+              }
+            },
+          );
+          await started.future.timeout(const Duration(seconds: 5));
+          QuickJsBridgeService.killCurrentExecution();
+          final cancelled = await pendingRun.timeout(const Duration(seconds: 5));
+
+          expect(cancelled.success, isFalse);
+          expect(cancelled.message, contains('中止'));
+
+          final next = await QuickJsBridgeService.execute(
+            plugin: _schedulingManifest('after-cancel', r'''
+              async function run() {
+                await new Promise(resolve => setTimeout(resolve, 5));
+                return { success: true, text: 'next execution completed' };
+              }
+            '''),
+            formValues: {},
+            inputFiles: [],
+            outputDir: outDir.path,
+            onProgress: (_, __) {},
+            onLog: (_, __) {},
+          ).timeout(const Duration(seconds: 5));
+          expect(next.success, isTrue, reason: next.message);
+          expect(next.resultText, 'next execution completed');
+        } finally {
+          QuickJsBridgeService.killCurrentExecution();
+          outDir.deleteSync(recursive: true);
+        }
+      });
     });
 
     test('QuickJsBridgeService Toolbox.http.fetch and getAsync execute non-blocking HTTP successfully with permission', () async {
@@ -957,11 +1078,8 @@ void main() {
           onLog: (l, e) => logs.add(l),
         );
 
-        if (!result.success) {
-          print('Execution failed: ${result.message}, logs: $logs');
-        }
-
-        expect(result.success, true);
+        expect(result.success, isTrue,
+            reason: '${result.message}, logs: $logs');
         expect(result.resultText, 'Hello Async Host Bridge!');
         expect(result.resultData is Map, true);
       } finally {
@@ -971,4 +1089,23 @@ void main() {
       }
     });
   });
+}
+
+PluginManifest _schedulingManifest(String suffix, String script) {
+  return PluginManifest(
+    id: 'test-js-scheduling-$suffix',
+    name: 'QuickJS Scheduling Test',
+    version: '1.0.0',
+    category: 'other',
+    description: 'Promise scheduling and cancellation regression coverage',
+    icon: 'code',
+    author: 'Test Team',
+    engineType: 'quickjs',
+    executionType: 'quickjs',
+    platforms: ['universal'],
+    action: PluginActionDef(
+      handler: 'quickjs_eval',
+      params: {'script': script},
+    ),
+  );
 }

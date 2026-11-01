@@ -527,7 +527,7 @@ class QuickJsBridgeService {
 
       case 'fs_delete':
       case 'fs_remove':
-        final target = payload['path']?.toString()?.trim() ?? '';
+        final target = payload['path']?.toString().trim() ?? '';
         if (target.isEmpty) return false;
         _assertPathInJail(
           target,

@@ -151,6 +151,17 @@ flutter build apk --release
 
 ## 🤝 社区插件市场与贡献
 
+### 客户端构建镜像同步
+
+在客户端主仓中修改代码后，运行以下命令，将仓库文件同步到相邻的 `app` 构建镜像：
+
+```powershell
+python tools/sync_to_app.py
+python tools/sync_to_app.py --check
+```
+
+同步范围包含 Git 跟踪文件及未被忽略的新文件，覆盖 Dart、Android/Windows 原生入口、文档、资源和配置。镜像自身的 Git 信息、构建缓存、机器配置和其他额外文件会保留；覆盖或移除的既有文件会先备份到命令输出的临时目录。`--check` 仅检查字节一致性，存在差异时退出码为 1。可通过 `--destination` 指定其他镜像位置。工具要求 Python 3.12 或以上，回归测试命令为 `python -m unittest discover -s tools/tests -v`。
+
 Multi-Toolbox 的插件市场生态完全开放，欢迎向社区官方注册表贡献您的实用工具：
 
 - **官方社区仓库**：[SuJiuOvO/Toolbox-Community-Registry](https://github.com/SuJiuOvO/Toolbox-Community-Registry)

@@ -23,6 +23,14 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test Mirror Sync Tool
+        run: python -m unittest discover -s tools/tests -v
+
       - name: Static Code Analysis
         run: flutter analyze
 

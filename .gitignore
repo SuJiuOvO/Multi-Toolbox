@@ -26,6 +26,7 @@ sample_offline_tool/
 .pub/
 build/
 coverage/
+.toolbox-mirror-files.json
 
 # Android
 **/android/.gradle/

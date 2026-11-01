@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -45,15 +44,15 @@ void main() {
 
       expect(result.success, isTrue);
       expect(result.outputFiles, isNotNull);
-      expect(result.outputFiles!.length, 1);
+      expect(result.outputFiles.length, 1);
 
-      final outPath = result.outputFiles!.first;
+      final outPath = result.outputFiles.first;
       expect(File(outPath).existsSync(), isTrue);
 
       final decoded = img.decodePng(File(outPath).readAsBytesSync());
       expect(decoded, isNotNull);
       expect(decoded!.width, 40);
-      expect(decoded!.height, 40);
+      expect(decoded.height, 40);
 
       // 角落处的像素 (0, 0) 应该被 circle_crop 镂空为完全透明 (alpha = 0)
       final cornerPixel = decoded.getPixel(0, 0);
@@ -89,9 +88,9 @@ void main() {
 
       expect(result.success, isTrue);
       expect(result.outputFiles, isNotNull);
-      expect(result.outputFiles!.length, 1);
+      expect(result.outputFiles.length, 1);
 
-      final gifPath = result.outputFiles!.first;
+      final gifPath = result.outputFiles.first;
       expect(File(gifPath).existsSync(), isTrue);
       final gifBytes = File(gifPath).readAsBytesSync();
       expect(gifBytes.length, greaterThan(10));
@@ -120,7 +119,7 @@ void main() {
       );
 
       expect(result.success, isTrue);
-      final outPath = result.outputFiles!.first;
+      final outPath = result.outputFiles.first;
       final decoded = img.decodePng(File(outPath).readAsBytesSync())!;
       final overlaidPixel = decoded.getPixel(5, 5);
       expect(overlaidPixel.g, 255);
@@ -140,7 +139,7 @@ void main() {
       );
 
       expect(result.success, isTrue);
-      final outPath = result.outputFiles!.first;
+      final outPath = result.outputFiles.first;
       final decoded = img.decodePng(File(outPath).readAsBytesSync())!;
       expect(decoded.width, 80);
       expect(decoded.height, 80);
@@ -170,7 +169,7 @@ void main() {
         outputDir: tempDir.path,
       );
       expect(resH.success, isTrue);
-      final decH = img.decodePng(File(resH.outputFiles!.first).readAsBytesSync())!;
+      final decH = img.decodePng(File(resH.outputFiles.first).readAsBytesSync())!;
       expect(decH.getPixel(0, 0).b, 255); // 原右上角蓝色翻到了左上角
 
       // 2. 垂直翻转: 左上应该变成绿色
@@ -186,7 +185,7 @@ void main() {
         outputDir: tempDir.path,
       );
       expect(resV.success, isTrue);
-      final decV = img.decodePng(File(resV.outputFiles!.first).readAsBytesSync())!;
+      final decV = img.decodePng(File(resV.outputFiles.first).readAsBytesSync())!;
       expect(decV.getPixel(0, 0).g, 255); // 原左下角绿色翻到了左上角
     });
 
@@ -210,7 +209,7 @@ void main() {
       );
 
       expect(result.success, isTrue);
-      final dec = img.decodePng(File(result.outputFiles!.first).readAsBytesSync())!;
+      final dec = img.decodePng(File(result.outputFiles.first).readAsBytesSync())!;
       // (20, 20) 属于缩放后 40x40 的覆盖区域内，应为绿色
       expect(dec.getPixel(20, 20).g, 255);
       // (60, 60) 超出了 40x40 覆盖区域，应保留原始红色
@@ -231,7 +230,7 @@ void main() {
         outputDir: tempDir.path,
       );
       expect(resCubic.success, isTrue);
-      final decCubic = img.decodePng(File(resCubic.outputFiles!.first).readAsBytesSync())!;
+      final decCubic = img.decodePng(File(resCubic.outputFiles.first).readAsBytesSync())!;
       expect(decCubic.width, 50);
       expect(decCubic.height, 50);
 
@@ -248,7 +247,7 @@ void main() {
         outputDir: tempDir.path,
       );
       expect(resNearest.success, isTrue);
-      final decNearest = img.decodePng(File(resNearest.outputFiles!.first).readAsBytesSync())!;
+      final decNearest = img.decodePng(File(resNearest.outputFiles.first).readAsBytesSync())!;
       expect(decNearest.width, 25);
       expect(decNearest.height, 25);
     });
@@ -274,7 +273,7 @@ void main() {
       );
 
       expect(result.success, isTrue);
-      final gifBytes = File(result.outputFiles!.first).readAsBytesSync();
+      final gifBytes = File(result.outputFiles.first).readAsBytesSync();
       final decGif = img.decodeGif(gifBytes)!;
       // 1. 背景像素 (0, 0) 依然完全透明
       expect(decGif.getPixel(0, 0).a, 0);
@@ -407,7 +406,7 @@ void main() {
       expect(data.containsKey('compare'), isTrue);
       expect(data.containsKey('summary'), isTrue);
       expect(data['compare']['before'], sampleImageFile.path);
-      expect(data['compare']['after'], res.outputFiles!.first);
+      expect(data['compare']['after'], res.outputFiles.first);
       expect(data['summary'], contains('#438EDB'));
     });
 
@@ -430,7 +429,7 @@ void main() {
       expect(data.containsKey('compare'), isTrue);
       expect(data.containsKey('stats'), isTrue);
       expect(data['compare']['before'], sampleImageFile.path);
-      expect(data['compare']['after'], res.outputFiles!.first);
+      expect(data['compare']['after'], res.outputFiles.first);
       expect(data['stats'], contains('总体积'));
     });
 
@@ -457,7 +456,7 @@ void main() {
       expect(genData['decodedContent'], contains('https://antigravity.dev'));
       expect(genData['decodedContent'], contains('#1E3A8A'));
 
-      final qrFile = File(genRes.outputFiles!.first);
+      final qrFile = File(genRes.outputFiles.first);
       expect(qrFile.existsSync(), isTrue);
 
       final decRes = await ToolEngineService.execute(

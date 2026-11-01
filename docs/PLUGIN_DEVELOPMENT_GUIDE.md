@@ -156,11 +156,13 @@ flowchart TD
   - 最终结果直接以 `return` 语句返回字符串呈现给用户。
 
 #### 核心 API 与宿主双向通信能力 (Host Bridge)：
-QuickJS 插件沙箱不仅支持普通的文本分析，更提供了完整的高性能底层文件与图形处理 API：
+QuickJS 插件沙箱不仅支持普通的文本分析，还提供文件与图形处理 API：
 - **二进制与文件系统 (`Toolbox.fs`)**：
-  - `Toolbox.fs.readBytes(path)`: 异步读取文件并直接返回 `Uint8Array` 原始二进制字节流，轻松处理图片/音频/压缩包等非文本格式。
-  - `Toolbox.fs.readFile(path, isBase64)`: 读取文件为 UTF-8 文本字符串（默认）或 Base64 编码字符串（`isBase64: true`）。
-  - `Toolbox.fs.writeFile(path, content, isBase64)`: 写入文本字符串或 Base64 编码的二进制字节流到磁盘。
+  - `Toolbox.fs.readBytes(path)`: **同步返回 Base64 编码的 `string`**，与 `readFile(path, true)` 等价；此接口名称不代表返回原始字节数组。
+  - `Toolbox.fs.readBinary(path)`: **同步返回 `Uint8Array`**，当前实现先通过宿主桥读取 Base64 字符串，再在 JS 内解码为字节数组。
+  - `Toolbox.fs.readFile(path, isBase64)`: 同步读取文件为 UTF-8 文本字符串（默认）或 Base64 编码字符串（`isBase64: true`）。`readText(path)` 等价于 `readFile(path, false)`。
+  - `Toolbox.fs.writeFile(path, content, isBase64)`: 同步写入文本字符串或 Base64 编码的二进制内容，成功返回 `true`。传入 `Uint8Array` 时自动编码为 Base64。
+  - `Toolbox.fs.writeBinary(path, bytes)`: 同步写入 `Uint8Array`，也兼容已有 Base64 字符串；成功返回 `true`。字节数组仍经过 Base64 编码后传给宿主。
   - `Toolbox.fs.remove(path)` / `Toolbox.fs.delete(path)`: 安全删除指定的临时文件或递归删除临时目录，方便清理中间帧缓存。
   - `Toolbox.fs.exists(path)`: 判断文件或目录是否存在。
 - **极速编解码工具箱 (`Toolbox.utils`)**：
@@ -169,11 +171,15 @@ QuickJS 插件沙箱不仅支持普通的文本分析，更提供了完整的高
 - **纯本地原生图形管道 (`Toolbox.image.pipeline`)**：
   - 无需在 JS 中费力解析复杂的 PNG/JPG 结构，通过 `await Toolbox.image.pipeline(steps, inputFiles)` 直接调用宿主纯 Dart 驱动的高性能图形流水线（缩放、裁剪、圆形裁切、图层叠放水印、生成动图 GIF）。
 
+这些文件接口不返回 Promise；在调用前加上 `await` 不会把磁盘访问或 Base64 编解码移到后台。当前二进制读写会整文件加载，并经过 Base64、JSON 宿主桥和 JS 字节数组分配，不能视为零拷贝或流式传输。处理大图片、归档或其他大文件时，优先向 `Toolbox.image.pipeline`、归档接口或 WASM 传递文件路径，避免将整个文件搬进 JS。
+
+脚本完成结果通过 `ToolboxChannel_Done` 事件交给宿主；等待期间仍有 **5ms 的 Promise job pump**，负责排空 QuickJS 微任务队列。完成事件替代的是旧版重复求值 `window.__runFinished` 的状态查询，不代表已经实现无定时唤醒的事件循环。`setTimeout` 回调之后的 `await` / `.then()` 仍依赖微任务调度，详见 [QuickJS 调度与传输基线](QUICKJS_PERFORMANCE.md)。
+
 #### 二进制与图形处理代码范例：
 ```javascript
 async function run({ inputFiles, outputDir, params }) {
   Toolbox.log('读取输入文件二进制头...');
-  const bytes = await Toolbox.fs.readBytes(inputFiles[0]);
+  const bytes = Toolbox.fs.readBinary(inputFiles[0]);
   
   // 检查 Magic Bytes (如 PNG 头 0x89 0x50)
   if (bytes[0] === 0x89 && bytes[1] === 0x50) {

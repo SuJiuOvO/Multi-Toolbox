@@ -861,6 +861,8 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       }
     }
 
+    if (!mounted) return;
+
     if (Platform.isWindows &&
         (widget.plugin.isWindowsExtension || widget.plugin.nativeRunner != null) &&
         !widget.plugin.isOfficial &&
@@ -2303,7 +2305,6 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     final inputBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final inputBorderColor = isDark ? const Color(0xFF475569) : const Color(0xFFD1D5DB);
 
-    final curSubTool = _formValues['subTool']?.toString() ?? '';
     if (input.type == 'file_picker') {
       final currentFiles = (_formValues[input.id] is List)
           ? List<String>.from(_formValues[input.id])
