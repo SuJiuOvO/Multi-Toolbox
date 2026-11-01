@@ -1,0 +1,680 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:xterm/xterm.dart';
+
+import '../models/ssh_profile.dart';
+import '../services/ssh_connection_service.dart';
+
+class SshTerminalPage extends StatefulWidget {
+  const SshTerminalPage({super.key, this.service});
+  final SshConnectionService? service;
+
+  @override
+  State<SshTerminalPage> createState() => _SshTerminalPageState();
+}
+
+class _SshTerminalPageState extends State<SshTerminalPage> {
+  final _host = TextEditingController();
+  final _port = TextEditingController(text: '22');
+  final _user = TextEditingController(text: 'root');
+  final _password = TextEditingController();
+  final _privateKey = TextEditingController();
+  final _passphrase = TextEditingController();
+  final _name = TextEditingController();
+  final _terminalFocus = FocusNode();
+  final _terminal = Terminal(maxLines: 5000);
+  final _terminalController = TerminalController();
+  final _profilesStore = SshProfileStore();
+  late final SshConnectionService _service;
+  List<SshProfile> _profiles = [];
+  SshAuthMethod _auth = SshAuthMethod.password;
+  bool _connecting = false;
+  bool _connected = false;
+  bool _configExpanded = true;
+  bool _ctrl = false;
+  bool _showPassword = false;
+  double _fontSize = 14;
+  String _status = '尚未连接';
+  String? _error;
+  int _attempt = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _service = widget.service ?? SshConnectionService();
+    _terminal.write('\x1b[1;36mMULTI-TOOLBOX / SSH\x1b[0m\r\n'
+        '输入服务器信息后连接。支持密码与 PEM / OpenSSH 私钥。\r\n'
+        '首次连接请向服务器管理员核对 SHA256 主机指纹。\r\n');
+    _terminal.onOutput = (text) {
+      if (!_connected) return;
+      if (_ctrl &&
+          text.isNotEmpty &&
+          text.codeUnitAt(0) >= 64 &&
+          text.codeUnitAt(0) <= 127) {
+        _service.send(
+            String.fromCharCode(text.codeUnitAt(0) & 31) + text.substring(1));
+        setState(() => _ctrl = false);
+      } else {
+        _service.send(text);
+      }
+    };
+    _terminal.onResize = (width, height, pixelWidth, pixelHeight) {
+      if (_connected) _service.resize(width, height, pixelWidth, pixelHeight);
+    };
+    _loadProfiles();
+  }
+
+  Future<void> _loadProfiles() async {
+    try {
+      final profiles = await _profilesStore.load();
+      if (mounted) setState(() => _profiles = profiles);
+    } catch (_) {
+      if (mounted) setState(() => _error = '无法读取本机连接配置');
+    }
+  }
+
+  SshProfile get _profile => SshProfile(
+        name: _name.text.trim(),
+        host: _host.text.trim(),
+        port: int.tryParse(_port.text.trim()) ?? 0,
+        username: _user.text.trim(),
+        authMethod: _auth,
+      );
+
+  void _selectProfile(SshProfile profile) {
+    _password.clear();
+    _privateKey.clear();
+    _passphrase.clear();
+    _host.text = profile.host;
+    _port.text = '${profile.port}';
+    _user.text = profile.username;
+    _name.text = profile.name;
+    setState(() {
+      _auth = profile.authMethod;
+      _error = null;
+    });
+  }
+
+  Future<void> _saveProfile() async {
+    final profile = _profile;
+    final error = profile.validate();
+    if (error != null) {
+      setState(() => _error = error);
+      return;
+    }
+    final profiles = [
+      ..._profiles.where((entry) => entry.identity != profile.identity),
+      profile
+    ];
+    try {
+      await _profilesStore.save(profiles);
+      if (!mounted) return;
+      setState(() => _profiles = profiles);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('连接配置已保存，密码和私钥不会保存')));
+    } catch (_) {
+      if (mounted) setState(() => _error = '连接配置保存失败，请稍后重试');
+    }
+  }
+
+  Future<void> _connect() async {
+    final validation = _profile.validate();
+    if (validation != null) {
+      setState(() => _error = validation);
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    final attempt = ++_attempt;
+    setState(() {
+      _connecting = true;
+      _ctrl = false;
+      _error = null;
+      _status = '正在建立加密连接…';
+    });
+    try {
+      await _service.connect(
+        profile: _profile,
+        password: _password.text,
+        privateKey: _privateKey.text,
+        passphrase: _passphrase.text,
+        confirmHostKey: (algorithm, fingerprint) =>
+            _confirmHostKey(algorithm, fingerprint, attempt),
+        columns: _terminal.viewWidth,
+        rows: _terminal.viewHeight,
+        onOutput: (text) {
+          if (mounted && attempt == _attempt) _terminal.write(text);
+        },
+        onClosed: (message) {
+          if (!mounted || attempt != _attempt) return;
+          setState(() {
+            _connected = false;
+            _connecting = false;
+            _ctrl = false;
+            _status = message;
+          });
+          _terminal.write('\r\n\x1b[33m[$message]\x1b[0m\r\n');
+        },
+      );
+      if (!mounted || attempt != _attempt) return;
+      _password.clear();
+      _privateKey.clear();
+      _passphrase.clear();
+      setState(() {
+        _connected = _service.isConnected;
+        _connecting = false;
+        _ctrl = false;
+        _configExpanded = false;
+        _status = _connected ? '已连接 · ${_profile.identity}' : '远程会话已结束';
+      });
+      if (_connected) _terminalFocus.requestFocus();
+    } catch (error) {
+      if (!mounted || attempt != _attempt) return;
+      setState(() {
+        _connecting = false;
+        _connected = false;
+        _status = '连接失败';
+        _error = error is SshConnectionException || error is SshHostKeyChanged
+            ? '$error'
+            : '连接失败，请检查服务器与认证设置';
+      });
+    }
+  }
+
+  Future<bool> _confirmHostKey(
+      String algorithm, String fingerprint, int attempt) async {
+    if (!mounted || attempt != _attempt) return false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('首次连接：核对服务器指纹'),
+        scrollable: true,
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_profile.authority,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                Text('主机密钥算法：$algorithm'),
+                const SizedBox(height: 8),
+                SelectableText(fingerprint,
+                    style: const TextStyle(fontFamily: 'monospace')),
+                const SizedBox(height: 16),
+                const Text('请通过可信渠道核对指纹。信任后会保存在本机，后续密钥变化将阻止连接。'),
+              ]),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消连接')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('已核对，信任此主机')),
+        ],
+      ),
+    );
+    return mounted && attempt == _attempt && accepted == true;
+  }
+
+  void _disconnect() {
+    _attempt++;
+    _service.disconnect();
+    setState(() {
+      _connecting = false;
+      _connected = false;
+      _status = '已断开连接';
+      _ctrl = false;
+    });
+    _terminal.write('\r\n\x1b[33m[连接已关闭]\x1b[0m\r\n');
+  }
+
+  Future<void> _importKey() async {
+    try {
+      final result = await FilePicker.platform
+          .pickFiles(type: FileType.any, withData: true);
+      if (result == null || !mounted) return;
+      final file = result.files.single;
+      if (file.size > 1024 * 1024) throw const FormatException();
+      final bytes = file.bytes ??
+          (file.path == null ? null : await File(file.path!).readAsBytes());
+      if (bytes == null || bytes.length > 1024 * 1024) {
+        throw const FormatException();
+      }
+      final text = utf8.decode(bytes);
+      if (!text.contains('PRIVATE KEY-----')) throw const FormatException();
+      if (mounted) {
+        setState(() {
+          _privateKey.text = text;
+          _error = null;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = '无法导入：请选择 1MB 以内的 PEM / OpenSSH 私钥文件');
+      }
+    }
+  }
+
+  Future<void> _showKnownHosts() async {
+    try {
+      final hosts = await _service.knownHosts.load();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('已信任的服务器'),
+          content: SizedBox(
+              width: 520,
+              child: hosts.isEmpty
+                  ? const Text('尚未信任任何服务器。')
+                  : ListView(
+                      shrinkWrap: true,
+                      children: hosts.entries
+                          .map((entry) => ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(entry.key),
+                                subtitle: SelectableText(entry.value),
+                                trailing: IconButton(
+                                  tooltip: '移除信任',
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () async {
+                                    try {
+                                      final confirmed = await showDialog<bool>(
+                                          context: context,
+                                          builder: (dialogContext) =>
+                                              AlertDialog(
+                                                title: const Text('移除主机信任？'),
+                                                content: Text(
+                                                    '移除 ${entry.key} 后，下次连接会重新要求核对指纹。仅在已确认服务器更换密钥时操作。'),
+                                                actions: [
+                                                  TextButton(
+                                                      onPressed: () =>
+                                                          Navigator.pop(
+                                                              dialogContext,
+                                                              false),
+                                                      child: const Text('取消')),
+                                                  FilledButton(
+                                                      onPressed: () =>
+                                                          Navigator.pop(
+                                                              dialogContext,
+                                                              true),
+                                                      child:
+                                                          const Text('移除信任')),
+                                                ],
+                                              ));
+                                      if (confirmed == true) {
+                                        await _service.knownHosts
+                                            .remove(entry.key);
+                                        if (context.mounted) {
+                                          Navigator.pop(context);
+                                        }
+                                      }
+                                    } catch (_) {
+                                      if (mounted) {
+                                        setState(
+                                            () => _error = '主机信任记录更新失败，请稍后重试');
+                                      }
+                                    }
+                                  },
+                                ),
+                              ))
+                          .toList())),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('关闭'))
+          ],
+        ),
+      );
+    } catch (_) {
+      if (mounted) setState(() => _error = '无法读取或更新主机信任记录');
+    }
+  }
+
+  Future<void> _copy() async {
+    final selection = _terminalController.selection;
+    if (selection == null) return;
+    await Clipboard.setData(
+        ClipboardData(text: _terminal.buffer.getText(selection)));
+  }
+
+  Future<void> _paste() async {
+    final clipboard = await Clipboard.getData('text/plain');
+    if (!mounted || !_connected || clipboard?.text == null) return;
+    final text = clipboard!.text!;
+    if (text.contains('\n') || text.contains('\r')) {
+      final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+                title: const Text('粘贴多行命令？'),
+                content: const Text('剪贴板含有换行，可能立即执行命令。请确认内容来自可信来源。'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('取消')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('粘贴')),
+                ],
+              ));
+      if (confirmed != true || !mounted || !_connected) return;
+    }
+    _terminal.paste(text);
+    _terminalFocus.requestFocus();
+  }
+
+  @override
+  void dispose() {
+    _attempt++;
+    _service.disconnect();
+    _terminal.onOutput = null;
+    _terminal.onResize = null;
+    _terminalController.dispose();
+    _terminalFocus.dispose();
+    for (final controller in [
+      _host,
+      _port,
+      _user,
+      _password,
+      _privateKey,
+      _passphrase,
+      _name
+    ]) {
+      controller.clear();
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final busy = _connecting || _connected;
+    return Scaffold(
+      appBar: AppBar(title: const Text('SSH 安全终端'), actions: [
+        IconButton(
+            tooltip: '已信任的服务器',
+            onPressed: busy ? null : _showKnownHosts,
+            icon: const Icon(Icons.verified_user_outlined)),
+      ]),
+      body: SafeArea(child: LayoutBuilder(builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 920;
+        final short = constraints.maxHeight < 520;
+        final form = _buildForm(busy);
+        final connectionPanel = Material(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ListTile(
+                dense: true,
+                title: const Text('连接配置'),
+                subtitle:
+                    Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: Icon(
+                    _configExpanded ? Icons.expand_less : Icons.expand_more),
+                onTap: () =>
+                    setState(() => _configExpanded = !_configExpanded)),
+            if (_configExpanded)
+              ConstrainedBox(
+                  constraints: BoxConstraints(
+                      maxHeight: (constraints.maxHeight * .45).clamp(140, 320)),
+                  child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: form)),
+          ]),
+        );
+        final narrowContent = Column(
+            mainAxisSize: short ? MainAxisSize.min : MainAxisSize.max,
+            children: [
+              connectionPanel,
+              const SizedBox(height: 10),
+              if (short)
+                SizedBox(height: 280, child: _buildTerminal())
+              else
+                Expanded(child: _buildTerminal()),
+            ]);
+        return Padding(
+          padding: EdgeInsets.all(wide ? 20 : 10),
+          child: wide
+              ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  SizedBox(
+                      width: 320, child: SingleChildScrollView(child: form)),
+                  const SizedBox(width: 16),
+                  Expanded(child: _buildTerminal()),
+                ])
+              : short
+                  ? SingleChildScrollView(child: narrowContent)
+                  : narrowContent,
+        );
+      })),
+    );
+  }
+
+  Widget _buildForm(bool busy) {
+    Widget field(TextEditingController controller, String label,
+            {bool secret = false, TextInputType? keyboard, String? hint}) =>
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TextField(
+              controller: controller,
+              enabled: !busy,
+              obscureText: secret && !_showPassword,
+              autocorrect: false,
+              enableSuggestions: false,
+              keyboardType: keyboard,
+              decoration: InputDecoration(
+                  labelText: label,
+                  hintText: hint,
+                  border: const OutlineInputBorder(),
+                  isDense: true)),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('加密连接 · 本机直连', style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 6),
+      const Text('仅保存地址与用户名。认证信息仅在本次会话内使用。', style: TextStyle(fontSize: 12)),
+      const SizedBox(height: 16),
+      if (_profiles.isNotEmpty) ...[
+        PopupMenuButton<SshProfile>(
+            enabled: !busy,
+            onSelected: _selectProfile,
+            itemBuilder: (_) => _profiles
+                .map((profile) => PopupMenuItem(
+                    value: profile,
+                    child: Text(
+                        '${profile.name.isEmpty ? profile.host : profile.name}\n${profile.identity}')))
+                .toList(),
+            child: const ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.bookmarks_outlined),
+                title: Text('选择已保存连接'),
+                trailing: Icon(Icons.arrow_drop_down))),
+      ],
+      field(_name, '连接名称（可选）'),
+      field(_host, '主机 / IP', hint: '192.168.1.10 或 server.example.com'),
+      Row(children: [
+        Expanded(flex: 2, child: field(_user, '用户名')),
+        const SizedBox(width: 10),
+        Expanded(child: field(_port, '端口', keyboard: TextInputType.number))
+      ]),
+      SegmentedButton<SshAuthMethod>(
+          segments: const [
+            ButtonSegment(
+                value: SshAuthMethod.password,
+                label: Text('密码'),
+                icon: Icon(Icons.password)),
+            ButtonSegment(
+                value: SshAuthMethod.privateKey,
+                label: Text('私钥'),
+                icon: Icon(Icons.key)),
+          ],
+          selected: {
+            _auth
+          },
+          onSelectionChanged: busy
+              ? null
+              : (selection) => setState(() => _auth = selection.single)),
+      const SizedBox(height: 14),
+      if (_auth == SshAuthMethod.password)
+        field(_password, 'SSH 密码', secret: true)
+      else ...[
+        field(_privateKey, 'PEM / OpenSSH 私钥（粘贴或导入）', secret: true),
+        OutlinedButton.icon(
+            onPressed: busy ? null : _importKey,
+            icon: const Icon(Icons.file_open_outlined),
+            label: const Text('导入私钥文件')),
+        const SizedBox(height: 12),
+        field(_passphrase, '私钥口令（未加密则留空）', secret: true),
+      ],
+      SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('显示认证信息'),
+          value: _showPassword,
+          onChanged:
+              busy ? null : (value) => setState(() => _showPassword = value)),
+      if (_error != null)
+        Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(_error!,
+                key: const Key('ssh-error'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error))),
+      FilledButton.icon(
+          key: const Key('ssh-connect'),
+          onPressed: busy ? _disconnect : _connect,
+          icon: Icon(busy ? Icons.stop_circle_outlined : Icons.terminal),
+          label: Text(_connecting
+              ? '取消连接'
+              : _connected
+                  ? '断开连接'
+                  : '连接服务器')),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+          onPressed: busy ? null : _saveProfile,
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('保存连接配置')),
+      if (_profiles.any((entry) => entry.identity == _profile.identity))
+        TextButton(
+            onPressed: busy
+                ? null
+                : () async {
+                    try {
+                      final profiles = _profiles
+                          .where((entry) => entry.identity != _profile.identity)
+                          .toList();
+                      await _profilesStore.save(profiles);
+                      if (mounted) setState(() => _profiles = profiles);
+                    } catch (_) {
+                      if (mounted) setState(() => _error = '连接配置删除失败，请稍后重试');
+                    }
+                  },
+            child: const Text('删除当前已保存配置')),
+      const SizedBox(height: 12),
+    ]);
+  }
+
+  Widget _buildTerminal() => ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: ColoredBox(
+            color: const Color(0xFF10151F),
+            child: Column(children: [
+              Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  color: const Color(0xFF1C2534),
+                  child: Row(children: [
+                    Icon(Icons.circle,
+                        size: 9,
+                        color: _connected
+                            ? Colors.greenAccent
+                            : _connecting
+                                ? Colors.amber
+                                : Colors.blueGrey),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: Text(_status,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 12))),
+                    if (_connecting)
+                      const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    if (_connected || _connecting)
+                      IconButton(
+                          tooltip: '关闭 SSH 连接',
+                          onPressed: _disconnect,
+                          icon: const Icon(Icons.close,
+                              color: Colors.white70, size: 18)),
+                    IconButton(
+                        tooltip: '缩小字体',
+                        onPressed: () => setState(
+                            () => _fontSize = (_fontSize - 1).clamp(10, 24)),
+                        icon: const Icon(Icons.text_decrease,
+                            color: Colors.white70, size: 18)),
+                    IconButton(
+                        tooltip: '放大字体',
+                        onPressed: () => setState(
+                            () => _fontSize = (_fontSize + 1).clamp(10, 24)),
+                        icon: const Icon(Icons.text_increase,
+                            color: Colors.white70, size: 18)),
+                  ])),
+              Expanded(
+                  child: TerminalView(_terminal,
+                      controller: _terminalController,
+                      focusNode: _terminalFocus,
+                      readOnly: !_connected,
+                      padding: const EdgeInsets.all(10),
+                      textStyle: TerminalStyle(fontSize: _fontSize),
+                      keyboardType: TextInputType.visiblePassword,
+                      deleteDetection: true)),
+              SizedBox(
+                  height: 44,
+                  child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Row(children: [
+                        _terminalButton(
+                            'Ctrl', () => setState(() => _ctrl = !_ctrl),
+                            selected: _ctrl),
+                        _terminalButton('Esc', () => _service.send('\x1b')),
+                        _terminalButton('Tab', () => _service.send('\t')),
+                        _terminalButton('Ctrl+C', () => _service.send('\x03')),
+                        _terminalButton('↑', () => _service.send('\x1b[A')),
+                        _terminalButton('↓', () => _service.send('\x1b[B')),
+                        _terminalButton('←', () => _service.send('\x1b[D')),
+                        _terminalButton('→', () => _service.send('\x1b[C')),
+                        TextButton(onPressed: _copy, child: const Text('复制选中')),
+                        _terminalButton('粘贴', _paste),
+                        TextButton(
+                            onPressed: () {
+                              _terminal.write('\x1b[2J\x1b[H\x1b[3J');
+                            },
+                            child: const Text('清屏')),
+                      ]))),
+            ])),
+      );
+
+  Widget _terminalButton(String label, VoidCallback onPressed,
+          {bool selected = false}) =>
+      TextButton(
+        style: TextButton.styleFrom(
+            foregroundColor: selected ? Colors.amber : Colors.lightBlueAccent,
+            minimumSize: const Size(44, 40),
+            padding: const EdgeInsets.symmetric(horizontal: 10)),
+        onPressed: !_connected
+            ? null
+            : () {
+                onPressed();
+                _terminalFocus.requestFocus();
+              },
+        child: Text(label),
+      );
+}

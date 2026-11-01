@@ -3,7 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'models/plugin_manifest.dart';
 import 'widgets/plugin_icon_widget.dart';
-import 'pages/dynamic_tool_runner_page.dart';
+import 'pages/plugin_runner_page.dart';
 import 'pages/plugin_store_page.dart';
 import 'pages/installed_plugins_manager_page.dart';
 import 'pages/settings_page.dart';
@@ -1312,7 +1312,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => DynamicToolRunnerPage(plugin: item),
+                            builder: (_) => PluginRunnerPage(plugin: item),
                           ),
                         );
                       },
@@ -1409,7 +1409,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => DynamicToolRunnerPage(plugin: item),
+                            builder: (_) => PluginRunnerPage(plugin: item),
                           ),
                         );
                       },
@@ -1541,7 +1541,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => DynamicToolRunnerPage(plugin: item),
+                            builder: (_) => PluginRunnerPage(plugin: item),
                           ),
                         );
                       },

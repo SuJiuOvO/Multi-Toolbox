@@ -1,0 +1,31 @@
+{
+  "id": "handheld-bulletin",
+  "name": "手持弹幕举牌",
+  "version": "1.0.0",
+  "minAppVersion": "1.1.0",
+  "category": "utility",
+  "platforms": [
+    "windows",
+    "android"
+  ],
+  "executionType": "internal",
+  "engineType": "internal",
+  "description": "高自由度手持弹幕与应援举牌：多行文字、五种移动方向、字号/速度/字距/行高、RGB 自定义颜色、霓虹/描边/LED 点阵、镜像与旋转、慢速闪烁、接机/应援等预设。Android 横屏沉浸显示，Windows 独立全屏，展示期间屏幕常亮，设置只保存在本机。需要 1.1.0 及以上客户端交互页面。",
+  "author": "Toolbox Team",
+  "icon": {
+    "type": "code",
+    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"14\" rx=\"3\" fill=\"currentColor\" fill-opacity=\".18\"/><path d=\"M7 9h2m6 0h2M7 13h10M10 18v3m4-3v3\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" fill=\"none\"/></svg>"
+  },
+  "permissions": [],
+  "inputs": [],
+  "action": {
+    "handler": "handheld_bulletin",
+    "params": {}
+  },
+  "banners": [
+    {
+      "message": "此插件需要 1.1.0 及以上客户端。打开后进入专用编辑器；点击开始全屏举牌，轻触显示控制栏。",
+      "type": "info"
+    }
+  ]
+}

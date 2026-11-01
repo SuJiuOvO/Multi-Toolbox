@@ -1,0 +1,20 @@
+{
+  "id": "windows-uninstaller",
+  "name": "Windows 软件卸载助手",
+  "version": "1.0.0",
+  "minAppVersion": "1.1.0",
+  "category": "system",
+  "platforms": ["windows"],
+  "executionType": "internal",
+  "engineType": "internal",
+  "description": "Windows 桌面软件卸载助手：读取 32/64 位和当前用户/所有用户卸载注册表，搜索、按大小或日期排序、查看登记信息、启动官方卸载器、可选管理员权限和原安装目录/注册项的只读残留预览。不包含强制清理或 Microsoft Store 应用管理。",
+  "author": "Toolbox Team",
+  "permissions": [],
+  "icon": {
+    "type": "code",
+    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M8 21h8m-4-5v5M8 8l3 3m0-3-3 3m6-3h3m-3 3h3\"/></svg>"
+  },
+  "inputs": [],
+  "action": {"handler": "windows_uninstaller", "params": {}},
+  "banners": [{"type": "info", "platform": "windows", "message": "需要客户端 1.1.0 的交互式页面支持；残留仅供预览，不会自动清理。"}]
+}

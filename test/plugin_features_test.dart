@@ -18,13 +18,13 @@ void main() {
       expect(PluginManagerService.compareVersions('0.9.5', '1.0.0'), -1);
     });
 
-    test('isAppVersionCompatible checks against currentAppVersion (1.0.0)', () {
-      // currentAppVersion is 1.0.0
+    test('isAppVersionCompatible checks against currentAppVersion (1.1.0)', () {
+      // currentAppVersion is 1.1.0
       expect(PluginManagerService.isAppVersionCompatible('1.0.0'), isTrue);
       expect(PluginManagerService.isAppVersionCompatible('0.9.0'), isTrue);
       expect(PluginManagerService.isAppVersionCompatible(''), isTrue);
-      expect(PluginManagerService.isAppVersionCompatible('1.1.0'), isFalse);
-      expect(PluginManagerService.isAppVersionCompatible('2.0.0'), isFalse);
+      expect(PluginManagerService.isAppVersionCompatible('1.1.0'), isTrue);
+      expect(PluginManagerService.isAppVersionCompatible('1.2.0'), isFalse);
     });
 
     test('PluginManifest parses minAppVersion and rich description correctly', () {

@@ -1,0 +1,27 @@
+{
+  "id": "ssh-terminal",
+  "name": "SSH 安全终端",
+  "version": "1.0.0",
+  "minAppVersion": "1.1.0",
+  "category": "network",
+  "platforms": [
+    "windows",
+    "android"
+  ],
+  "executionType": "internal",
+  "engineType": "internal",
+  "description": "Windows / Android 双端交互式 SSH 终端，支持密码、PEM / OpenSSH 私钥和私钥口令认证，首次连接 SHA256 主机指纹核对、已知主机校验、连接配置保存、ANSI 终端与移动端快捷键。认证信息不落盘。需要 1.1.0 及以上客户端提供交互式页面。",
+  "author": "Toolbox Team",
+  "permissions": [
+    "network"
+  ],
+  "icon": {
+    "type": "code",
+    "data": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"4\" fill=\"#101C30\"/><path d=\"m6 9 3 3-3 3m6 0h5\" fill=\"none\" stroke=\"#57DBBF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>"
+  },
+  "inputs": [],
+  "action": {
+    "handler": "ssh_terminal",
+    "params": {}
+  }
+}

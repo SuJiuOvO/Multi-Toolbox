@@ -633,6 +633,9 @@ class PluginManifest {
     'universal-archive-extractor',
     'universal-wasm-runner',
     'gemini-banana-watermark',
+    'handheld-bulletin',
+    'windows-uninstaller',
+    'ssh-terminal',
   ];
 
   /// 是否为客户端核心内置功能
