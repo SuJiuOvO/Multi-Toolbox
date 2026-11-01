@@ -470,6 +470,144 @@ void main() {
       }
     });
 
+    test('WasmUniversalService captures both WASI output streams across repeated runs', () async {
+      if (!canRunWasm) return;
+      final tempDir = Directory.systemTemp.createTempSync('wasm_service_stdio_');
+      try {
+        final moduleFile = File(p.join(tempDir.path, 'stdio.wat'));
+        moduleFile.writeAsStringSync(r'''
+(module
+  (import "wasi_snapshot_preview1" "fd_write"
+    (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "out-1\nout-2\nerr-1\nerr-2\n")
+  (func $write (param $fd i32) (param $ptr i32)
+    (i32.store (i32.const 128) (local.get $ptr))
+    (i32.store (i32.const 132) (i32.const 6))
+    (drop (call $fd_write (local.get $fd) (i32.const 128)
+      (i32.const 1) (i32.const 136))))
+  (func (export "_start")
+    (call $write (i32.const 1) (i32.const 0))
+    (call $write (i32.const 2) (i32.const 12))
+    (call $write (i32.const 1) (i32.const 6))
+    (call $write (i32.const 2) (i32.const 18))))
+''');
+        for (var run = 0; run < 5; run++) {
+          final outputDir = Directory(p.join(tempDir.path, 'run_$run'));
+          final logs = <({String line, bool isError})>[];
+          final result = await WasmUniversalService.execute(
+            formValues: {
+              'wasmInput': moduleFile.path,
+              'executionMode': 'wasi_cli',
+              'exportJson': true,
+            },
+            inputFiles: [],
+            outputDir: outputDir.path,
+            onLog: (line, isError) => logs.add((line: line, isError: isError)),
+          );
+          expect(result.success, isTrue, reason: 'run $run: ${result.message}');
+          final report = jsonDecode(File(p.join(outputDir.path, 'wasm_report.json')).readAsStringSync());
+          expect(report['stdout'], 'out-1\nout-2\n', reason: 'stdout in run $run');
+          expect(report['stderr'], 'err-1\nerr-2\n', reason: 'stderr in run $run');
+          expect(logs.where((log) => !log.isError).map((log) => log.line), containsAll(['    out-1', '    out-2']));
+          expect(logs.where((log) => log.isError).map((log) => log.line), containsAll(['    err-1', '    err-2']));
+        }
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    for (final termination in [
+      (name: 'proc_exit(0)', instruction: '(call \$proc_exit (i32.const 0))', success: true),
+      (name: 'proc_exit(7)', instruction: '(call \$proc_exit (i32.const 7))', success: false),
+      (name: 'a trap', instruction: 'unreachable', success: false),
+    ]) {
+      test('WasmUniversalService retains WASI logs before ${termination.name}', () async {
+        if (!canRunWasm) return;
+        final tempDir = Directory.systemTemp.createTempSync('wasm_service_exit_');
+        try {
+          final moduleFile = File(p.join(tempDir.path, 'exit.wat'));
+          const wat = r'''
+(module
+  (import "wasi_snapshot_preview1" "fd_write"
+    (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "before-exit\n")
+  (data (i32.const 32) "diagnostic\n")
+  (func (export "_start")
+    (i32.store (i32.const 128) (i32.const 0))
+    (i32.store (i32.const 132) (i32.const 12))
+    (drop (call $fd_write (i32.const 1) (i32.const 128)
+      (i32.const 1) (i32.const 136)))
+    (i32.store (i32.const 128) (i32.const 32))
+    (i32.store (i32.const 132) (i32.const 11))
+    (drop (call $fd_write (i32.const 2) (i32.const 128)
+      (i32.const 1) (i32.const 136)))
+''';
+          moduleFile.writeAsStringSync('$wat${termination.instruction}))');
+          final logs = <({String line, bool isError})>[];
+          final result = await WasmUniversalService.execute(
+            formValues: {
+              'wasmInput': moduleFile.path,
+              'executionMode': 'wasi_cli',
+            },
+            inputFiles: [],
+            outputDir: p.join(tempDir.path, 'out'),
+            onLog: (line, isError) => logs.add((line: line, isError: isError)),
+          );
+          expect(result.success, termination.success, reason: result.message);
+          expect(logs.any((log) => log.line == '    before-exit' && !log.isError), isTrue);
+          expect(logs.any((log) => log.line == '    diagnostic' && log.isError), isTrue);
+          if (termination.name == 'proc_exit(7)') {
+            expect(result.message, contains('退出码: 7'));
+          }
+        } finally {
+          tempDir.deleteSync(recursive: true);
+        }
+      });
+    }
+
+    for (final entrypoint in ['_start', '_initialize']) {
+      test('WasmUniversalService captures split UTF-8 from $entrypoint with empty stderr', () async {
+        if (!canRunWasm) return;
+        final tempDir = Directory.systemTemp.createTempSync('wasm_service_start_');
+        try {
+          final moduleFile = File(p.join(tempDir.path, 'start.wat'));
+          moduleFile.writeAsStringSync(r'''
+(module
+  (import "wasi_snapshot_preview1" "fd_write"
+    (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "\e4\b8\ad\n")
+  (func $write (param $ptr i32)
+    (i32.store (i32.const 128) (local.get $ptr))
+    (i32.store (i32.const 132) (i32.const 2))
+    (drop (call $fd_write (i32.const 1) (i32.const 128)
+      (i32.const 1) (i32.const 136))))
+  (func (export "ENTRYPOINT")
+    (call $write (i32.const 0))
+    (call $write (i32.const 2))))
+'''.replaceAll('ENTRYPOINT', entrypoint));
+          final result = await WasmUniversalService.execute(
+            formValues: {
+              'wasmInput': moduleFile.path,
+              'executionMode': 'wasi_cli',
+              'exportJson': true,
+            },
+            inputFiles: [],
+            outputDir: p.join(tempDir.path, 'out'),
+          );
+          expect(result.success, isTrue, reason: result.message);
+          final report = jsonDecode(File(p.join(tempDir.path, 'out', 'wasm_report.json')).readAsStringSync());
+          expect(report['stdout'], '中\n');
+          expect(report['stderr'], isEmpty);
+        } finally {
+          tempDir.deleteSync(recursive: true);
+        }
+      });
+    }
+
     test('WasmUniversalService execute memory stream mode with in-memory buffer transformation', () async {
       if (!canRunWasm) return;
       final tempDir = Directory.systemTemp.createTempSync('wasm_service_mem_');

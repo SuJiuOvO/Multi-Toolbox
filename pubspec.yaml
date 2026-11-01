@@ -63,7 +63,9 @@ dependencies:
   koni_sevenz: ^0.9.0
   koni_rar: ^0.9.0
   koni_archive_core: ^0.9.0
-  wasm_run: ^0.2.0+2
+  # Native WASI startup adapter uses the generated 2.12.0 bridge API.
+  wasm_run: 0.2.0+2
+  flutter_rust_bridge: 2.12.0
   flutter_svg: ^2.0.10+1
   fast_gbk: ^1.0.0
 dev_dependencies:

@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 // ignore: implementation_imports
 import 'package:wasm_run/src/rust/api.dart' show parseWatFormat;
 import 'package:wasm_run/wasm_run.dart';
+import 'native_wasi_runner.dart';
 import 'tool_engine_service.dart';
 
 /// WebAssembly 模块导出的条目信息
@@ -542,20 +542,6 @@ class WasmUniversalService {
     );
   }
 
-  /// 从 WASI 标准流读取捕获到的完整输出内容
-  static Future<String> _captureStream(
-    Stream<Uint8List> stream, {
-    Duration timeout = const Duration(milliseconds: 300),
-  }) async {
-    final buffer = BytesBuilder();
-    try {
-      await for (final chunk in stream.timeout(timeout)) {
-        buffer.add(chunk);
-      }
-    } catch (_) {}
-    return utf8.decode(buffer.takeBytes(), allowMalformed: true);
-  }
-
   /// 在 WASM 沙箱中调用指定导出函数 (支持自动注入 WASI 运行时上下文)
   static Future<Map<String, dynamic>> callFunction({
     required dynamic source,
@@ -614,11 +600,10 @@ class WasmUniversalService {
     String? executionError;
 
     try {
-      final module = await compileWasmModule(wasmBytes);
-      final instance = await module.builder(wasiConfig: wasiConfig).build();
-
-      stdoutText = await _captureStream(instance.stdout);
-      stderrText = await _captureStream(instance.stderr);
+      final run = await runNativeWasiCli(bytes: wasmBytes, config: wasiConfig);
+      stdoutText = run.stdout;
+      stderrText = run.stderr;
+      if (run.error != null) throw run.error!;
     } catch (e) {
       final errStr = e.toString().toLowerCase();
       // 容错处理：WASI 应用调用 proc_exit(0) 时捕获的退出状态码视同正常退出
