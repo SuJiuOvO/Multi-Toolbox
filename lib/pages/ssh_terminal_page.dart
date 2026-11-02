@@ -170,7 +170,7 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
         _configExpanded = false;
         _status = _connected ? '已连接 · ${_profile.identity}' : '远程会话已结束';
       });
-      if (_connected) _terminalFocus.requestFocus();
+      if (_connected) _requestTerminalFocus();
     } catch (error) {
       if (!mounted || attempt != _attempt) return;
       setState(() {
@@ -182,6 +182,14 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
             : '连接失败，请检查服务器与认证设置';
       });
     }
+  }
+
+  void _requestTerminalFocus() {
+    // TerminalView is mounted by the next frame after connecting. Requesting
+    // focus earlier can silently fail because the focus node is not in the tree.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _connected) _terminalFocus.requestFocus();
+    });
   }
 
   Future<bool> _confirmHostKey(
@@ -367,7 +375,7 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
       if (confirmed != true || !mounted || !_connected) return;
     }
     _terminal.paste(text);
-    _terminalFocus.requestFocus();
+    _requestTerminalFocus();
   }
 
   @override
@@ -405,8 +413,21 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
       ]),
       body: SafeArea(child: LayoutBuilder(builder: (context, constraints) {
         final wide = constraints.maxWidth >= 920;
-        final short = constraints.maxHeight < 520;
+        final showTerminal = _connected;
         final form = _buildForm(busy);
+        final panelBody = _configExpanded
+            ? (showTerminal
+                ? ConstrainedBox(
+                    constraints: BoxConstraints(
+                        maxHeight:
+                            (constraints.maxHeight * .45).clamp(140, 320)),
+                    child: SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: form))
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: form))
+            : const SizedBox.shrink();
         final connectionPanel = Material(
           color: Theme.of(context).colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(12),
@@ -420,37 +441,47 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
                     _configExpanded ? Icons.expand_less : Icons.expand_more),
                 onTap: () =>
                     setState(() => _configExpanded = !_configExpanded)),
-            if (_configExpanded)
-              ConstrainedBox(
-                  constraints: BoxConstraints(
-                      maxHeight: (constraints.maxHeight * .45).clamp(140, 320)),
-                  child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: form)),
+            panelBody,
           ]),
         );
-        final narrowContent = Column(
-            mainAxisSize: short ? MainAxisSize.min : MainAxisSize.max,
-            children: [
-              connectionPanel,
-              const SizedBox(height: 10),
-              if (short)
-                SizedBox(height: 280, child: _buildTerminal())
-              else
-                Expanded(child: _buildTerminal()),
-            ]);
+        final content = !showTerminal
+            // Keep this subtree stable while the soft keyboard changes the
+            // viewport height. Moving a focused TextField between scroll
+            // layouts recreates its EditableText and closes the keyboard.
+            ? SingleChildScrollView(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints:
+                        BoxConstraints(maxWidth: wide ? 680 : double.infinity),
+                    child: connectionPanel,
+                  ),
+                ),
+              )
+            : wide
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                          width: 320,
+                          child: SingleChildScrollView(child: form)),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildTerminal()),
+                    ],
+                  )
+                // Do not switch between Column and SingleChildScrollView when
+                // the keyboard changes the height; that would remount the
+                // terminal and drop its focus.
+                : Column(
+                    children: [
+                      connectionPanel,
+                      const SizedBox(height: 10),
+                      Expanded(child: _buildTerminal()),
+                    ],
+                  );
         return Padding(
           padding: EdgeInsets.all(wide ? 20 : 10),
-          child: wide
-              ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  SizedBox(
-                      width: 320, child: SingleChildScrollView(child: form)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildTerminal()),
-                ])
-              : short
-                  ? SingleChildScrollView(child: narrowContent)
-                  : narrowContent,
+          child: content,
         );
       })),
     );
@@ -458,10 +489,14 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
 
   Widget _buildForm(bool busy) {
     Widget field(TextEditingController controller, String label,
-            {bool secret = false, TextInputType? keyboard, String? hint}) =>
+            {Key? key,
+            bool secret = false,
+            TextInputType? keyboard,
+            String? hint}) =>
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: TextField(
+              key: key,
               controller: controller,
               enabled: !busy,
               obscureText: secret && !_showPassword,
@@ -496,7 +531,9 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
                 trailing: Icon(Icons.arrow_drop_down))),
       ],
       field(_name, '连接名称（可选）'),
-      field(_host, '主机 / IP', hint: '192.168.1.10 或 server.example.com'),
+      field(_host, '主机 / IP',
+          key: const Key('ssh-host'),
+          hint: '192.168.1.10 或 server.example.com'),
       Row(children: [
         Expanded(flex: 2, child: field(_user, '用户名')),
         const SizedBox(width: 10),
@@ -634,6 +671,10 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
                       padding: const EdgeInsets.all(10),
                       textStyle: TerminalStyle(fontSize: _fontSize),
                       keyboardType: TextInputType.visiblePassword,
+                      // Windows desktop key events are delivered directly by
+                      // xterm's hardware listener. Mobile keeps the native
+                      // text-input connection for the on-screen keyboard.
+                      hardwareKeyboardOnly: Platform.isWindows,
                       deleteDetection: true)),
               SizedBox(
                   height: 44,
@@ -673,7 +714,7 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
             ? null
             : () {
                 onPressed();
-                _terminalFocus.requestFocus();
+                _requestTerminalFocus();
               },
         child: Text(label),
       );

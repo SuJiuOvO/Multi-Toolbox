@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:app/models/ssh_profile.dart';
 import 'package:app/pages/ssh_terminal_page.dart';
 import 'package:app/services/ssh_connection_service.dart';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:xterm/xterm.dart';
 
 class _Socket extends SSHSocket {
   bool destroyed = false;
@@ -30,6 +31,40 @@ class _Socket extends SSHSocket {
     incoming.close();
     outgoing.close();
     completer.complete();
+  }
+}
+
+class _FakeSshService extends SshConnectionService {
+  bool connected = false;
+  final sent = <String>[];
+
+  @override
+  bool get isConnected => connected;
+
+  @override
+  Future<void> connect({
+    required SshProfile profile,
+    required String password,
+    required String privateKey,
+    required String passphrase,
+    required Future<bool> Function(String algorithm, String fingerprint)
+        confirmHostKey,
+    required void Function(String text) onOutput,
+    required void Function(String message) onClosed,
+    int columns = 80,
+    int rows = 24,
+  }) async {
+    connected = true;
+  }
+
+  @override
+  void send(String text) {
+    if (connected) sent.add(text);
+  }
+
+  @override
+  void disconnect() {
+    connected = false;
   }
 }
 
@@ -201,6 +236,84 @@ void main() {
     await tester.drag(
         find.byType(SingleChildScrollView).first, const Offset(0, -250));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('SSH terminal preview is hidden until a connection is active',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(const MaterialApp(home: SshTerminalPage()));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TerminalView), findsNothing);
+    expect(find.byKey(const Key('ssh-connect')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('connected SSH terminal accepts physical keyboard input',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final service = _FakeSshService();
+    await tester
+        .pumpWidget(MaterialApp(home: SshTerminalPage(service: service)));
+    await tester.pump();
+
+    await tester.enterText(find.byKey(const Key('ssh-host')), 'server.example');
+    await tester.tap(find.byKey(const Key('ssh-connect')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(TerminalView), findsOneWidget);
+    final terminal = tester.widget<TerminalView>(find.byType(TerminalView));
+    expect(terminal.focusNode?.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    expect(service.sent.join(), contains('ab'));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+      'SSH form keeps focus when the soft keyboard changes viewport height',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpWidget(const MaterialApp(home: SshTerminalPage()));
+    await tester.pump();
+
+    final hostFinder = find.byKey(const Key('ssh-host'));
+    await tester.ensureVisible(hostFinder);
+    await tester.tap(hostFinder);
+    await tester.enterText(hostFinder, '192.168.1.10');
+    await tester.pump();
+    final editable =
+        find.descendant(of: hostFinder, matching: find.byType(EditableText));
+    final focusNode = tester.widget<EditableText>(editable).focusNode;
+    expect(focusNode.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    // This mimics the Android soft keyboard reducing the body to the short
+    // layout branch that previously replaced the focused form subtree.
+    tester.view.viewInsets = const FakeViewPadding(bottom: 320);
+    await tester.pumpAndSettle();
+
+    expect(focusNode.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+    expect(
+        tester.widget<TextField>(hostFinder).controller?.text, '192.168.1.10');
+    expect(find.byType(TerminalView), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
