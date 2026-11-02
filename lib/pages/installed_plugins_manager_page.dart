@@ -321,7 +321,7 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final isMobile = screenWidth < 768;
 
     final allPlugins = _pluginManager.installedPlugins;

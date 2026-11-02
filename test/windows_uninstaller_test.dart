@@ -13,6 +13,8 @@ InstalledWindowsApp app({
   bool system = false,
   String hive = 'LocalMachine',
   String id = 'test',
+  String displayIcon = '',
+  String iconPath = '',
 }) =>
     InstalledWindowsApp(
       id: id,
@@ -22,6 +24,8 @@ InstalledWindowsApp app({
       registryKey: 'Example',
       uninstallString: command,
       publisher: 'Example Team',
+      displayIcon: displayIcon,
+      iconPath: iconPath,
       estimatedBytes: 20 * 1024 * 1024,
       systemComponent: system,
     );
@@ -36,12 +40,18 @@ String decodeScript(List<String> arguments) {
 class FakeUninstaller extends WindowsUninstallerService {
   FakeUninstaller() : super(supported: true);
   int uninstallCalls = 0;
+  int deleteCalls = 0;
   @override
   Future<WindowsAppInventory> loadApps() async => WindowsAppInventory([
         app(),
         app(name: 'Alpha Tool', id: 'alpha', hive: 'CurrentUser'),
         app(name: 'Protected Component', id: 'system', system: true),
       ]);
+
+  @override
+  Future<Map<String, String>> loadIconPaths(
+          List<InstalledWindowsApp> apps) async =>
+      const {};
   @override
   Future<WindowsUninstallResult> uninstall(InstalledWindowsApp app,
       {bool elevate = false}) async {
@@ -52,7 +62,25 @@ class FakeUninstaller extends WindowsUninstallerService {
   @override
   Future<List<WindowsResidueCandidate>> scanResidue(
           InstalledWindowsApp app) async =>
-      [];
+      const [
+        WindowsResidueCandidate(
+          path: r'C:\Users\Test\AppData\Local\Alpha Tool',
+          kind: '用户数据目录',
+          note: '测试残留目录',
+          targetType: 'directory',
+          canDelete: true,
+        ),
+      ];
+
+  @override
+  Future<WindowsResidueActionResult> deleteResidue(
+      List<WindowsResidueCandidate> candidates) async {
+    deleteCalls++;
+    return WindowsResidueActionResult(
+      deletedPaths:
+          candidates.map((candidate) => candidate.path).toList(growable: false),
+    );
+  }
 }
 
 class WaitingUninstaller extends FakeUninstaller {
@@ -134,6 +162,8 @@ void main() {
                         'registryKey': 'Example',
                         'registryView': 'Registry64',
                         'uninstallString': 'same',
+                        'displayIcon': r'C:\Program Files\Example\app.exe',
+                        'iconPath': r'C:\Temp\icon.png',
                         'estimatedBytes': 1048576
                       },
                       {
@@ -153,9 +183,34 @@ void main() {
     final result = await service.loadApps();
     expect(result.apps.single.name, '中文应用');
     expect(result.apps.single.formattedSize, '1.0 MB');
+    expect(result.apps.single.iconPath, r'C:\Temp\icon.png');
+    expect(result.apps.single.displayIcon, r'C:\Program Files\Example\app.exe');
     expect(result.warnings, ['部分不可读']);
     expect(script, contains('OpenBaseKey'));
     expect(script, isNot(contains('Win32_Product')));
+    expect(script, isNot(contains('ExtractAssociatedIcon')));
+  });
+
+  test('icon extraction is deferred to a separate background bridge', () async {
+    String? script;
+    final service = WindowsUninstallerService(
+        supported: true,
+        processRunner: (exe, args) async {
+          script = decodeScript(args);
+          return ProcessResult(
+              1,
+              0,
+              jsonEncode([
+                {'id': 'test', 'path': r'C:\Temp\cached.png'}
+              ]),
+              '');
+        });
+    final icons = await service.loadIconPaths([
+      app(displayIcon: r'C:\Program Files\Example\app.exe'),
+    ]);
+    expect(icons['test'], r'C:\Temp\cached.png');
+    expect(script, contains('ExtractAssociatedIcon'));
+    expect(script, contains('MultiToolboxAppIcons'));
   });
 
   test('different HKCU versions and distinct HKLM registry views are retained',
@@ -210,6 +265,70 @@ void main() {
     expect(script, isNot(contains('测试目录')));
   });
 
+  test('residue deletion bridge only sends selected candidates', () async {
+    String? script;
+    final service = WindowsUninstallerService(
+        supported: true,
+        processRunner: (exe, args) async {
+          script = decodeScript(args);
+          return ProcessResult(
+              1,
+              0,
+              jsonEncode({
+                'deletedPaths': [r'C:\Users\Test\AppData\Local\Alpha Tool'],
+                'errors': [],
+              }),
+              '');
+        });
+    final result = await service.deleteResidue(const [
+      WindowsResidueCandidate(
+        path: r'C:\Users\Test\AppData\Local\Alpha Tool',
+        kind: '用户数据目录',
+        note: '',
+        targetType: 'directory',
+        canDelete: true,
+      ),
+    ]);
+    expect(result.succeeded, isTrue);
+    expect(result.deletedPaths, hasLength(1));
+    expect(script, contains('Remove-Item'));
+    expect(script, contains('DeleteSubKeyTree'));
+    expect(script, isNot(contains('Invoke-Expression')));
+  });
+
+  test('residue scan decodes typed targets and checks common locations',
+      () async {
+    String? script;
+    final service = WindowsUninstallerService(
+        supported: true,
+        processRunner: (exe, args) async {
+          script = decodeScript(args);
+          return ProcessResult(
+              1,
+              0,
+              jsonEncode([
+                {
+                  'path': r'HKEY_CURRENT_USER\SOFTWARE\Example\测试软件',
+                  'kind': '用户设置残留',
+                  'note': '测试',
+                  'targetType': 'registry',
+                  'registryHive': 'CurrentUser',
+                  'registryView': 'Registry64',
+                  'registryPath': r'SOFTWARE\Example\测试软件',
+                  'canDelete': true,
+                }
+              ]),
+              '');
+        });
+    final result = await service.scanResidue(app());
+    expect(result.single.targetType, 'registry');
+    expect(result.single.registryPath, r'SOFTWARE\Example\测试软件');
+    expect(result.single.canDelete, isTrue);
+    expect(script, contains('Add-PathCandidate'));
+    expect(script, contains('LOCALAPPDATA'));
+    expect(script, contains('Start Menu'));
+  });
+
   test('unsupported platforms never start a process', () async {
     var called = false;
     final service = WindowsUninstallerService(
@@ -254,6 +373,63 @@ void main() {
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(service.uninstallCalls, 0);
+  });
+
+  testWidgets('residue scan supports selecting and deleting leftovers',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final service = FakeUninstaller();
+    await tester.pumpWidget(
+        MaterialApp(home: WindowsUninstallerPage(service: service)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('test')));
+    await tester.pump();
+    final scanButton = find.text('扫描并清理所选软件残留');
+    await tester.ensureVisible(scanButton);
+    await tester.tap(scanButton);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('测试软件 · 扫描并清理残留'), findsOneWidget);
+    expect(find.text('用户数据目录'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('select-all-residue')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('delete-selected-residue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('确认永久删除这些残留？'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('confirm-delete-residue')));
+    await tester.pumpAndSettle();
+
+    expect(service.deleteCalls, 1);
+    expect(find.textContaining('已清理 1 项残留'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('successful uninstall automatically opens residue scan',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final service = FakeUninstaller();
+    await tester.pumpWidget(
+        MaterialApp(home: WindowsUninstallerPage(service: service)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('test')));
+    await tester.pump();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('uninstall-selected-app')));
+    await tester.tap(find.byKey(const ValueKey('uninstall-selected-app')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-windows-uninstall')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(service.uninstallCalls, 1);
+    expect(find.text('测试软件 · 扫描并清理残留'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('stopping a wait releases the page and ignores late completion',

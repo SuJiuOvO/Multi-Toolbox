@@ -1159,7 +1159,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     final isDark = theme.brightness == Brightness.dark;
     final textPrimary = theme.colorScheme.onSurface;
     final textSecondary = theme.colorScheme.onSurfaceVariant;
-    final isMobile = MediaQuery.of(context).size.width < 768;
+    final isMobile = MediaQuery.sizeOf(context).width < 768;
 
     final formSection = Column(
       crossAxisAlignment: CrossAxisAlignment.start,

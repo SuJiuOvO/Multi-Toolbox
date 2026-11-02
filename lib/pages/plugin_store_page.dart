@@ -871,7 +871,7 @@ class _PluginStorePageState extends State<PluginStorePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
     final activeNode = _pluginManager.currentActiveNode;
 
     final filteredPlugins = _pluginManager.remotePlugins.where((p) {

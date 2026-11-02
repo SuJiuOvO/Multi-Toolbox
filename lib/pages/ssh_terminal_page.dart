@@ -404,86 +404,82 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
   @override
   Widget build(BuildContext context) {
     final busy = _connecting || _connected;
+    final wide = MediaQuery.sizeOf(context).width >= 920;
+    final showTerminal = _connected;
+    final form = _buildForm(busy);
+    final panelBody = _configExpanded
+        ? (showTerminal
+            ? ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: form))
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: form))
+        : const SizedBox.shrink();
+    final connectionPanel = Material(
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(12),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(
+            dense: true,
+            title: const Text('连接配置'),
+            subtitle:
+                Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing:
+                Icon(_configExpanded ? Icons.expand_less : Icons.expand_more),
+            onTap: () => setState(() => _configExpanded = !_configExpanded)),
+        panelBody,
+      ]),
+    );
+    final content = !showTerminal
+        // The disconnected form must not resize with every keyboard animation
+        // frame. The fields are at the top of a scroll view, so disabling body
+        // resizing removes the expensive layout/IME feedback loop.
+        ? SingleChildScrollView(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints:
+                    BoxConstraints(maxWidth: wide ? 680 : double.infinity),
+                child: connectionPanel,
+              ),
+            ),
+          )
+        : wide
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                      width: 320, child: SingleChildScrollView(child: form)),
+                  const SizedBox(width: 16),
+                  Expanded(child: _buildTerminal()),
+                ],
+              )
+            : Column(
+                children: [
+                  connectionPanel,
+                  const SizedBox(height: 10),
+                  Expanded(child: _buildTerminal()),
+                ],
+              );
     return Scaffold(
+      // Keep the form's layout stable during Android IME animation. Once the
+      // terminal is connected, resize again so the soft keyboard never covers
+      // the terminal's cursor and shortcut bar.
+      resizeToAvoidBottomInset: showTerminal,
       appBar: AppBar(title: const Text('SSH 安全终端'), actions: [
         IconButton(
             tooltip: '已信任的服务器',
             onPressed: busy ? null : _showKnownHosts,
             icon: const Icon(Icons.verified_user_outlined)),
       ]),
-      body: SafeArea(child: LayoutBuilder(builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 920;
-        final showTerminal = _connected;
-        final form = _buildForm(busy);
-        final panelBody = _configExpanded
-            ? (showTerminal
-                ? ConstrainedBox(
-                    constraints: BoxConstraints(
-                        maxHeight:
-                            (constraints.maxHeight * .45).clamp(140, 320)),
-                    child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: form))
-                : Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    child: form))
-            : const SizedBox.shrink();
-        final connectionPanel = Material(
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ListTile(
-                dense: true,
-                title: const Text('连接配置'),
-                subtitle:
-                    Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: Icon(
-                    _configExpanded ? Icons.expand_less : Icons.expand_more),
-                onTap: () =>
-                    setState(() => _configExpanded = !_configExpanded)),
-            panelBody,
-          ]),
-        );
-        final content = !showTerminal
-            // Keep this subtree stable while the soft keyboard changes the
-            // viewport height. Moving a focused TextField between scroll
-            // layouts recreates its EditableText and closes the keyboard.
-            ? SingleChildScrollView(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints:
-                        BoxConstraints(maxWidth: wide ? 680 : double.infinity),
-                    child: connectionPanel,
-                  ),
-                ),
-              )
-            : wide
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                          width: 320,
-                          child: SingleChildScrollView(child: form)),
-                      const SizedBox(width: 16),
-                      Expanded(child: _buildTerminal()),
-                    ],
-                  )
-                // Do not switch between Column and SingleChildScrollView when
-                // the keyboard changes the height; that would remount the
-                // terminal and drop its focus.
-                : Column(
-                    children: [
-                      connectionPanel,
-                      const SizedBox(height: 10),
-                      Expanded(child: _buildTerminal()),
-                    ],
-                  );
-        return Padding(
+      body: SafeArea(
+        child: Padding(
           padding: EdgeInsets.all(wide ? 20 : 10),
           child: content,
-        );
-      })),
+        ),
+      ),
     );
   }
 

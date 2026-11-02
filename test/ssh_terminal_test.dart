@@ -251,6 +251,9 @@ void main() {
 
     expect(find.byType(TerminalView), findsNothing);
     expect(find.byKey(const Key('ssh-connect')), findsOneWidget);
+    expect(
+        tester.widget<Scaffold>(find.byType(Scaffold)).resizeToAvoidBottomInset,
+        isFalse);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
@@ -272,6 +275,9 @@ void main() {
     await tester.pump();
 
     expect(find.byType(TerminalView), findsOneWidget);
+    expect(
+        tester.widget<Scaffold>(find.byType(Scaffold)).resizeToAvoidBottomInset,
+        isTrue);
     final terminal = tester.widget<TerminalView>(find.byType(TerminalView));
     expect(terminal.focusNode?.hasFocus, isTrue);
 

@@ -747,7 +747,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final screenSize = MediaQuery.of(context).size;
+    final screenSize = MediaQuery.sizeOf(context);
     final isMobile = screenSize.width < 600;
     final isPortrait = screenSize.height > screenSize.width || screenSize.width < 500;
     final isDark = theme.brightness == Brightness.dark;

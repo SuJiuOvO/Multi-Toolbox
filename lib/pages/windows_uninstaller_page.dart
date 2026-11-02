@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -23,6 +26,7 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
   bool _busy = false;
   bool _waitingForUninstall = false;
   int _operation = 0;
+  int _reloadGeneration = 0;
   bool _showSystem = false;
   String _scope = 'all';
   String _sort = 'name';
@@ -48,6 +52,7 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
       setState(() => _loading = false);
       return;
     }
+    final generation = ++_reloadGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -63,10 +68,28 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
           _selected = matches.isEmpty ? null : matches.first;
         }
       });
+      unawaited(_loadIcons(inventory.apps, generation));
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadIcons(
+      List<InstalledWindowsApp> apps, int generation) async {
+    try {
+      final icons = await _service.loadIconPaths(apps);
+      if (!mounted || generation != _reloadGeneration || icons.isEmpty) return;
+      setState(() {
+        _apps = _apps.map((app) {
+          final path = icons[app.id];
+          return path == null ? app : app.copyWith(iconPath: path);
+        }).toList();
+      });
+    } catch (_) {
+      // Icon extraction is a progressive enhancement; the inventory remains
+      // usable with its fallback glyphs if one shell operation fails.
     }
   }
 
@@ -147,15 +170,22 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
       _waitingForUninstall = true;
       _status = '正在等待 ${app.name} 的卸载程序退出…';
     });
+    var scanAfterReload = false;
     try {
       final result = await _service.uninstall(app, elevate: elevate);
       if (!mounted || operation != _operation) return;
       setState(() {
         _waitingForUninstall = false;
-        if (result.succeeded) _lastUninstalled = app;
+        if (result.succeeded) {
+          _lastUninstalled = app;
+          scanAfterReload = true;
+        }
         _status = result.message;
       });
       await _reload();
+      if (scanAfterReload && mounted && operation == _operation) {
+        await _scan(app);
+      }
     } catch (error) {
       if (mounted && operation == _operation) {
         setState(() => _status = '未完成卸载：$error');
@@ -184,57 +214,177 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
     try {
       final candidates = await _service.scanResidue(app);
       if (!mounted) return;
-      await showDialog<void>(
+      final selected = <WindowsResidueCandidate>[];
+      final removableCount = candidates.where((item) => item.canDelete).length;
+      final chosen = await showDialog<List<WindowsResidueCandidate>>(
           context: context,
-          builder: (context) => AlertDialog(
-                title: Text('${app.name} · 残留预览'),
-                content: SizedBox(
-                  width: 620,
-                  child: SingleChildScrollView(
-                      child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                          '只检查原卸载注册项和明确登记的安装目录。结果是待核对线索，不代表可以安全删除；此版本提供只读预览。'),
-                      const SizedBox(height: 16),
-                      if (candidates.isEmpty)
-                        const Text(
-                            '未发现上述位置残留。此结果不覆盖所有用户数据、共享文件或 Microsoft Store 应用。'),
-                      for (final item in candidates) ...[
-                        Text(item.kind,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 4),
-                        SelectableText(item.path),
-                        const SizedBox(height: 4),
-                        Text(item.note,
-                            style: Theme.of(context).textTheme.bodySmall),
-                        TextButton.icon(
-                          onPressed: () async {
-                            await Clipboard.setData(
-                                ClipboardData(text: item.path));
-                            if (mounted) _notify('路径已复制');
-                          },
-                          icon: const Icon(Icons.copy_outlined, size: 16),
-                          label: const Text('复制路径'),
+          builder: (dialogContext) => StatefulBuilder(
+              builder: (context, updateDialog) => AlertDialog(
+                    title: Text('${app.name} · 扫描并清理残留'),
+                    content: SizedBox(
+                      width: 680,
+                      child: SingleChildScrollView(
+                          child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                              '已按软件名称、发布者、安装目录和精确注册表路径扫描。默认不勾选任何项目；请核对路径后选择，删除不可撤销。'),
+                          const SizedBox(height: 12),
+                          Text(
+                            '发现 ${candidates.length} 项，其中 $removableCount 项可清理，已选择 ${selected.length} 项',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          if (candidates.any((item) => item.canDelete))
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                key: const ValueKey('select-all-residue'),
+                                onPressed: () => updateDialog(() {
+                                  final removable = candidates
+                                      .where((item) => item.canDelete)
+                                      .toList();
+                                  if (selected.length == removable.length) {
+                                    selected.clear();
+                                  } else {
+                                    selected
+                                      ..clear()
+                                      ..addAll(removable);
+                                  }
+                                }),
+                                icon: const Icon(Icons.checklist),
+                                label:
+                                    Text(selected.isEmpty ? '全选可清理项' : '取消全选'),
+                              ),
+                            ),
+                          if (candidates.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Text(
+                                  '未发现常见残留。此结果不覆盖所有用户数据、共享文件或 Microsoft Store 应用。'),
+                            ),
+                          for (final item in candidates)
+                            _residueTile(
+                              context,
+                              item,
+                              selected.contains(item),
+                              (checked) => updateDialog(() {
+                                if (checked == true) {
+                                  if (!selected.contains(item)) {
+                                    selected.add(item);
+                                  }
+                                } else {
+                                  selected.remove(item);
+                                }
+                              }),
+                            ),
+                        ],
+                      )),
+                    ),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text('关闭')),
+                      if (candidates.any((item) => item.canDelete))
+                        FilledButton.icon(
+                          key: const ValueKey('delete-selected-residue'),
+                          onPressed: selected.isEmpty
+                              ? null
+                              : () => Navigator.pop(
+                                  dialogContext, List.of(selected)),
+                          icon: const Icon(Icons.delete_sweep_outlined),
+                          label: Text('清理 ${selected.length} 项'),
                         ),
-                        const Divider(),
-                      ],
                     ],
-                  )),
-                ),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('关闭'))
+                  )));
+      if (chosen == null || chosen.isEmpty || !mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('确认永久删除这些残留？'),
+          content: SizedBox(
+            width: 620,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                      '将永久删除以下目录、文件或注册表项，不进入回收站。正在运行的程序可能占用文件，失败项会单独列出。'),
+                  const SizedBox(height: 12),
+                  for (final item in chosen)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text('• ${item.path}'),
+                    ),
                 ],
-              ));
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消')),
+            FilledButton(
+              key: const ValueKey('confirm-delete-residue'),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('永久删除'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      final result = await _service.deleteResidue(chosen);
+      if (!mounted) return;
+      final message = result.succeeded
+          ? '已清理 ${result.deletedPaths.length} 项残留。'
+          : '已清理 ${result.deletedPaths.length} 项，${result.errors.length} 项失败：\n${result.errors.join('\n')}';
+      setState(() => _status = message);
+      _notify(result.succeeded ? '残留清理完成' : '部分残留无法删除');
+      await _reload();
     } catch (error) {
       if (mounted) _notify('扫描失败：$error');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Widget _residueTile(
+    BuildContext context,
+    WindowsResidueCandidate item,
+    bool selected,
+    ValueChanged<bool?> onChanged,
+  ) {
+    return CheckboxListTile(
+      value: selected,
+      onChanged: item.canDelete ? onChanged : null,
+      contentPadding: EdgeInsets.zero,
+      controlAffinity: ListTileControlAffinity.leading,
+      title:
+          Text(item.kind, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 4),
+          SelectableText(item.path,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+          const SizedBox(height: 4),
+          Text(item.note),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: item.path));
+                if (mounted) _notify('路径已复制');
+              },
+              icon: const Icon(Icons.copy_outlined, size: 16),
+              label: const Text('复制路径'),
+            ),
+          ),
+        ],
+      ),
+      isThreeLine: true,
+    );
   }
 
   void _notify(String message) => ScaffoldMessenger.of(context)
@@ -406,8 +556,8 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
                           : () => _scan(scanTarget),
                       icon: const Icon(Icons.manage_search_outlined),
                       label: Text(_lastUninstalled != null
-                          ? '预览上次卸载的软件残留'
-                          : '预览所选软件残留'),
+                          ? '扫描并清理上次卸载残留'
+                          : '扫描并清理所选软件残留'),
                     ),
                   ]),
                 ]);
@@ -437,7 +587,7 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
               '${apps.length} 个桌面软件 · 估算 ${(total / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
-          const Text('32 / 64 位注册表 · 官方卸载器 · 残留只读预览',
+          const Text('32 / 64 位注册表 · 应用图标 · 官方卸载器 · 残留扫描清理',
               style: TextStyle(fontSize: 12)),
           const Text('体积来自软件登记值；Microsoft Store 应用不在此列表中。',
               style: TextStyle(fontSize: 12)),
@@ -460,9 +610,7 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
           return ListTile(
             key: ValueKey(app.id),
             selected: _selected?.id == app.id,
-            leading: Icon(app.systemComponent
-                ? Icons.shield_outlined
-                : Icons.apps_rounded),
+            leading: _appIcon(app, 40),
             title: Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(
                 '${app.publisher.isEmpty ? '未知发布者' : app.publisher} · ${app.version}\n${app.scopeLabel} · ${app.architecture}',
@@ -487,6 +635,34 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
     );
   }
 
+  Widget _appIcon(InstalledWindowsApp app, double size) {
+    final fallback = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(
+        app.systemComponent ? Icons.shield_outlined : Icons.apps_rounded,
+        size: size * .58,
+      ),
+    );
+    final path = app.iconPath.trim();
+    if (path.isEmpty || !File(path).existsSync()) return fallback;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Image.file(
+        File(path),
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
+        errorBuilder: (_, __, ___) => fallback,
+      ),
+    );
+  }
+
   Widget _details(BuildContext context, InstalledWindowsApp? app) => Card(
         child: app == null
             ? const Center(
@@ -497,8 +673,16 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(app.name,
-                        style: Theme.of(context).textTheme.titleLarge),
+                    Row(
+                      children: [
+                        _appIcon(app, 52),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(app.name,
+                              style: Theme.of(context).textTheme.titleLarge),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 16),
                     for (final entry in <String, String>{
                       '版本': app.version,
