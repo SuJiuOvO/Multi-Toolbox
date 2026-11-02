@@ -94,6 +94,29 @@ class WaitingUninstaller extends FakeUninstaller {
   }
 }
 
+class CachingUninstaller extends FakeUninstaller {
+  CachingUninstaller(this.iconPath);
+
+  final String iconPath;
+  final secondIconLoad = Completer<void>();
+  int iconLoads = 0;
+
+  @override
+  Future<WindowsAppInventory> loadApps() async => WindowsAppInventory([
+        app(
+          displayIcon: r'C:\Program Files\Example\app.exe',
+        ),
+      ]);
+
+  @override
+  Future<Map<String, String>> loadIconPaths(
+      List<InstalledWindowsApp> apps) async {
+    iconLoads++;
+    if (iconLoads > 1) await secondIconLoad.future;
+    return {'test': iconPath};
+  }
+}
+
 void main() {
   test('quoted executable and raw Windows argument quotes remain intact', () {
     final command = UninstallCommand.fromApp(app());
@@ -210,7 +233,10 @@ void main() {
     ]);
     expect(icons['test'], r'C:\Temp\cached.png');
     expect(script, contains('ExtractAssociatedIcon'));
+    expect(script, contains('LocalApplicationData'));
+    expect(script, contains(r'MultiToolbox\app-icons'));
     expect(script, contains('MultiToolboxAppIcons'));
+    expect(script, contains('cacheIdentity'));
   });
 
   test('different HKCU versions and distinct HKLM registry views are retained',
@@ -429,6 +455,40 @@ void main() {
     expect(service.uninstallCalls, 1);
     expect(find.text('测试软件 · 扫描并清理残留'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('refresh keeps cached application icons while new icon load runs',
+      (tester) async {
+    final temp = Directory.systemTemp.createTempSync(
+      'multi-toolbox-uninstaller-icons-',
+    );
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final icon = File('${temp.path}${Platform.pathSeparator}icon.png')
+      ..writeAsBytesSync(base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk'
+        '+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      ));
+    final service = CachingUninstaller(icon.path);
+
+    await tester.pumpWidget(
+      MaterialApp(home: WindowsUninstallerPage(service: service)),
+    );
+    await tester.pumpAndSettle();
+    expect(service.iconLoads, 1);
+    expect(find.byType(Image), findsOneWidget);
+
+    await tester.tap(find.byTooltip('刷新软件列表'));
+    await tester.pump();
+    expect(service.iconLoads, 2);
+    expect(
+      find.byType(Image),
+      findsOneWidget,
+      reason: 'The cached icon must remain visible during the next refresh.',
+    );
+
+    service.secondIconLoad.complete();
+    await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox());
   });
 

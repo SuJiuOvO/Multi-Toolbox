@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -20,16 +21,36 @@ void main() {
     });
 
     test('SVG code rendering detection', () {
-      const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L2 22h20L12 2z"/></svg>';
+      const svg =
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L2 22h20L12 2z"/></svg>';
       final def = PluginIconDef.fromRaw(svg);
       expect(def.isCode, true);
       expect(def.data, svg);
     });
 
+    test('bundled SSH icon is theme-adaptive and uses no fixed colors', () {
+      final manifest = jsonDecode(
+        File('assets/default_plugins/ssh-terminal.json').readAsStringSync(),
+      ) as Map<String, dynamic>;
+      final icon = manifest['icon'] as Map<String, dynamic>;
+      final svg = icon['data'] as String;
+
+      expect(icon['type'], 'code');
+      expect(svg, contains('currentColor'));
+      expect(svg, contains('fill-opacity="0.18"'));
+      expect(
+        RegExp(r'#[0-9a-fA-F]{3,8}').hasMatch(svg),
+        isFalse,
+        reason:
+            'The SSH icon must inherit theme colors without fixed hex values.',
+      );
+    });
+
     test('Structured object parsing with custom limits', () {
       final jsonMap = {
         'type': 'image',
-        'data': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'data':
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
         'maxPixels': 256,
         'maxSizeBytes': 102400,
       };
@@ -87,7 +108,8 @@ void main() {
       final defEmpty = PluginIconDef.fromRaw('');
       expect(defEmpty.isDefault || defEmpty.data == 'extension', true);
 
-      final iconData = PluginIconWidget.getMaterialIconData('non_existent_random_icon');
+      final iconData =
+          PluginIconWidget.getMaterialIconData('non_existent_random_icon');
       expect(iconData, Icons.extension_rounded);
     });
   });
@@ -126,7 +148,8 @@ void main() {
     });
 
     testWidgets('Renders SVG vector code icon successfully', (tester) async {
-      const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#00D2FF"/></svg>';
+      const svg =
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#00D2FF"/></svg>';
       final def = PluginIconDef.fromRaw(svg);
 
       await tester.pumpWidget(
@@ -143,7 +166,9 @@ void main() {
       expect(find.byType(PluginIconWidget), findsOneWidget);
     });
 
-    testWidgets('Renders all redesigned duotone theme-adaptive SVG icons seamlessly', (tester) async {
+    testWidgets(
+        'Renders all redesigned duotone theme-adaptive SVG icons seamlessly',
+        (tester) async {
       const duotoneIcons = [
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" fill-opacity="0.22"/><path d="M12 6.5l1.3 3.7 3.7 1.3-3.7 1.3L12 16.5l-1.3-3.7L7 11.5l3.7-1.3z" fill="currentColor"/><circle cx="17" cy="7.5" r="1.3" fill="currentColor"/><circle cx="7" cy="16.5" r="1.3" fill="currentColor"/></svg>',
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" fill-opacity="0.22"/><circle cx="10" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="12" r="2" fill="currentColor"/><path d="M10 7v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="15" y="13.5" width="5.5" height="4.5" rx="1.2" fill="currentColor"/><path d="M16.5 13.5v-1.6a1.4 1.4 0 0 1 2.8 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',

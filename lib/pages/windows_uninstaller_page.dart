@@ -19,6 +19,7 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
   late final WindowsUninstallerService _service;
   final _search = TextEditingController();
   List<InstalledWindowsApp> _apps = [];
+  final Map<String, String> _iconCache = {};
   List<String> _warnings = [];
   InstalledWindowsApp? _selected;
   InstalledWindowsApp? _lastUninstalled;
@@ -61,7 +62,9 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
       final inventory = await _service.loadApps();
       if (!mounted) return;
       setState(() {
-        _apps = inventory.apps;
+        _apps = [
+          for (final app in inventory.apps) _withCachedIcon(app),
+        ];
         _warnings = inventory.warnings;
         if (_selected != null) {
           final matches = _apps.where((app) => app.id == _selected!.id);
@@ -81,16 +84,31 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
     try {
       final icons = await _service.loadIconPaths(apps);
       if (!mounted || generation != _reloadGeneration || icons.isEmpty) return;
+      for (final app in apps) {
+        final path = icons[app.id];
+        if (path != null && path.trim().isNotEmpty) {
+          _iconCache[_iconCacheKey(app)] = path;
+        }
+      }
       setState(() {
-        _apps = _apps.map((app) {
-          final path = icons[app.id];
-          return path == null ? app : app.copyWith(iconPath: path);
-        }).toList();
+        _apps = _apps.map(_withCachedIcon).toList();
       });
     } catch (_) {
       // Icon extraction is a progressive enhancement; the inventory remains
       // usable with its fallback glyphs if one shell operation fails.
     }
+  }
+
+  String _iconCacheKey(InstalledWindowsApp app) {
+    final source = app.displayIcon.trim().toLowerCase();
+    return '${app.id}\u0000$source';
+  }
+
+  InstalledWindowsApp _withCachedIcon(InstalledWindowsApp app) {
+    final cachedPath = _iconCache[_iconCacheKey(app)];
+    return cachedPath == null || cachedPath.isEmpty
+        ? app
+        : app.copyWith(iconPath: cachedPath);
   }
 
   List<InstalledWindowsApp> get _visibleApps {
@@ -394,7 +412,7 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
   Widget build(BuildContext context) {
     if (!_service.isSupported) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Windows 软件卸载助手')),
+        appBar: AppBar(title: const Text('软件卸载')),
         body: const Center(
             child: Padding(
           padding: EdgeInsets.all(24),
@@ -411,7 +429,7 @@ class _WindowsUninstallerPageState extends State<WindowsUninstallerPage> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Windows 软件卸载助手'),
+          title: const Text('软件卸载'),
           actions: [
             IconButton(
               tooltip: '刷新软件列表',

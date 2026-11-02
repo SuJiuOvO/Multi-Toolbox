@@ -258,7 +258,7 @@ class WindowsUninstallerService {
           stdoutEncoding: utf8, stderrEncoding: utf8);
 
   Future<dynamic> _runJson(String script) async {
-    if (!isSupported) throw UnsupportedError('软件卸载助手仅支持 Windows。');
+    if (!isSupported) throw UnsupportedError('软件卸载功能仅支持 Windows。');
     // -EncodedCommand requires UTF-16LE; data payloads are JSON/base64.
     final units = script.codeUnits;
     final encoded = base64Encode([
@@ -408,7 +408,11 @@ foreach ($hive in @([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win
     final raw = await _runJson('''$_jsonHeader
 try { Add-Type -AssemblyName System.Drawing } catch {}
 \$request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$payload')) | ConvertFrom-Json
-\$cache = Join-Path ([IO.Path]::GetTempPath()) 'MultiToolboxAppIcons'
+\$localAppData = [Environment]::GetFolderPath('LocalApplicationData')
+if ([string]::IsNullOrWhiteSpace(\$localAppData)) { \$localAppData = [Environment]::GetFolderPath('ApplicationData') }
+if ([string]::IsNullOrWhiteSpace(\$localAppData)) { \$localAppData = [IO.Path]::GetTempPath() }
+\$cache = Join-Path \$localAppData 'MultiToolbox\\app-icons'
+\$legacyCache = Join-Path ([IO.Path]::GetTempPath()) 'MultiToolboxAppIcons'
 [IO.Directory]::CreateDirectory(\$cache) | Out-Null
 \$results = New-Object System.Collections.Generic.List[object]
 foreach (\$entry in @(\$request.entries)) {
@@ -422,13 +426,24 @@ foreach (\$entry in @(\$request.entries)) {
       \$source = (\$source -split ',')[0].Trim().Trim('"')
     }
     \$source = [Environment]::ExpandEnvironmentVariables(\$source)
-    if (-not [IO.Path]::IsPathRooted(\$source) -or -not [IO.File]::Exists(\$source)) { continue }
-    \$md5 = [Security.Cryptography.MD5]::Create()
+    \$sha256 = [Security.Cryptography.SHA256]::Create()
     try {
-      \$hash = [BitConverter]::ToString(\$md5.ComputeHash([Text.Encoding]::UTF8.GetBytes([string]\$entry.id))).Replace('-', '').ToLowerInvariant()
-    } finally { \$md5.Dispose() }
+      \$cacheIdentity = ([string]\$entry.id) + "`n" + \$source.ToLowerInvariant()
+      \$hash = [BitConverter]::ToString(\$sha256.ComputeHash([Text.Encoding]::UTF8.GetBytes(\$cacheIdentity))).Replace('-', '').ToLowerInvariant()
+    } finally { \$sha256.Dispose() }
     \$target = Join-Path \$cache (\$hash + '.png')
     if (-not [IO.File]::Exists(\$target)) {
+      \$md5 = [Security.Cryptography.MD5]::Create()
+      try {
+        \$legacyHash = [BitConverter]::ToString(\$md5.ComputeHash([Text.Encoding]::UTF8.GetBytes([string]\$entry.id))).Replace('-', '').ToLowerInvariant()
+      } finally { \$md5.Dispose() }
+      \$legacyTarget = Join-Path \$legacyCache (\$legacyHash + '.png')
+      if ([IO.File]::Exists(\$legacyTarget)) {
+        [IO.File]::Copy(\$legacyTarget, \$target, \$false)
+      }
+    }
+    if (-not [IO.File]::Exists(\$target)) {
+      if (-not [IO.Path]::IsPathRooted(\$source) -or -not [IO.File]::Exists(\$source)) { continue }
       \$icon = \$null
       \$bitmap = \$null
       try {
@@ -445,6 +460,7 @@ foreach (\$entry in @(\$request.entries)) {
         if (\$null -ne \$icon) { \$icon.Dispose() }
       }
     }
+    if (-not [IO.File]::Exists(\$target)) { continue }
     \$results.Add([PSCustomObject]@{id=[string]\$entry.id; path=\$target})
   } catch {}
 }
