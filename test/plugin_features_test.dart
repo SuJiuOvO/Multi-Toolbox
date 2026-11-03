@@ -27,6 +27,13 @@ void main() {
       expect(PluginManagerService.isAppVersionCompatible('1.1.3'), isFalse);
     });
 
+    test('currentAppVersion matches pubspec.yaml version automatically', () {
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      final match = RegExp(r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)', multiLine: true).firstMatch(pubspec);
+      expect(match, isNotNull);
+      expect(PluginManagerService.currentAppVersion, equals(match!.group(1)));
+    });
+
     test('PluginManifest parses minAppVersion and rich description correctly', () {
       final jsonMap = {
         'id': 'test_tool',

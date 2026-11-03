@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import '../constants/app_version.dart';
 import '../models/plugin_manifest.dart';
 import '../models/registry_mirror_node.dart';
 
@@ -33,8 +34,11 @@ class PluginManagerService {
   factory PluginManagerService() => _instance;
   PluginManagerService._internal();
 
-  /// 当前百宝箱客户端版本号
-  static const String currentAppVersion = '1.1.2';
+  /// 当前百宝箱客户端版本号（默认取自 pubspec.yaml 生成的 kAppVersion，亦支持编译期 --dart-define=APP_VERSION 覆盖）
+  static const String currentAppVersion = String.fromEnvironment(
+    'APP_VERSION',
+    defaultValue: kAppVersion,
+  );
 
   /// 比较两个语义化版本号 (例如 "1.0.0" 与 "1.1.0")
   /// 若 v1 > v2 返回 1; 若 v1 < v2 返回 -1; 相等返回 0
