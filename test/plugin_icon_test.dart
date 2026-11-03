@@ -28,6 +28,18 @@ void main() {
       expect(def.data, svg);
     });
 
+    test('theme secondary placeholder preserves a translucent tint', () {
+      final resolved = PluginIconWidget.resolveThemeColors(
+        '<svg><rect fill="{secondary}"/><path stroke="{primary}"/></svg>',
+        const Color(0xFF111827),
+      );
+
+      expect(resolved, contains('fill="rgba(17, 24, 39, 0.22)"'));
+      expect(resolved, contains('stroke="#111827"'));
+      expect(resolved, isNot(contains('{secondary}')));
+      expect(resolved, isNot(contains('{primary}')));
+    });
+
     test('bundled SSH icon is theme-adaptive and uses no fixed colors', () {
       final manifest = jsonDecode(
         File('assets/default_plugins/ssh-terminal.json').readAsStringSync(),
@@ -164,6 +176,30 @@ void main() {
       );
 
       expect(find.byType(PluginIconWidget), findsOneWidget);
+    });
+
+    testWidgets('renders distinct primary and secondary theme placeholders', (tester) async {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+          '<rect x="2" y="2" width="20" height="20" rx="5" fill="{secondary}"/>'
+          '<path d="M7 12h10" stroke="{primary}" stroke-width="2"/>'
+          '</svg>';
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+          ),
+          home: Scaffold(
+            body: PluginIconWidget(
+              iconDef: PluginIconDef.fromRaw(svg),
+              size: 32,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PluginIconWidget), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets(

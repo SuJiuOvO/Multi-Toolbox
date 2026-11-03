@@ -345,6 +345,7 @@ async function run({ inputFiles, outputDir, params }) {
   "allowedExtensions": ["ncm", "flac", "mp3"]
 }
 ```
+- **选择入口控制**：`allowFiles` 与 `allowFolder` 分别控制文件按钮和文件夹按钮。两者都为 `true` 时同时显示；`allowFiles: false, allowFolder: true` 为仅文件夹；`allowFiles: true, allowFolder: false` 为仅文件。`allowMultiple` 只控制对应选择器能否多选，不影响按钮种类。`folder_picker` 是仅文件夹选择器的简写。
 - **智能交互缩略图卡片预览 (Image Thumbnail Cards)**：
   当用户选中图片格式（`.png`、`.jpg`、`.jpeg`、`.gif`、`.webp`、`.bmp`、`.ico`）时，文件选择区域下方会自动渲染响应式缩略图卡片矩阵，直观展示图片真实像素尺寸（如 `1920 × 1080`）、文件大小，并支持悬浮单键移除，大幅提升用户操作体验。
 - **Android 端专有未知后缀安全降级**：

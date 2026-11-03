@@ -436,12 +436,16 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     );
     if (dir != null && dir.isNotEmpty) {
       setState(() {
-        final existing = (_formValues[input.id] is List)
-            ? List<String>.from(_formValues[input.id])
-            : <String>[];
         final cleanDir = dir.endsWith('/') || dir.endsWith(r'\')
             ? dir.substring(0, dir.length - 1)
             : dir;
+        if (!input.allowMultiple) {
+          _formValues[input.id] = <String>[cleanDir];
+          return;
+        }
+        final existing = (_formValues[input.id] is List)
+            ? List<String>.from(_formValues[input.id])
+            : <String>[];
         if (!existing.contains(cleanDir)) {
           existing.add(cleanDir);
         }
@@ -608,7 +612,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     if (!mounted) return;
 
     final visibleInputs = widget.plugin.inputs.where(_isInputVisible).toList();
-    final visibleFileInputs = visibleInputs.where((i) => i.type == 'file_picker').toList();
+    final visibleFileInputs = visibleInputs.where((i) => i.isFileSelector).toList();
 
     for (var fileInput in visibleFileInputs) {
       final files = (_formValues[fileInput.id] is List)
@@ -623,7 +627,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     }
 
     for (var input in visibleInputs) {
-      if (input.required && input.type != 'file_picker') {
+      if (input.required && !input.isFileSelector) {
         final val = _formValues[input.id]?.toString().trim() ?? '';
         if (val.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -979,7 +983,8 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       final rawList = val is List
           ? List<String>.from(val)
           : (val is String && val.isNotEmpty ? [val] : <String>[]);
-      final bool preserveDirs = fileInput.preserveDirectoryEntries == true ||
+      final bool preserveDirs = fileInput.type == 'folder_picker' ||
+          fileInput.preserveDirectoryEntries == true ||
           (fileInput.preserveDirectoryEntriesIf != null &&
               _evalCondition(fileInput.preserveDirectoryEntriesIf!)) ||
           ((widget.plugin.action?.handler == 'archive_universal' || widget.plugin.id == 'archive_universal') &&
@@ -1359,7 +1364,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               Builder(builder: (context) {
                 final allInputFiles = <String>[];
                 for (final input in widget.plugin.inputs) {
-                  if (input.type == 'file_picker') {
+                  if (input.isFileSelector) {
                     final files = (_formValues[input.id] is List)
                         ? List<String>.from(_formValues[input.id])
                         : <String>[];
@@ -2305,7 +2310,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     final inputBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final inputBorderColor = isDark ? const Color(0xFF475569) : const Color(0xFFD1D5DB);
 
-    if (input.type == 'file_picker') {
+    if (input.isFileSelector) {
       final currentFiles = (_formValues[input.id] is List)
           ? List<String>.from(_formValues[input.id])
           : <String>[];
@@ -2341,47 +2346,41 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              if (input.allowFolder == false || input.id == 'archiveInput')
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _pickFiles(input),
-                    icon: Icon(input.isArchive == true ? Icons.folder_zip_outlined : Icons.note_add_outlined, size: 20),
-                    label: Text(input.pickButtonText ?? (input.id == 'archiveInput' ? '选择压缩包 / 分卷文件 (支持多选分卷 .001/.002 等)' : '选择文件')),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
+              Builder(builder: (_) {
+                final showFiles = input.id == 'archiveInput' || input.acceptsFiles;
+                final showFolders = input.id != 'archiveInput' && input.acceptsFolders;
+                final fileButton = OutlinedButton.icon(
+                  onPressed: () => _pickFiles(input),
+                  icon: Icon(input.isArchive == true ? Icons.folder_zip_outlined : Icons.note_add_outlined, size: 18),
+                  label: Text(input.pickButtonText ?? (input.id == 'archiveInput' ? '选择压缩包 / 分卷文件 (支持多选分卷 .001/.002 等)' : '添加文件 (多选)')),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
-                )
-              else
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _pickFiles(input),
-                        icon: const Icon(Icons.note_add_outlined, size: 18),
-                        label: Text(input.pickButtonText ?? '添加文件 (多选)'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _pickFolder(input),
-                        icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-                        label: const Text('添加文件夹'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                );
+                final folderButton = OutlinedButton.icon(
+                  onPressed: () => _pickFolder(input),
+                  icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                  label: Text(!showFiles ? (input.pickButtonText ?? '选择文件夹') : '添加文件夹'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                );
+                if (showFiles && showFolders) {
+                  return Row(
+                    children: [
+                      Expanded(child: fileButton),
+                      const SizedBox(width: 10),
+                      Expanded(child: folderButton),
+                    ],
+                  );
+                }
+                return SizedBox(
+                  width: double.infinity,
+                  child: showFolders ? folderButton : fileButton,
+                );
+              }),
               if (currentFiles.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Container(
@@ -2501,6 +2500,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
       }
 
       final currentFile = currentFiles.isNotEmpty ? currentFiles.first : null;
+      final folderOnly = !input.acceptsFiles && input.acceptsFolders;
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: Column(
@@ -2511,8 +2511,19 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
             ),
             const SizedBox(height: 8),
+            if (input.acceptsFiles && input.acceptsFolders) ...[
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickFolder(input),
+                  icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                  label: const Text('选择文件夹'),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             InkWell(
-              onTap: () => _pickFiles(input),
+              onTap: folderOnly ? () => _pickFolder(input) : () => _pickFiles(input),
               borderRadius: BorderRadius.circular(10),
               child: Container(
                 padding: const EdgeInsets.all(14),
@@ -2546,12 +2557,14 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                     else
                       Icon(
                         currentFile != null
-                            ? (_isAudioFile(currentFile)
-                                ? Icons.audiotrack_rounded
-                                : (_isVideoFile(currentFile)
-                                    ? Icons.movie_creation_outlined
-                                    : Icons.insert_drive_file_rounded))
-                            : Icons.cloud_upload_outlined,
+                            ? (Directory(currentFile).existsSync()
+                                ? Icons.folder_rounded
+                                : (_isAudioFile(currentFile)
+                                    ? Icons.audiotrack_rounded
+                                    : (_isVideoFile(currentFile)
+                                        ? Icons.movie_creation_outlined
+                                        : Icons.insert_drive_file_rounded)))
+                            : (folderOnly ? Icons.create_new_folder_outlined : Icons.cloud_upload_outlined),
                         color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
                         size: 32,
                       ),
@@ -2559,9 +2572,11 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                     Expanded(
                       child: currentFile == null
                           ? Text(
-                              input.allowedExtensions.isNotEmpty
-                                  ? '点击选择文件 (支持 ${input.allowedExtensions.join('/')})'
-                                  : '点击选择文件',
+                              folderOnly
+                                  ? (input.pickButtonText ?? '点击选择文件夹')
+                                  : (input.allowedExtensions.isNotEmpty
+                                      ? '点击选择文件 (支持 ${input.allowedExtensions.join('/')})'
+                                      : '点击选择文件'),
                               style: TextStyle(color: textSecondary, fontSize: 13),
                             )
                           : Column(

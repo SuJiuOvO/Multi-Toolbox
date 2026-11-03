@@ -45,6 +45,21 @@ class PluginIconWidget extends StatefulWidget {
     );
   }
 
+  @visibleForTesting
+  static String resolveThemeColors(String svg, Color primaryColor) {
+    final argb = primaryColor.toARGB32();
+    final red = (argb >> 16) & 0xFF;
+    final green = (argb >> 8) & 0xFF;
+    final blue = argb & 0xFF;
+    final hexPrimary = '#${argb.toRadixString(16).padLeft(8, '0').substring(2)}';
+    final rgbaSecondary = 'rgba($red, $green, $blue, 0.22)';
+    return svg
+        .replaceAll('{primary}', hexPrimary)
+        .replaceAll('{secondary}', rgbaSecondary)
+        .replaceAll('var(--primary)', hexPrimary)
+        .replaceAll('var(--secondary)', rgbaSecondary);
+  }
+
   /// Material 图标名称映射字典
   static IconData getMaterialIconData(String? name) {
     if (name == null || name.trim().isEmpty) {
@@ -334,14 +349,7 @@ class _PluginIconWidgetState extends State<PluginIconWidget> {
               processedSvg.contains('{secondary}') ||
               processedSvg.contains('var(--primary)') ||
               processedSvg.contains('var(--secondary)')) {
-            final hexPrimary = '#${primaryColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
-            final secondaryColor = Theme.of(context).colorScheme.primary.withValues(alpha: 0.22);
-            final hexSecondary = '#${secondaryColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
-            processedSvg = processedSvg
-                .replaceAll('{primary}', hexPrimary)
-                .replaceAll('{secondary}', hexSecondary)
-                .replaceAll('var(--primary)', hexPrimary)
-                .replaceAll('var(--secondary)', hexSecondary);
+            processedSvg = PluginIconWidget.resolveThemeColors(processedSvg, primaryColor);
           }
 
           return SizedBox(

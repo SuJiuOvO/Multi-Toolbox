@@ -114,7 +114,7 @@ class PluginInputDef {
   final String id;
   final String label;
   final String description;
-  final String type; // file_picker, slider, select, number, text, switch
+  final String type; // file_picker, folder_picker, slider, select, number, text, switch
   final bool required;
   final bool allowMultiple;
   final List<String> allowedExtensions;
@@ -128,6 +128,7 @@ class PluginInputDef {
   final List<PluginBannerDef> banners;
   final List<PluginRejectedExtensionDef> rejectedExtensions;
   final bool? allowFolder;
+  final bool? allowFiles;
   final String? pickButtonText;
   final String? selectionSummary;
   final bool? isArchive;
@@ -152,6 +153,7 @@ class PluginInputDef {
     this.banners = const [],
     this.rejectedExtensions = const [],
     this.allowFolder,
+    this.allowFiles,
     this.pickButtonText,
     this.selectionSummary,
     this.isArchive,
@@ -185,6 +187,18 @@ class PluginInputDef {
   bool isAndroidOnly() {
     final lower = platforms.map((e) => e.toLowerCase()).toList();
     return lower.contains('android') && !lower.contains('windows') && !lower.contains('universal');
+  }
+
+  bool get isFileSelector => type == 'file_picker' || type == 'folder_picker';
+
+  bool get acceptsFiles =>
+      isFileSelector && type != 'folder_picker' && (allowFiles ?? true);
+
+  bool get acceptsFolders {
+    if (!isFileSelector) return false;
+    if (type == 'folder_picker') return true;
+    if (allowFolder != null) return allowFolder!;
+    return allowMultiple || allowFiles == false;
   }
 
   /// 是否为颜色输入项（显式声明为 color_picker 或具备明确颜色 Hex 语义的输入字段）
@@ -238,6 +252,7 @@ class PluginInputDef {
           ? rawRejected.map((e) => PluginRejectedExtensionDef.fromJson(Map<String, dynamic>.from(e))).toList()
           : const [],
       allowFolder: json['allowFolder'] as bool?,
+      allowFiles: json['allowFiles'] as bool?,
       pickButtonText: json['pickButtonText']?.toString(),
       selectionSummary: json['selectionSummary']?.toString(),
       isArchive: json['isArchive'] as bool?,

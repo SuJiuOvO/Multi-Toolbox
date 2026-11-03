@@ -160,6 +160,44 @@ void main() {
       expect(cond.and?[0].equals, true);
     });
 
+    test('file selector capabilities support files, folders and both', () {
+      final filesOnly = PluginInputDef.fromJson({
+        'id': 'files',
+        'label': 'Files',
+        'type': 'file_picker',
+        'allowFiles': true,
+        'allowFolder': false,
+      });
+      final foldersOnly = PluginInputDef.fromJson({
+        'id': 'folders',
+        'label': 'Folders',
+        'type': 'file_picker',
+        'allowFiles': false,
+        'allowFolder': true,
+      });
+      final both = PluginInputDef.fromJson({
+        'id': 'both',
+        'label': 'Both',
+        'type': 'file_picker',
+        'allowFiles': true,
+        'allowFolder': true,
+      });
+      final folderPicker = PluginInputDef.fromJson({
+        'id': 'folder',
+        'label': 'Folder',
+        'type': 'folder_picker',
+      });
+
+      expect(filesOnly.acceptsFiles, isTrue);
+      expect(filesOnly.acceptsFolders, isFalse);
+      expect(foldersOnly.acceptsFiles, isFalse);
+      expect(foldersOnly.acceptsFolders, isTrue);
+      expect(both.acceptsFiles, isTrue);
+      expect(both.acceptsFolders, isTrue);
+      expect(folderPicker.acceptsFiles, isFalse);
+      expect(folderPicker.acceptsFolders, isTrue);
+    });
+
     testWidgets('Multi-Output Streaming layout renders distinct sequential cards mapped by id', (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1.0;
@@ -352,6 +390,81 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.textContaining('#EF4444'), findsWidgets);
+    });
+
+    testWidgets('file picker supports file-only, folder-only and combined controls', (tester) async {
+      tester.view.physicalSize = const Size(1000, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      PluginManifest pickerPlugin({
+        String type = 'file_picker',
+        bool allowFiles = true,
+        bool allowFolder = false,
+        bool allowMultiple = true,
+      }) => PluginManifest(
+        id: 'picker-mode-test',
+        name: 'Picker Mode Test',
+        version: '1.1.2',
+        category: 'other',
+        description: 'Selection mode test',
+        icon: 'folder',
+        author: 'Toolbox Team',
+        isOfficial: true,
+        engineType: 'quickjs',
+        executionType: 'quickjs',
+        platforms: const ['universal'],
+        inputs: [
+          PluginInputDef(
+            id: 'inputPath',
+            type: type,
+            label: '选择输入',
+            allowMultiple: allowMultiple,
+            allowFiles: allowFiles,
+            allowFolder: allowFolder,
+            pickButtonText: allowFiles && type != 'folder_picker' ? '选择文件' : '选择文件夹入口',
+          ),
+        ],
+        outputs: const [],
+        action: PluginActionDef(
+          handler: 'quickjs_eval',
+          params: {'script': 'async function run() { return { success: true }; }'},
+        ),
+      );
+
+      await tester.pumpWidget(MaterialApp(home: DynamicToolRunnerPage(plugin: pickerPlugin())));
+      await tester.pumpAndSettle();
+      expect(find.text('选择文件'), findsOneWidget);
+      expect(find.text('添加文件夹'), findsNothing);
+
+      await tester.pumpWidget(MaterialApp(
+        home: DynamicToolRunnerPage(
+          plugin: pickerPlugin(allowFiles: false, allowFolder: true, allowMultiple: false),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('选择文件夹入口'), findsOneWidget);
+      expect(find.text('添加文件 (多选)'), findsNothing);
+      expect(find.text('添加文件夹'), findsNothing);
+
+      await tester.pumpWidget(MaterialApp(
+        home: DynamicToolRunnerPage(
+          plugin: pickerPlugin(allowFiles: true, allowFolder: true),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('选择文件'), findsOneWidget);
+      expect(find.text('添加文件夹'), findsOneWidget);
+
+      await tester.pumpWidget(MaterialApp(
+        home: DynamicToolRunnerPage(
+          plugin: pickerPlugin(type: 'folder_picker', allowFiles: true, allowFolder: false),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('选择文件夹入口'), findsOneWidget);
+      expect(find.text('添加文件 (多选)'), findsNothing);
     });
 
     testWidgets('Community plugin shows community badge in AppBar', (tester) async {

@@ -34,7 +34,7 @@ class PluginManagerService {
   PluginManagerService._internal();
 
   /// 当前百宝箱客户端版本号
-  static const String currentAppVersion = '1.1.0';
+  static const String currentAppVersion = '1.1.2';
 
   /// 比较两个语义化版本号 (例如 "1.0.0" 与 "1.1.0")
   /// 若 v1 > v2 返回 1; 若 v1 < v2 返回 -1; 相等返回 0
