@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:app/models/plugin_manifest.dart';
 import 'package:app/models/registry_mirror_node.dart';
@@ -201,6 +202,22 @@ void main() {
 
       expect(candidates.first, 'https://ghproxy.net/https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/direct-gh-tool.zip');
       expect(candidates, contains('https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/direct-gh-tool.zip'));
+    });
+
+    test('fastProbeCandidateUrls returns original list when length <= 1 or on timeout', () async {
+      final dio = Dio();
+      final single = ['https://example.com/one.zip'];
+      final res1 = await PluginManagerService.fastProbeCandidateUrls(dio, single);
+      expect(res1, single);
+
+      // Multiple unresponsive/fake URLs fallback to original ordering
+      final nonExistent = ['https://127.0.0.1:59998/a.zip', 'https://127.0.0.1:59999/b.zip'];
+      final res2 = await PluginManagerService.fastProbeCandidateUrls(
+        dio,
+        nonExistent,
+        timeout: const Duration(milliseconds: 100),
+      );
+      expect(res2, nonExistent);
     });
   });
 }

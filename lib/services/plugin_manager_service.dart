@@ -509,6 +509,51 @@ class PluginManagerService {
     return candidateUrls;
   }
 
+  /// 并发极速探活抢跑 (Fast Probe Race)
+  /// 在开始下载大文件前，并发向候选地址发出轻量 HEAD 探针 (超时 1500ms)
+  /// 若某个节点率先返回 200/302 (如国内 Gitee 通常仅需 50-100ms)，直接置顶为首选线路
+  static Future<List<String>> fastProbeCandidateUrls(
+    Dio dio,
+    List<String> urls, {
+    Duration timeout = const Duration(milliseconds: 1500),
+  }) async {
+    if (urls.length <= 1) return urls;
+
+    final probeCount = urls.length > 3 ? 3 : urls.length;
+    final probeTargets = urls.take(probeCount).toList();
+
+    final results = await Future.wait(probeTargets.map((u) async {
+      try {
+        final sw = Stopwatch()..start();
+        final resp = await dio.head(
+          u,
+          options: Options(
+            connectTimeout: timeout,
+            receiveTimeout: timeout,
+            followRedirects: true,
+            maxRedirects: 5,
+            validateStatus: (status) => status != null && status >= 200 && status < 400,
+          ),
+        );
+        sw.stop();
+        if (resp.statusCode != null && resp.statusCode! >= 200 && resp.statusCode! < 400) {
+          return MapEntry(u, sw.elapsedMilliseconds);
+        }
+      } catch (_) {}
+      return MapEntry(u, -1);
+    }));
+
+    final healthy = results.where((e) => e.value >= 0).toList();
+    if (healthy.isEmpty) {
+      return urls;
+    }
+
+    healthy.sort((a, b) => a.value.compareTo(b.value));
+    final fastestUrl = healthy.first.key;
+    final reordered = [fastestUrl, ...urls.where((u) => u != fastestUrl)];
+    return reordered;
+  }
+
   /// 下载并安装/热更新插件包 (.zip)
   /// 具备多平台镜像线路自动重试与故障平滑切换能力
   Future<bool> installPlugin(
@@ -522,16 +567,19 @@ class PluginManagerService {
     }
 
     // 整理候选下载地址列表 (当前节点优先 -> 其他镜像节点 -> 备用直连地址)
-    final List<String> candidateUrls = resolveDownloadCandidateUrls(
+    final rawCandidateUrls = resolveDownloadCandidateUrls(
       plugin: plugin,
       activeNode: currentActiveNode,
       nodes: allNodes,
     );
 
-    if (candidateUrls.isEmpty) {
+    if (rawCandidateUrls.isEmpty) {
       debugPrint('插件【${plugin.name}】未配置任何有效下载地址');
       return false;
     }
+
+    onProgress?.call(0.05, '正在对镜像线路进行毫秒级并发探活优选...');
+    final candidateUrls = await fastProbeCandidateUrls(_dio, rawCandidateUrls);
 
     final tempDir = await getTemporaryDirectory();
     final tempZipPath = p.join(tempDir.path, '${plugin.id}_${DateTime.now().millisecondsSinceEpoch}.zip');
@@ -554,9 +602,9 @@ class PluginManagerService {
 
       try {
         if (i == 0) {
-          onProgress?.call(0.1, '正在连接【${currentActiveNode.name}】下载线路...');
+          onProgress?.call(0.1, '正在连接【${currentActiveNode.name}】最优线路...');
         } else {
-          onProgress?.call(0.12, '主节点受阻，已自动无缝切换至备用下载线路 (${i + 1}/${candidateUrls.length})...');
+          onProgress?.call(0.12, '首选线路重试，自动无缝切换至备用下载线路 (${i + 1}/${candidateUrls.length})...');
         }
 
         if (File(tempZipPath).existsSync()) {
@@ -569,8 +617,8 @@ class PluginManagerService {
           effectiveDownloadUrl,
           tempZipPath,
           options: Options(
-            connectTimeout: const Duration(seconds: 10),
-            receiveTimeout: const Duration(seconds: 45),
+            connectTimeout: const Duration(milliseconds: 3000),
+            receiveTimeout: const Duration(seconds: 35),
             followRedirects: true,
             maxRedirects: 5,
             validateStatus: (status) => status != null && status >= 200 && status < 400,
