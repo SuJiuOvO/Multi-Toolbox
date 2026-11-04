@@ -97,6 +97,14 @@ class PluginManagerService {
     _pluginsDirectory = dir;
   }
 
+  /// 获取指定插件在本地的实际安装物理路径
+  Future<String?> getPluginDir(String id) async {
+    if (_pluginsDirectory == null) await init();
+    final target = Directory(p.join(pluginsDirectory.path, id));
+    if (target.existsSync()) return target.path;
+    return null;
+  }
+
   /// 初始化本地目录与服务器配置
   Future<void> init() async {
     try {

@@ -80,6 +80,29 @@ class InstalledWindowsApp {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'version': version,
+        'publisher': publisher,
+        'registryHive': registryHive,
+        'registryView': registryView,
+        'registryKey': registryKey,
+        'installLocation': installLocation,
+        'uninstallString': uninstallString,
+        'installDate': installDate,
+        'displayIcon': displayIcon,
+        'iconPath': iconPath,
+        'estimatedBytes': estimatedBytes,
+        'systemComponent': systemComponent,
+        'windowsInstaller': windowsInstaller,
+        'noRemove': noRemove,
+        'canUninstall': canUninstall,
+        'scopeLabel': scopeLabel,
+        'architecture': architecture,
+        'formattedSize': formattedSize,
+      };
+
   InstalledWindowsApp copyWith({String? iconPath}) => InstalledWindowsApp(
         id: id,
         name: name,
@@ -229,6 +252,29 @@ class WindowsResidueCandidate {
   final String registryView;
   final String registryPath;
   final bool canDelete;
+
+  Map<String, dynamic> toJson() => {
+        'path': path,
+        'kind': kind,
+        'note': note,
+        'targetType': targetType,
+        'registryHive': registryHive,
+        'registryView': registryView,
+        'registryPath': registryPath,
+        'canDelete': canDelete,
+      };
+
+  factory WindowsResidueCandidate.fromJson(Map<String, dynamic> json) =>
+      WindowsResidueCandidate(
+        path: json['path']?.toString() ?? '',
+        kind: json['kind']?.toString() ?? '',
+        note: json['note']?.toString() ?? '',
+        targetType: json['targetType']?.toString() ?? '',
+        registryHive: json['registryHive']?.toString() ?? '',
+        registryView: json['registryView']?.toString() ?? '',
+        registryPath: json['registryPath']?.toString() ?? '',
+        canDelete: json['canDelete'] == true,
+      );
 }
 
 class WindowsResidueActionResult {
@@ -239,6 +285,12 @@ class WindowsResidueActionResult {
   final List<String> deletedPaths;
   final List<String> errors;
   bool get succeeded => errors.isEmpty;
+
+  Map<String, dynamic> toJson() => {
+        'deletedPaths': deletedPaths,
+        'errors': errors,
+        'succeeded': succeeded,
+      };
 }
 
 typedef WindowsProcessRunner = Future<ProcessResult> Function(

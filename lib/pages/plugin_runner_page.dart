@@ -5,6 +5,7 @@ import '../services/plugin_manager_service.dart';
 import 'dynamic_tool_runner_page.dart';
 import 'handheld_bulletin_page.dart';
 import 'ssh_terminal_page.dart';
+import 'webview_tool_runner_page.dart';
 import 'windows_uninstaller_page.dart';
 
 /// One entry point for file-processing tools and persistent interactive tools.
@@ -14,6 +15,11 @@ class PluginRunnerPage extends StatelessWidget {
   final PluginManifest plugin;
 
   static Widget destinationFor(PluginManifest plugin) {
+    // 动态富交互 Webview 插件优先路由至沙箱 Webview 运行容器
+    if (plugin.isWebviewPlugin) {
+      return WebviewToolRunnerPage(plugin: plugin);
+    }
+
     // Scripts and native programs retain their declared execution engine.
     if (plugin.executionType == 'internal' && plugin.nativeRunner == null) {
       switch (plugin.action?.handler) {

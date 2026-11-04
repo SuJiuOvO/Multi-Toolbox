@@ -429,6 +429,41 @@ class PluginWasmRunnerDef {
   };
 }
 
+/// 富交互 Webview 运行配置 (executionType: webview 专属)
+class PluginWebViewRunnerDef {
+  final String entry; // Web 入口页面相对路径 (如 "dist/index.html" 或 "index.html")
+  final bool allowClipboard; // 是否授权访问剪贴板
+  final bool keepScreenOn; // 展示期间是否保持屏幕常亮
+  final bool fullscreenOnStart; // 启动时是否自动进入全屏沉浸模式
+  final String initialTheme; // "auto", "light", "dark"
+
+  PluginWebViewRunnerDef({
+    required this.entry,
+    this.allowClipboard = true,
+    this.keepScreenOn = false,
+    this.fullscreenOnStart = false,
+    this.initialTheme = 'auto',
+  });
+
+  factory PluginWebViewRunnerDef.fromJson(Map<String, dynamic> json) {
+    return PluginWebViewRunnerDef(
+      entry: json['entry']?.toString() ?? 'dist/index.html',
+      allowClipboard: json['allowClipboard'] ?? true,
+      keepScreenOn: json['keepScreenOn'] ?? false,
+      fullscreenOnStart: json['fullscreenOnStart'] ?? false,
+      initialTheme: json['initialTheme']?.toString() ?? 'auto',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'entry': entry,
+    'allowClipboard': allowClipboard,
+    'keepScreenOn': keepScreenOn,
+    'fullscreenOnStart': fullscreenOnStart,
+    'initialTheme': initialTheme,
+  };
+}
+
 /// 功能模块图标定义 (支持图片限制尺寸与大小、代码渲染矢量SVG，以及系统默认图标降级)
 class PluginIconDef {
   /// 默认最大支持图片文件大小：512 KB
@@ -581,6 +616,7 @@ class PluginManifest {
   final String executionType; // 'internal' | 'native_executable' | 'script' | 'quickjs' | 'wasm'
   final PluginNativeRunnerDef? nativeRunner;
   final PluginWasmRunnerDef? wasmRunner;
+  final PluginWebViewRunnerDef? webViewRunner;
   final String? downloadUrl;
   final Map<String, String> downloadUrls;
   final bool isOfficial;
@@ -613,6 +649,7 @@ class PluginManifest {
     this.executionType = 'internal',
     this.nativeRunner,
     this.wasmRunner,
+    this.webViewRunner,
     this.downloadUrl,
     this.downloadUrls = const {},
     this.isOfficial = false,
@@ -698,6 +735,13 @@ class PluginManifest {
         executionType == 'script';
   }
 
+  /// 是否为动态富交互 Webview 插件 (跨平台沙箱直接渲染 HTML5/CSS/JS 界面并打通 Host Bridge)
+  bool get isWebviewPlugin {
+    return webViewRunner != null ||
+        executionType == 'webview' ||
+        engineType == 'webview';
+  }
+
   /// 是否为双端自适应合一插件 (同时配置了 Windows 原生 nativeRunner 与跨平台 wasmRunner)
   bool get isDualAdaptivePlugin => nativeRunner != null && isWasmPlugin;
 
@@ -706,6 +750,9 @@ class PluginManifest {
       return '🛠️ 本地调试';
     }
     final lower = platforms.map((e) => e.toLowerCase()).toList();
+    if (isWebviewPlugin) {
+      return '🌐 动态富交互';
+    }
     if (isDualAdaptivePlugin) {
       return '🚀 双端自适应';
     }
@@ -787,6 +834,9 @@ class PluginManifest {
           : null,
       wasmRunner: json['wasmRunner'] != null
           ? PluginWasmRunnerDef.fromJson(Map<String, dynamic>.from(json['wasmRunner']))
+          : null,
+      webViewRunner: json['webViewRunner'] != null
+          ? PluginWebViewRunnerDef.fromJson(Map<String, dynamic>.from(json['webViewRunner']))
           : null,
       downloadUrl: json['downloadUrl'],
       downloadUrls: (json['downloadUrls'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? {},
