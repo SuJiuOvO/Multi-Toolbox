@@ -304,6 +304,20 @@ class WindowsExtensionRunnerService {
       ...runner.downloadUrls.values,
     ];
 
+    // 若包含 GitHub 直连地址，自动前置 ghproxy CDN 加速源
+    final cdnUrls = <String>[];
+    for (var u in urls) {
+      final uri = Uri.tryParse(u);
+      if (uri != null &&
+          (uri.host == 'github.com' || uri.host == 'raw.githubusercontent.com') &&
+          !u.startsWith('https://ghproxy.net/')) {
+        cdnUrls.add('https://ghproxy.net/$u');
+      }
+    }
+    for (var c in cdnUrls) {
+      if (!urls.contains(c)) urls.insert(0, c);
+    }
+
     final targetFile = File(targetPath);
     targetFile.parent.createSync(recursive: true);
 
@@ -314,6 +328,13 @@ class WindowsExtensionRunnerService {
         await dio.download(
           url,
           targetPath,
+          options: Options(
+            connectTimeout: const Duration(seconds: 10),
+            receiveTimeout: const Duration(seconds: 60),
+            followRedirects: true,
+            maxRedirects: 5,
+            validateStatus: (status) => status != null && status >= 200 && status < 400,
+          ),
           onReceiveProgress: (received, total) {
             if (total > 0) {
               final pct = 0.1 + (received / total) * 0.7;

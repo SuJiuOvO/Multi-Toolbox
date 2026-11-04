@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:app/models/plugin_manifest.dart';
 import 'package:app/models/registry_mirror_node.dart';
 import 'package:app/services/app_update_service.dart';
 import 'package:app/services/plugin_manager_service.dart';
@@ -106,6 +107,100 @@ void main() {
       expect(olderTriggers, isFalse, reason: 'Remote older version should never trigger update');
       expect(sameTriggers, isFalse, reason: 'Identical version should never trigger update');
       expect(newerTriggers, isTrue, reason: 'Strictly newer version should trigger update');
+    });
+  });
+
+  group('Release Assets & Multi-Source Download Resolution Tests', () {
+    test('isValidZipHeader correctly identifies ZIP magic bytes', () {
+      expect(PluginManagerService.isValidZipHeader([0x50, 0x4B, 0x03, 0x04]), isTrue);
+      expect(PluginManagerService.isValidZipHeader([0x50, 0x4B, 0x05, 0x06]), isTrue);
+      expect(PluginManagerService.isValidZipHeader([0x50, 0x4B, 0x07, 0x08]), isTrue);
+
+      // Invalid bytes (e.g. HTML / truncated)
+      expect(PluginManagerService.isValidZipHeader([0x3C, 0x21, 0x44, 0x4F]), isFalse); // '<!DO'
+      expect(PluginManagerService.isValidZipHeader([0x50, 0x4B, 0x01]), isFalse); // < 4 bytes
+      expect(PluginManagerService.isValidZipHeader([]), isFalse);
+    });
+
+    test('resolveDownloadCandidateUrls prioritizes active node and resolves Release CDN mirror', () {
+      final plugin = PluginManifest.fromJson({
+        'id': 'test-plugin',
+        'name': '测试插件',
+        'version': '1.0.0',
+        'minAppVersion': '1.0.0',
+        'author': 'Tester',
+        'category': 'other',
+        'description': 'Desc',
+        'icon': 'tool',
+        'engineType': 'quickjs',
+        'downloadUrls': {
+          'gitee': 'https://gitee.com/sujiuovo/toolbox-community-registry/releases/download/plugins/test-plugin.zip',
+          'github_cdn': 'https://ghproxy.net/https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/test-plugin.zip',
+          'github_release': 'https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/test-plugin.zip',
+        },
+        'downloadUrl': 'https://ghproxy.net/https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/test-plugin.zip',
+      });
+
+      // When active node is github_cdn
+      final cdnNode = RegistryMirrorNode.defaultNodes.firstWhere((n) => n.id == 'github_cdn');
+      final cdnCandidates = PluginManagerService.resolveDownloadCandidateUrls(
+        plugin: plugin,
+        activeNode: cdnNode,
+        nodes: RegistryMirrorNode.defaultNodes,
+      );
+
+      expect(cdnCandidates.first, contains('ghproxy.net'));
+      expect(cdnCandidates, contains('https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/test-plugin.zip'));
+      expect(cdnCandidates, contains('https://gitee.com/sujiuovo/toolbox-community-registry/releases/download/plugins/test-plugin.zip'));
+
+      // When active node is gitee
+      final giteeNode = RegistryMirrorNode.defaultNodes.firstWhere((n) => n.id == 'gitee');
+      final giteeCandidates = PluginManagerService.resolveDownloadCandidateUrls(
+        plugin: plugin,
+        activeNode: giteeNode,
+        nodes: RegistryMirrorNode.defaultNodes,
+      );
+
+      expect(giteeCandidates.first, contains('gitee.com'));
+      expect(giteeCandidates, contains('https://ghproxy.net/https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/test-plugin.zip'));
+
+      // When active node is github_raw
+      final ghRawNode = RegistryMirrorNode.defaultNodes.firstWhere((n) => n.id == 'github_raw');
+      final ghRawCandidates = PluginManagerService.resolveDownloadCandidateUrls(
+        plugin: plugin,
+        activeNode: ghRawNode,
+        nodes: RegistryMirrorNode.defaultNodes,
+      );
+
+      // github_raw resolves to github_release alias
+      expect(ghRawCandidates.first, 'https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/test-plugin.zip');
+    });
+
+    test('resolveDownloadCandidateUrls synthesizes CDN proxy for direct GitHub Release URLs', () {
+      final plugin = PluginManifest.fromJson({
+        'id': 'direct-gh-tool',
+        'name': 'Direct GH Tool',
+        'version': '1.0.0',
+        'minAppVersion': '1.0.0',
+        'author': 'Tester',
+        'category': 'other',
+        'description': 'Desc',
+        'icon': 'tool',
+        'engineType': 'quickjs',
+        'downloadUrls': {
+          'github': 'https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/direct-gh-tool.zip',
+        },
+      });
+
+      final cdnNode = RegistryMirrorNode.defaultNodes.firstWhere((n) => n.id == 'github_cdn');
+      final candidates = PluginManagerService.resolveDownloadCandidateUrls(
+        plugin: plugin,
+        activeNode: cdnNode,
+        nodes: RegistryMirrorNode.defaultNodes,
+      );
+
+      expect(candidates.first, 'https://ghproxy.net/https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/direct-gh-tool.zip');
+      expect(candidates, contains('https://github.com/SuJiuOvO/Toolbox-Community-Registry/releases/download/plugins/direct-gh-tool.zip'));
     });
   });
 }

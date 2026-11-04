@@ -420,6 +420,95 @@ class PluginManagerService {
     return remotePlugins;
   }
 
+  /// 校验二进制字节是否为有效的 ZIP 压缩包头部 (PK\x03\x04 或 PK\x05\x06 空压缩包)
+  static bool isValidZipHeader(List<int> bytes) {
+    if (bytes.length < 4) return false;
+    return bytes[0] == 0x50 &&
+        bytes[1] == 0x4B &&
+        ((bytes[2] == 0x03 && bytes[3] == 0x04) ||
+            (bytes[2] == 0x05 && bytes[3] == 0x06) ||
+            (bytes[2] == 0x07 && bytes[3] == 0x08));
+  }
+
+  /// 智能解析并整理候选下载地址列表 (多源竞速与故障切换)
+  /// 1. 当前所选节点优先 (支持 github_raw / github / github_release 别名互通)
+  /// 2. 其余预设镜像与自定义节点
+  /// 3. 插件 downloadUrls 中未收录的备选线路
+  /// 4. 插件顶层备用 downloadUrl
+  /// 5. 针对 GitHub 直连地址自动补充/前置 ghproxy CDN 加速镜像 (免梯高速通道)
+  static List<String> resolveDownloadCandidateUrls({
+    required PluginManifest plugin,
+    required RegistryMirrorNode activeNode,
+    List<RegistryMirrorNode> nodes = const [],
+  }) {
+    final List<String> candidateUrls = [];
+
+    void addUrl(String? u) {
+      if (u != null && u.trim().isNotEmpty && !candidateUrls.contains(u.trim())) {
+        candidateUrls.add(u.trim());
+      }
+    }
+
+    String? getUrlForNode(RegistryMirrorNode node) {
+      final map = plugin.downloadUrls;
+      if (map.containsKey(node.id) && map[node.id]!.trim().isNotEmpty) {
+        return map[node.id];
+      }
+      // 别名兼容
+      if (node.id == 'github_raw') {
+        return map['github_raw'] ?? map['github_release'] ?? map['github'];
+      }
+      if (node.id == 'github_cdn') {
+        return map['github_cdn'] ?? map['cdn'];
+      }
+      if (node.id == 'gitee') {
+        return map['gitee'];
+      }
+      return null;
+    }
+
+    // 1. 当前激活节点优先
+    addUrl(getUrlForNode(activeNode));
+
+    // 2. 遍历其余可用镜像节点
+    for (final node in nodes) {
+      if (node.id != activeNode.id) {
+        addUrl(getUrlForNode(node));
+      }
+    }
+
+    // 3. 插件 downloadUrls 中声明的所有其他线路
+    for (final u in plugin.downloadUrls.values) {
+      addUrl(u);
+    }
+
+    // 4. 顶层 downloadUrl 备选
+    addUrl(plugin.downloadUrl);
+
+    // 5. 若包含 GitHub 官方直连链接，自动补充 ghproxy CDN 加速源
+    final List<String> syntheticCdnUrls = [];
+    for (final url in candidateUrls) {
+      final uri = Uri.tryParse(url);
+      if (uri != null &&
+          (uri.host == 'github.com' || uri.host == 'raw.githubusercontent.com') &&
+          !url.startsWith('https://ghproxy.net/') &&
+          !url.startsWith('https://cdn.jsdelivr.net/')) {
+        syntheticCdnUrls.add('https://ghproxy.net/$url');
+      }
+    }
+    for (final cdnUrl in syntheticCdnUrls) {
+      if (!candidateUrls.contains(cdnUrl)) {
+        if (activeNode.id == 'github_cdn') {
+          candidateUrls.insert(0, cdnUrl);
+        } else {
+          candidateUrls.add(cdnUrl);
+        }
+      }
+    }
+
+    return candidateUrls;
+  }
+
   /// 下载并安装/热更新插件包 (.zip)
   /// 具备多平台镜像线路自动重试与故障平滑切换能力
   Future<bool> installPlugin(
@@ -433,20 +522,11 @@ class PluginManagerService {
     }
 
     // 整理候选下载地址列表 (当前节点优先 -> 其他镜像节点 -> 备用直连地址)
-    final List<String> candidateUrls = [];
-    if (plugin.downloadUrls.containsKey(currentActiveNode.id)) {
-      final u = plugin.downloadUrls[currentActiveNode.id]!;
-      if (u.isNotEmpty && !candidateUrls.contains(u)) candidateUrls.add(u);
-    }
-    for (final node in allNodes) {
-      if (plugin.downloadUrls.containsKey(node.id)) {
-        final u = plugin.downloadUrls[node.id]!;
-        if (u.isNotEmpty && !candidateUrls.contains(u)) candidateUrls.add(u);
-      }
-    }
-    if (plugin.downloadUrl != null && plugin.downloadUrl!.isNotEmpty && !candidateUrls.contains(plugin.downloadUrl)) {
-      candidateUrls.add(plugin.downloadUrl!);
-    }
+    final List<String> candidateUrls = resolveDownloadCandidateUrls(
+      plugin: plugin,
+      activeNode: currentActiveNode,
+      nodes: allNodes,
+    );
 
     if (candidateUrls.isEmpty) {
       debugPrint('插件【${plugin.name}】未配置任何有效下载地址');
@@ -489,8 +569,11 @@ class PluginManagerService {
           effectiveDownloadUrl,
           tempZipPath,
           options: Options(
-            connectTimeout: const Duration(seconds: 8),
-            receiveTimeout: const Duration(seconds: 40),
+            connectTimeout: const Duration(seconds: 10),
+            receiveTimeout: const Duration(seconds: 45),
+            followRedirects: true,
+            maxRedirects: 5,
+            validateStatus: (status) => status != null && status >= 200 && status < 400,
           ),
           onReceiveProgress: (received, total) {
             if (total > 0) {
@@ -500,9 +583,21 @@ class PluginManagerService {
           },
         );
 
-        if (File(tempZipPath).existsSync() && File(tempZipPath).lengthSync() > 100) {
-          downloadSuccess = true;
-          break; // 下载成功，跳出重试循环
+        final downloadedFile = File(tempZipPath);
+        if (downloadedFile.existsSync() && downloadedFile.lengthSync() > 100) {
+          final raf = await downloadedFile.open(mode: FileMode.read);
+          final headerBytes = await raf.read(4);
+          await raf.close();
+
+          if (isValidZipHeader(headerBytes)) {
+            downloadSuccess = true;
+            break; // 下载成功且通过合法 ZIP 头部校验，跳出重试循环
+          } else {
+            debugPrint('线路 ($effectiveDownloadUrl) 下载的内容非合法 ZIP 压缩包 (可能遭遇 CDN 拦截或网关错误)，切换下一线路');
+            try {
+              downloadedFile.deleteSync();
+            } catch (_) {}
+          }
         }
       } catch (e) {
         debugPrint('线路下载失败 ($effectiveDownloadUrl): $e');
