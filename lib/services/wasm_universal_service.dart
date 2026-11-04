@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:wasm_run/src/rust/api.dart' show parseWatFormat;
 import 'package:wasm_run/wasm_run.dart';
 import 'native_wasi_runner.dart';
+import 'source_map_resolver.dart';
 import 'tool_engine_service.dart';
 
 /// WebAssembly 模块导出的条目信息
@@ -610,9 +611,14 @@ class WasmUniversalService {
       if (errStr.contains('exit status 0') || (errStr.contains('status 0') || (errStr.contains('exit') && errStr.contains(' 0')))) {
         // 正常退出码 0
       } else {
+        final panicInfo = SourceMapResolver.extractWasiPanic(stderrText);
         final match = RegExp(r'exit status (\d+)').firstMatch(errStr);
         final code = match?.group(1);
-        if (code != null) {
+
+        if (panicInfo != null) {
+          executionError = 'WASI 进程崩溃 [Rust Panic]: $panicInfo\n'
+              '  请检查源文件及对应代码行号处的断言、空指针解引用或越界访问。';
+        } else if (code != null) {
           executionError = 'WASI 进程非正常退出 (退出码: $code)。常见排查原因：\n'
               '  1. 插件所需资源 (如字体/模型) 未使用 "/plugin/" 或环境变量 \$PLUGIN_DIR，误用了宿主绝对路径；\n'
               '  2. 输出文件未写入当前工作目录 "." 或 "/output/"；\n'
@@ -629,6 +635,10 @@ class WasmUniversalService {
       }
     }
     if (stderrText.trim().isNotEmpty && onLog != null) {
+      final panicInfo = SourceMapResolver.extractWasiPanic(stderrText);
+      if (panicInfo != null) {
+        onLog('🛑 [WASI Panic 结构化回显] $panicInfo', true);
+      }
       for (final line in stderrText.trim().split('\n')) {
         onLog('    $line', true);
       }

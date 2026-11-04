@@ -25,6 +25,45 @@ class WindowsExtensionRunnerService {
     }
   }
 
+  /// 组装并在无需实际启动进程的情况下导出完整的命令行指令（用于开发者抽屉调试与指令复现）
+  static String assembleCommandLine({
+    required PluginManifest plugin,
+    required Map<String, dynamic> formValues,
+    required List<String> inputFiles,
+    required String outputDir,
+  }) {
+    final runner = plugin.nativeRunner;
+    final entrySpec = runner?.entry ?? 'bin/tool.exe';
+    final pluginDir = plugin.localDir ?? '';
+    final resolvedArgs = _assembleArguments(
+      rawArgs: runner?.args ?? [],
+      formValues: formValues,
+      inputFiles: inputFiles,
+      outputDir: outputDir,
+      pluginDir: pluginDir,
+    );
+
+    String executableToSpawn = entrySpec;
+    if (pluginDir.isNotEmpty && !p.isAbsolute(entrySpec)) {
+      executableToSpawn = p.join(pluginDir, entrySpec);
+    }
+    List<String> argsToSpawn = resolvedArgs;
+
+    if (entrySpec.endsWith('.ps1') || runner?.shell == 'powershell') {
+      executableToSpawn = 'powershell.exe';
+      argsToSpawn = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', p.join(pluginDir, entrySpec), ...resolvedArgs];
+    } else if (entrySpec.endsWith('.py') || runner?.shell == 'python') {
+      executableToSpawn = 'python.exe';
+      argsToSpawn = [p.join(pluginDir, entrySpec), ...resolvedArgs];
+    } else if (entrySpec.endsWith('.bat') || entrySpec.endsWith('.cmd') || runner?.shell == 'cmd') {
+      executableToSpawn = 'cmd.exe';
+      argsToSpawn = ['/c', p.join(pluginDir, entrySpec), ...resolvedArgs];
+    }
+
+    String quoteArg(String arg) => arg.contains(' ') ? '"$arg"' : arg;
+    return '${quoteArg(executableToSpawn)} ${argsToSpawn.map(quoteArg).join(' ')}'.trim();
+  }
+
   /// 执行 Windows 开放扩展插件
   static Future<ProcessingResult> execute({
     required PluginManifest plugin,

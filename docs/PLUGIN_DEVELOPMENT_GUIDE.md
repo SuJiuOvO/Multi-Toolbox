@@ -1,6 +1,6 @@
 # 🛠️ Multi-Toolbox 社区功能模块（插件）全栈开发与技术架构指南 (Manifest v2.5)
 
-> **当前规范版本**：`Manifest v2.5` (声明式 banners / rejectedExtensions、明确文件/文件夹选择模式、非阻塞异步网络 Host Bridge、Path Jail 安全围栏、WASI Preview 1 VFS 与免打包本地热调试)  
+> **当前规范版本**：`Manifest v2.5` (声明式 banners / rejectedExtensions、交互式拾色与图片对比、非阻塞异步网络 Host Bridge、Path Jail 安全围栏、WASI Preview 1 VFS 与免打包本地热调试)
 > **适用对象**：核心维护人员、第三方工具开发者、系统与脚本工程师（Rust / C++ / WebAssembly / JavaScript / Python / CLI）  
 > **核心哲学**：**客户端极致精简稳定，海量功能按需沙箱热插拔；100% 纯本地离线执行，全面保障用户隐私与数据安全。**
 
@@ -11,7 +11,7 @@
 1. [系统整体架构与沙箱底座全貌](#1-系统整体架构与沙箱底座全貌)
 2. [五大执行模式与运行时深度解析](#2-五大执行模式与运行时深度解析)
    - [2.1 WebAssembly (Wasm) 二进制算力与 WASI Preview 1 虚拟文件系统 (VFS) 沙箱](#21-webassembly-wasm-二进制算力与-wasi-preview-1-虚拟文件系统-vfs-沙箱)
-   - [2.2 QuickJS 跨平台动态脚本沙箱与宿主 Bridge (Binary I/O & Image Pipeline)](#22-quickjs-跨平台动态脚本沙箱-executiontype-quickjs)
+   - [2.2 QuickJS 跨平台动态脚本沙箱与宿主 Bridge (Async Network, Path Jail, Binary I/O & Image Pipeline)](#22-quickjs-跨平台动态脚本沙箱-executiontype-quickjs)
    - [2.3 Windows 开放扩展工坊 (Native CLI / Script)](#23-windows-开放扩展工坊-executiontype-native_executable--script)
    - [2.4 🚀 双端自适应合一架构 (Dual-Adaptive: Win 原生 + Android WASM)](#24--双端自适应合一架构-dual-adaptive-win-原生--android-wasm)
    - [2.5 客户端内置原生算法与多媒体流水线 (Audio & Image Pipeline)](#25-客户端内置原生算法与多媒体流水线-executiontype-internal)
@@ -30,6 +30,12 @@
    - [🌟 实战 4：开发一个双端自适应合一插件（网易云 NCM 解密器）](#-实战-4开发一个双端自适应合一插件网易云-ncm-解密器)
 5. [本地开发、热调试、打包与自动化测试规范](#5-本地开发打包与自动化测试规范)
    - [5.1 🌟 关联本地开发目录：免打包实时热调试 (Dev Link Mode)](#51--关联本地开发目录免打包实时热调试-local-dev-link-mode)
+   - [5.2 运行期「开发者调试抽屉 (Dev Drawer)」可观测性中枢](#52-运行期开发者调试抽屉-dev-drawer-可观测性中枢)
+   - [5.3 QuickJS 报错行号偏移补偿与 SourceMap 解析](#53-quickjs-报错行号偏移补偿与-sourcemap-解析)
+   - [5.4 WASI Panic 结构化回显](#54-wasi-panic-结构化回显)
+   - [5.5 分块流式传输与大文件零内存拷贝 (Chunked VFS Transfer)](#55-分块流式传输与大文件零内存拷贝-chunked-vfs-transfer)
+   - [5.6 注册中心 GitHub Actions 跨平台交叉编译矩阵](#56-注册中心-github-actions-跨平台交叉编译矩阵)
+   - [5.7 运行本地自动化构建与一致性校验](#57-运行本地自动化构建与一致性校验)
 6. [社区注册中心提交与合入发布规范 (PR 流程)](#6-社区注册中心提交与合入发布规范-pr-流程)
 
 ---
@@ -130,7 +136,7 @@ flowchart TD
   "wasmRunner": {
     "entry": "bin/tool.wasm",
     "executionMode": "wasi_cli",
-    "args": ["-i", "{input}", "-o", "{outputDir}"],
+    "args": ["tool", "-i", "{input}", "-o", "{outputDir}"],
     "batchMode": true,
     "showTerminal": true
   },
@@ -156,13 +162,38 @@ flowchart TD
   - 最终结果直接以 `return` 语句返回字符串呈现给用户。
 
 #### 核心 API 与宿主双向通信能力 (Host Bridge)：
-QuickJS 插件沙箱不仅支持普通的文本分析，还提供文件与图形处理 API：
+QuickJS 插件沙箱不仅支持普通的文本分析，更提供了完整的高性能底层文件、网络、存储与图形处理 API：
+
+- **现代标准异步非阻塞网络通信 (`Toolbox.http` / 全局 `fetch`)**：
+  - `fetch(url, options)` / `Toolbox.http.fetch(url, options)`：完全遵循现代 Web 标准 Fetch API 规范的 Promise 接口。
+    - 支持 `const data = await res.json()`、`const text = await res.text()`；
+    - 支持便捷属性 `res.ok`（`true` 表示 200~299 状态码）、`res.status` / `res.statusCode`、`res.headers`、`res.body`；
+    - **非阻塞零卡顿**：网络 I/O 完全在后台并发调度，绝不占用 UI 主线程，彻底杜绝界面假死现象！
+  - `Toolbox.http.getAsync(url, headers)`：标准 Promise 异步 GET 网络请求，返回包装了 `json()`、`text()` 与 `ok` 的响应对象。
+  - `Toolbox.http.postAsync(url, body, headers)`：标准 Promise 异步 POST 网络请求。
+  - `Toolbox.http.get(url, headers)` / `Toolbox.http.post(url, body, headers)`：向后兼容旧版插件的同步调用接口。
+  - ⚠️ **沙箱权限强约束**：插件发起任何外部网络请求前，**必须**在 `manifest.json` 的顶层显式声明 `"permissions": ["network"]`。若未申请权限，沙箱拦截器将即刻阻断请求并抛出受控安全异常，彻底杜绝静默数据外发。
+
+- **插件专属隔离持久化存储 (`Toolbox.storage`)**：
+  - 每个插件享有完全独立、沙箱隔离的本地 JSON 键值存储空间，跨生命周期持久化保存配置、用户 Token 或历史状态：
+    - `Toolbox.storage.get(key, defaultValue)`：读取存储值，若不存在则返回缺省值。
+    - `Toolbox.storage.set(key, value)`：持久化写入值（支持字符串、数字、布尔值或复杂 JSON 字典/列表）。
+    - `Toolbox.storage.remove(key)` / `Toolbox.storage.delete(key)`：删除指定键。
+    - `Toolbox.storage.getAll()`：获取当前插件存储的所有键值对字典对象。
+
+- **路径越权安全围栏 (Path Jail)**：
+  - 宿主文件系统访问受严格的安全路径白名单限制：
+    - 读操作限制在用户传入的 `inputFiles`、输出目录 `outputDir`、插件私有目录 `localDir` 及数据目录 `pluginDataDir` 范围内；
+    - 写操作（`writeFile`、`remove`、`mkdir`）仅允许向 `outputDir`、系统临时缓存目录和 `pluginDataDir` 写入；
+    - 严禁通过 `../../` 进行目录穿越攻击。若插件确实需要访问全盘任意文件（如全盘查重清理类系统工具），必须在 Manifest 中显式声明 `"permissions": ["fs:unrestricted"]`。
+
 - **二进制与文件系统 (`Toolbox.fs`)**：
-  - `Toolbox.fs.readBytes(path)`: **同步返回 Base64 编码的 `string`**，与 `readFile(path, true)` 等价；此接口名称不代表返回原始字节数组。
-  - `Toolbox.fs.readBinary(path)`: **同步返回 `Uint8Array`**，当前实现先通过宿主桥读取 Base64 字符串，再在 JS 内解码为字节数组。
-  - `Toolbox.fs.readFile(path, isBase64)`: 同步读取文件为 UTF-8 文本字符串（默认）或 Base64 编码字符串（`isBase64: true`）。`readText(path)` 等价于 `readFile(path, false)`。
-  - `Toolbox.fs.writeFile(path, content, isBase64)`: 同步写入文本字符串或 Base64 编码的二进制内容，成功返回 `true`。传入 `Uint8Array` 时自动编码为 Base64。
-  - `Toolbox.fs.writeBinary(path, bytes)`: 同步写入 `Uint8Array`，也兼容已有 Base64 字符串；成功返回 `true`。字节数组仍经过 Base64 编码后传给宿主。
+  - `Toolbox.fs.readBinary(path)`: 同步读取文件并返回 `Uint8Array` 原始二进制字节数组，适合处理图片/音频/压缩包等非文本格式。
+  - `Toolbox.fs.writeBinary(path, bytes)`: 直接将 `Uint8Array` 原始二进制字节流写入指定路径。
+  - `Toolbox.fs.readBytes(path)`: 同步读取文件为 Base64 编码字符串（配合 `Toolbox.utils.base64ToBytes` 使用），不返回字节数组或 Promise。
+  - `Toolbox.fs.readFile(path, isBase64)`: 读取文件为 UTF-8 文本字符串（默认）或 Base64 编码字符串（`isBase64: true`）。
+  - `Toolbox.fs.writeFile(path, content, isBase64)`: 写入文本字符串、Base64 编码字符串或直接传入 `Uint8Array` 字节流到磁盘。
+  - `Toolbox.fs.listFiles(dirPath)` / `Toolbox.fs.readDir(dirPath)` / `Toolbox.fs.list(dirPath)`: 列出指定目录下的文件与子目录列表。若要列出用户选择的输入文件所在父目录下的同级文件，需声明 `fs:read_directory` 或 `fs:read_parent_dir` 权限。
   - `Toolbox.fs.remove(path)` / `Toolbox.fs.delete(path)`: 安全删除指定的临时文件或递归删除临时目录，方便清理中间帧缓存。
   - `Toolbox.fs.exists(path)`: 判断文件或目录是否存在。
 - **极速编解码工具箱 (`Toolbox.utils`)**：
@@ -170,10 +201,6 @@ QuickJS 插件沙箱不仅支持普通的文本分析，还提供文件与图形
   - `Toolbox.utils.bytesToBase64(uint8Array)`: 将 `Uint8Array` 极速编码为 Base64 字符串。
 - **纯本地原生图形管道 (`Toolbox.image.pipeline`)**：
   - 无需在 JS 中费力解析复杂的 PNG/JPG 结构，通过 `await Toolbox.image.pipeline(steps, inputFiles)` 直接调用宿主纯 Dart 驱动的高性能图形流水线（缩放、裁剪、圆形裁切、图层叠放水印、生成动图 GIF）。
-
-这些文件接口不返回 Promise；在调用前加上 `await` 不会把磁盘访问或 Base64 编解码移到后台。当前二进制读写会整文件加载，并经过 Base64、JSON 宿主桥和 JS 字节数组分配，不能视为零拷贝或流式传输。处理大图片、归档或其他大文件时，优先向 `Toolbox.image.pipeline`、归档接口或 WASM 传递文件路径，避免将整个文件搬进 JS。
-
-脚本完成结果通过 `ToolboxChannel_Done` 事件交给宿主；等待期间仍有 **5ms 的 Promise job pump**，负责排空 QuickJS 微任务队列。完成事件替代的是旧版重复求值 `window.__runFinished` 的状态查询，不代表已经实现无定时唤醒的事件循环。`setTimeout` 回调之后的 `await` / `.then()` 仍依赖微任务调度，详见 [QuickJS 调度与传输基线](QUICKJS_PERFORMANCE.md)。
 
 #### 二进制与图形处理代码范例：
 ```javascript
@@ -236,7 +263,7 @@ async function run({ inputFiles, outputDir, params }) {
   "wasmRunner": {
     "entry": "bin/tool.wasm",
     "executionMode": "wasi_cli",
-    "args": ["-i", "{input}", "-o", "{outputDir}"],
+    "args": ["tool", "-i", "{input}", "-o", "{outputDir}"],
     "batchMode": true
   }
 }
@@ -408,7 +435,168 @@ async function run({ inputFiles, outputDir, params }) {
 
 ---
 
-## 4. 从零开始的实战开发教程 (4 个完整实例)
+### 3.6 复合输出结果声明模型 (`outputs`)
+
+以往插件如果计算得到多组数据或分析结论，往往只能将内容塞入单行状态信息中。Manifest v2.4 引入了强大的声明式复合输出展示体系：
+
+```json
+"outputs": [
+  {
+    "id": "summary",
+    "type": "copyable_text",
+    "label": "分析摘要概览",
+    "description": "核心计算结论速览"
+  },
+  {
+    "id": "metrics",
+    "type": "key_value_table",
+    "label": "关键性能与量化指标",
+    "description": "以键值表格清晰呈现各维度数据"
+  },
+  {
+    "id": "report",
+    "type": "markdown",
+    "label": "详细 Markdown 诊断报告"
+  },
+  {
+    "id": "raw_json",
+    "type": "json_tree",
+    "label": "原始结构化数据 (JSON)"
+  }
+]
+```
+
+#### 支持的展示类型 (`type`)：
+| 输出类型 `type` | 渲染形态与交互体验 | 适用数据形态 |
+| :--- | :--- | :--- |
+| `copyable_text` | 等宽字体文本展示框，内置一键复制按钮与行号排版 | 纯文本、哈希校验码、Base64 密文、生成的代码片段 |
+| `key_value_table` | 高对比度键值表格，键列紧凑高亮、值列支持任意长文本自适应 | 性能指标、字典映射、元数据属性（Map 对象） |
+| `markdown` | 渲染多级标题、列表、粗体、代码块与链接 | 结构化诊断报告、排版说明、格式化日志 |
+| `json_tree` | 自动格式化（缩进 2 空格）的 JSON 代码卡片，支持一键完整拷贝 | 复杂嵌套的 API 响应、调试配置、全量分析 Dump |
+| `image_compare` | 原生交互式前后滑动对比器（Before / After Split Slider），支持鼠标/手指拖动滑块、60fps 实时无损比对、双向角标展示与全屏切换 | 图像去噪/超分、格式转换、去水印、滤镜对比、画质增强 |
+
+#### 插件数据映射与流式顺序排布：
+当配置了多个 `outputs` 时，JavaScript 脚本在 `return` 时返回 `data` 对象，**其键名与 `output.id` 严格对应**：
+```javascript
+return {
+  success: true,
+  message: '数据分析完成',
+  data: {
+    summary: '总耗时 42ms，已成功处理 1,200 条记录',
+    metrics: {
+      'rps': 28500,
+      'memory_mb': 14.2,
+      'error_rate': '0.00%'
+    },
+    raw_json: {
+      status: 'OK',
+      timestamp: Date.now()
+    }
+  }
+};
+```
+宿主底座将按清单中声明的顺序，依次流式排布为独立的卡片群，每个卡片右上角均提供高易用性的“一键复制”操作！
+
+---
+
+### 3.7 插件安全权限声明模型 (`permissions`)
+
+Multi-Toolbox 对第三方插件执行最小权限原则（Principle of Least Privilege）：
+
+```json
+"permissions": [
+  "network",
+  "fs:read_directory",
+  "fs:unrestricted"
+]
+```
+
+- **`network`**：
+  - 授权插件调用 `fetch`、`Toolbox.http.getAsync`、`Toolbox.http.postAsync` 等网络请求 API。
+  - 若未声明，所有网络调用均在沙箱边界直接被拦截并抛出受控安全错误。
+- **`fs:read_directory` / `fs:read_parent_dir`**：
+  - 授权插件读取用户选定输入文件所在父目录（即同级其他文件）。
+  - 严格遵循最小权限原则：默认情况下，插件只能读取用户在文件选择器中具体点选的文件；若插件需要扫描同级关联文件（例如字幕伴侣文件 `.srt`、同名元数据 `.json` 等），声明该权限即可合规访问父目录同级文件。
+- **`storage_manage` / `storage`**：
+  - 授权插件在 Android 移动端申请【所有文件访问管理权限 (MANAGE_EXTERNAL_STORAGE)】。
+  - 适用于万能解压缩、全盘文档检索等需要深度扫描公共下载目录或根目录文件系统的工具，客户端在执行前将自动进行权限预检并提示授权。
+- **`fs:unrestricted`**（兼容 `fs_unrestricted`）：
+  - 授权插件突破 Path Jail 目录围栏，访问用户选定目录以外的全盘任意绝对路径（适用于全盘扫描、系统垃圾清理、大文件查重等特权工具）。
+
+---
+
+### 3.8 声明式提示横幅 (`banners`) 与专有格式受阻引导 (`rejectedExtensions`) (Manifest v2.5)
+
+为了彻底解决客户端“硬编码打补丁（破窗效应）”的弊端，Manifest v2.5 将**平台特定提示**与**专有受阻格式引导弹窗**完全数据声明化：
+
+#### 1. 声明式提示横幅 (`banners`)：
+支持在 `manifest.json` 根级（顶部全局展示）或 `inputs` 单项组件级（组件下方吸附）声明任意数量的富文本提示条：
+
+```json
+"banners": [
+  {
+    "type": "warning",
+    "platform": "windows",
+    "icon": "desktop_windows",
+    "message": "💡 Windows 提示：本功能需电脑安装 Microsoft Office 或 WPS 工具进行 100% 格式无损导出。",
+    "visibleIf": {
+      "field": "subTool",
+      "equals": "pptx_to_pdf"
+    }
+  }
+]
+```
+
+#### 2. 专有格式受阻拦截与教学引导 (`rejectedExtensions`)：
+在 `file_picker` 输入项中，若某些闭源/专有加密格式无法直接转换（如 AutoCAD 的 `.dwg`/`.dwf`、苹果私有格式等），可声明拦截规则。用户一旦误选，宿主将拦截非法输入并弹出格式转换操作指引弹窗：
+
+```json
+"rejectedExtensions": [
+  {
+    "extensions": [".dwg", ".dwf"],
+    "title": "CAD 专有格式转换提示",
+    "message": "您选择的文件属于 DWG / DWF 专有二进制加密格式。
+
+由于该格式闭源专有，移动端与跨平台端无法直接进行高保真矢量解码。
+
+【100% 全矢量无损转换操作指引】：
+1. 在 AutoCAD / 中望CAD 中打开此图纸；
+2. 命令行键入快捷命令 DXFOUT（或另存为 AutoCAD DXF 格式）；
+3. 将保存后的 .dxf 文件直接拖入本工具转换，即可享受全矢量无损输出！"
+  }
+]
+```
+
+---
+
+## 4. 从零开始的实战开发教程 (脚手架与 4 个完整实例)
+
+### 4.0 极速脚手架初始化插件 (`tools/create_plugin.py`)
+
+为了降低开发者创建插件的门槛并杜绝字段拼写错误，社区注册中心提供了官方脚手架 CLI 工具：
+
+```bash
+# 快速生成 QuickJS 脚本插件模板 (推荐)
+python tools/create_plugin.py --id my-awesome-tool --name "我的实用工具" --type quickjs --category text
+
+# 生成 WebAssembly (WASI) 算力插件模板
+python tools/create_plugin.py --id my-wasm-calc --name "WASM 算力模块" --type wasm --category dev
+
+# 生成 Windows 独立命令行工具模板
+python tools/create_plugin.py --id my-win-cli --name "Win 自动化工坊" --type native_executable --category system
+```
+
+`native_executable` 是 `win_ext` 的 CLI 别名，两者生成相同的 Windows 原生模板。分类支持 `image/media/text/dev/system/audio/video/archive/document/network/utility/other/win_ext`；WASM 工程 ID 必须以小写字母开头。
+
+#### 脚手架自动生成的标准工程体系：
+- 自动写入 `$schema: "../../schemas/manifest.schema.json"`，在 VS Code 中享受全字段智能补全与实时格式验证；
+- 三类模板均使用 `icon.data` 中的 `currentColor` 双色 SVG，随客户端明暗主题适配；
+- QuickJS 生成带类型引用的 `entry.js`，通过 `async run(ctx)` 接收输入文件与表单参数，示例读取 TXT/JSON 文本；客户端按约定文件名加载，不读取 `action.entry` 或 `scriptFile`；
+- WASM 生成 `Cargo.toml`、`src/main.rs`、`build.bat`、`build.sh`，使用 `io::copy` 流式处理文件；执行 `build.bat` 或 `bash build.sh` 将模块输出至 `bin/`。`wasmRunner.args` 是完整 WASI argv，第一项为程序名，后面才是 `-i`、`-o`；
+- Windows 模板声明 `native_executable`、`nativeRunner` 与 `windows` 平台，请先将自己的 CLI 放入 `bin/` 并调整参数；
+- 自动生成各引擎对应的 `README.md`。完成实现、编译和客户端调试后再打包提交。
+
+---
 
 ### 实战 1：开发一个 QuickJS 文本高频词分析与多重编解码模块
 
@@ -453,25 +641,23 @@ async function run({ inputFiles, outputDir, params }) {
     }
   ],
   "action": {
-    "handler": "quickjs_runner",
-    "params": {
-      "scriptFile": "analyzer.js"
-    }
+    "handler": "quickjs_eval",
+    "params": {}
   }
 }
 ```
 
-#### 第三步：编写核心脚本 `plugins/text-analyzer/analyzer.js`
+#### 第三步：编写核心脚本 `plugins/text-analyzer/entry.js`
 ```javascript
-// inputs 对象由宿主环境自动注入
-const text = (inputs.sourceText || '').trim();
-const topLimit = parseInt(inputs.topN || 10, 10);
+async function run(ctx) {
+const text = (ctx.params.sourceText || '').trim();
+const topLimit = parseInt(ctx.params.topN || 10, 10);
 
 if (!text) {
-  return "【错误】未提供有效的待分析文本内容！";
+  return { success: false, message: '未提供有效的待分析文本内容' };
 }
 
-console.log("正在对 " + text.length + " 个字符进行分词统计...");
+Toolbox.log("正在对 " + text.length + " 个字符进行分词统计...");
 
 // 简单分词逻辑 (支持中英文单词与连续汉字统计)
 const words = text.match(/[\u4e00-\u9fa5]{2,}|[a-zA-Z]{3,}/g) || [];
@@ -498,8 +684,8 @@ sortedList.forEach(([word, count], idx) => {
   result += ` [${idx + 1}] ${word} : 出现 ${count} 次 (${percent}%)\n`;
 });
 
-// 输出结果直接由 return 返回呈现
-return result;
+return { success: true, text: result };
+}
 ```
 
 ---
@@ -753,20 +939,107 @@ plugins/ncm-audio-converter/
 
 ---
 
-### 5.2 运行自动化构建与检查
+### 5.2 运行期「开发者调试抽屉 (Dev Drawer)」可观测性中枢
+
+在 Multi-Toolbox 客户端的任何插件运行器界面右上角，均提供 **`[🐛 开发者调试抽屉]`** 入口。点击即可呼出全方位运行时状态看板：
+- **实时表单参数快照 (Form Values Snapshot)**：以格式化 JSON 直观展示所有动态输入控件的当前求值状态，支持一键复制；
+- **VFS 虚拟目录映射表 (POSIX Mappings)**：清晰对比 `/output`、`/plugin`、`/tmp` 以及每个输入文件的物理宿主路径与沙箱挂载路径；
+- **宿主注入环境变量 (Toolbox.env)**：实时展开查看 QuickJS 沙箱或 WASI 容器捕获的完整系统环境变量；
+- **原生 CLI 一键复现指令 (Native Runner Repro Command)**：自动解析并替换 `{input}`、`{inputs}`、`{outputDir}` 等参数模板，生成可直接在外部 PowerShell 或 CMD 控制台粘贴运行的完整调试指令，方便进行独立断点调试与压力测试。
+
+---
+
+### 5.3 QuickJS 报错行号偏移补偿与 SourceMap 解析
+
+在客户端内嵌 QuickJS 沙箱中，宿主在包装执行插件代码时自动记录前置引导行数 $N$：
+1. **行号偏移标定 (Line Offset Compensation)**：JS 异常报错时，客户端自动执行正则重写：
+   $$\text{OriginalLine} = \text{ReportedLine} - \text{HeaderLinesCount}$$
+   终端与报错提示直接对齐开发者本地源文件（如 `entry.js:12:5` 而非 `<eval>:19:5`）。
+2. **SourceMap 逆向映射**：若脚本末尾附带 `//# sourceMappingURL=data:application/json;base64,...` 或插件目录内包含同名 `.map` 文件，客户端自动解码 VLQ 映射表，不仅精确定位到 TypeScript / ES 源码的文件名与行号，还会高亮回显出错位置的代码上下文片段。
+
+---
+
+### 5.4 WASI Panic 结构化回显
+
+针对基于 Rust / C++ 编译的 WebAssembly WASI Preview 1 模块：
+- 当模块内部触发 `panic!` 时，客户端宿主层智能捕获 `stderr` 输出；
+- 正则提取包含 `panicked at` 的源文件名、代码行号与断言原因；
+- 以 **`🛑 [WASI Panic 结构化回显]`** 格式在终端控制台和错误弹窗首行高亮展示，彻底终结退出状态码为非零时的“黑盒排障”。
+
+---
+
+### 5.5 分块流式传输与大文件零内存拷贝 (Chunked VFS Transfer)
+
+对于百兆级别的大文件处理，为彻底避免 Base64 编码带来的 33% 内存膨胀与 OOM 风险，`Toolbox.fs` 提供了高效的分块流式读写句柄：
+
+```javascript
+async function run({ inputFiles, outputDir }) {
+  const inPath = inputFiles[0];
+  const outPath = outputDir + '/processed.dat';
+
+  // 打开流式读取器（默认每块 64KB，按需自定义）
+  const reader = Toolbox.fs.openChunkReader(inPath, { chunkSize: 65536 });
+  const writer = Toolbox.fs.openChunkWriter(outPath);
+
+  let chunkIndex = 0;
+  while (reader.hasNext()) {
+    const chunk = reader.nextChunk(); // 返回 Uint8Array
+    if (!chunk) break;
+
+    // 对每个分片进行就地计算或加解密
+    processChunk(chunk);
+
+    // 流式刷入目标文件
+    writer.writeChunk(chunk);
+    chunkIndex++;
+  }
+
+  reader.close();
+  const res = writer.close();
+  Toolbox.log(`处理完毕！共流式写入 ${res.fileSize} 字节`);
+  return { success: true };
+}
+```
+
+---
+
+### 5.6 注册中心 GitHub Actions 跨平台交叉编译矩阵
+
+第三方插件开发者向社区注册中心贡献双端自适应或原生/WASM 插件时，**无需在本地配置繁琐的 Rust、MinGW/MSVC 或 WASI 工具链**：
+1. 开发者仅需在 PR 中提交插件源码（包含 `src/Cargo.toml` 与 `src/main.rs`）；
+2. 仓库内嵌 `.github/workflows/build-plugins.yml` 自动化跨平台构建矩阵：
+   - **`windows-latest` 节点**：调度 MSVC / Rust 编译输出 `bin/<id>.exe`；
+   - **`ubuntu-latest` 节点**：安装 `wasm32-wasip1` 交叉编译输出 `bin/<id>.wasm`；
+3. 云端工作流自动将编译产物注入插件包目录，并运行 `tools/compile_plugin_sources.py` 与全部 Schema / 单测校验；
+4. 开发者也可以在本地随时使用如下命令自检编译：
+   ```bash
+   # 仅检查二进制与源码对应关系
+   python tools/compile_plugin_sources.py --validate-only
+   # 模拟构建并打印目标路径
+   python tools/compile_plugin_sources.py --dry-run
+   ```
+
+---
+
+### 5.7 运行本地自动化构建与一致性校验
 
 社区注册表仓库自带本地校验与构建工具 `tools/build_registry.py`。
 
 在 `Toolbox-Community-Registry-Repo/` 根目录下执行：
 ```bash
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
+python tools/build_registry.py --validate-only
 python tools/build_registry.py
 ```
 
+`--validate-only` 不修改包或索引。安装 Rust `wasm32-wasip1` 目标和 Node.js 后，可设置环境变量 `TOOLBOX_TEST_WASI=1` 再运行测试，实际编译脚手架并按清单参数执行 WASI 文件处理。
+
 ### 校验项清单：
 1. **文件夹与 ID 一致性**：`plugins/<plugin_id>/` 目录名与 `manifest.json` 中的 `"id"` 必须完全对齐。
-2. **必填元数据校验**：必须包含 `id`、`name`、`version`、`category`、`description` 字段。
-3. **图标安全校验**：SVG 代码大小 $\le$ 64KB；图片数据 $\le$ 512KB。
-4. **包体压缩**：脚本自动生成 `packages/<plugin_id>.zip` 并生成标准哈希。
+2. **完整 Schema 校验**：使用 `schemas/manifest.schema.json` 校验必填元数据及 inputs、outputs、action、权限、执行器等嵌套字段，兼容现有插件的历史别名与缺省平台配置。
+3. **图标与脚本校验**：SVG UTF-8 大小 $\le$ 64KB；检查内联图片大小、QuickJS 源码入口，拒绝客户端忽略的 `action.entry` 和 `scriptFile`。
+4. **确定性包体**：全部清单通过后才生成 ZIP 和哈希。源码配置统一 LF、目录排序与 ZIP 元数据固定，二进制保持原始字节；重复构建不重写相同输出。
 5. **多源镜像索引聚合**：自动更新 `registry/index.json`，补充 Gitee、jsDelivr CDN 与 GitHub 直连三重下载源。
 
 ---

@@ -8,9 +8,38 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sync_http/sync_http.dart';
 import '../models/plugin_manifest.dart';
+import 'source_map_resolver.dart';
 import 'tool_engine_service.dart';
 import 'archive_universal_service.dart';
 import 'wasm_universal_service.dart';
+
+/// 管理 QuickJS 沙箱分块流式文件读写句柄会话
+class _ChunkSession {
+  final Map<String, RandomAccessFile> readers = {};
+  final Map<String, RandomAccessFile> writers = {};
+  final Map<String, int> readerChunkSizes = {};
+  int _counter = 0;
+
+  String nextHandle(String prefix) => '${prefix}_${++_counter}_${DateTime.now().microsecondsSinceEpoch}';
+
+  void closeAll() {
+    for (final raf in readers.values) {
+      try {
+        raf.closeSync();
+      } catch (_) {}
+    }
+    readers.clear();
+    readerChunkSizes.clear();
+
+    for (final raf in writers.values) {
+      try {
+        raf.flushSync();
+        raf.closeSync();
+      } catch (_) {}
+    }
+    writers.clear();
+  }
+}
 
 /// Android & 全平台 QuickJS 内存安全沙箱执行引擎与宿主桥接中枢 (Host Bridge)
 /// 负责为无原生依赖的社区动态 JavaScript 插件提供高性能运行环境，
@@ -18,6 +47,7 @@ import 'wasm_universal_service.dart';
 class QuickJsBridgeService {
   static JavascriptRuntime? _activeRuntime;
   static Completer<dynamic>? _activeCompleter;
+  static _ChunkSession? _activeChunkSession;
   static bool _wasCancelled = false;
 
   /// 中止当前正在运行的 JS 脚本
@@ -27,6 +57,8 @@ class QuickJsBridgeService {
       _activeCompleter!.complete(null);
     }
     try {
+      _activeChunkSession?.closeAll();
+      _activeChunkSession = null;
       _activeRuntime?.dispose();
     } catch (e) {
       debugPrint('QuickJS 终止异常: $e');
@@ -62,6 +94,8 @@ class QuickJsBridgeService {
       outDir.createSync(recursive: true);
     }
     final preExecutionFiles = _scanDirectory(outputDir);
+    final chunkSession = _ChunkSession();
+    _activeChunkSession = chunkSession;
 
     String pluginDataDir;
     try {
@@ -135,6 +169,7 @@ class QuickJsBridgeService {
             pluginDirectory: plugin.localDir,
             pluginDataDir: pluginDataDir,
             plugin: plugin,
+            chunkSession: chunkSession,
           );
         } catch (e) {
           result = {'__error': e.toString()};
@@ -291,45 +326,55 @@ class QuickJsBridgeService {
       onProgress(0.3, '正在执行插件逻辑...');
       onLog('>>> 开始执行 JavaScript 逻辑...', false);
 
-      final wrappedRunner = """
-      window.__runFinished = false;
-      window.__runResult = null;
+      const runnerPrefix = 'window.__runFinished = false;\n'
+          'window.__runResult = null;\n'
+          '\n'
+          '(async function() {\n'
+          '  var res = null;\n'
+          '  try {\n'
+          '    var fetch = window.fetch;\n';
 
-      (async function() {
-        var res = null;
-        try {
-          var fetch = window.fetch;
-          $scriptSource
-          ;
-          if (typeof run === 'function') {
-            res = await run({
-              inputFiles: Toolbox.env.inputFiles,
-              outputDir: Toolbox.env.outputDir,
-              params: Toolbox.env.params,
-              inputs: Toolbox.env.params
-            });
-          } else {
-            res = { success: true, message: '执行完成' };
-          }
-        } catch(err) {
-          res = { success: false, message: (err && err.stack) ? err.stack : String(err) };
-        } finally {
-          window.__runResult = res;
-          window.__runFinished = true;
-          try {
-            sendMessage('ToolboxChannel_Done', JSON.stringify(res));
-          } catch(e) {}
-        }
-      })();
-      """;
+      const runnerSuffix = '\n'
+          '    if (typeof run === \'function\') {\n'
+          '      res = await run({\n'
+          '        inputFiles: Toolbox.env.inputFiles,\n'
+          '        outputDir: Toolbox.env.outputDir,\n'
+          '        params: Toolbox.env.params,\n'
+          '        inputs: Toolbox.env.params\n'
+          '      });\n'
+          '    } else {\n'
+          '      res = { success: true, message: \'执行完成\' };\n'
+          '    }\n'
+          '  } catch(err) {\n'
+          '    var errMsg = (err && err.message) ? String(err.message) : String(err);\n'
+          '    var errStack = (err && err.stack) ? String(err.stack) : \'\';\n'
+          '    var fullError = errStack ? (errMsg + \'\\n\' + errStack) : errMsg;\n'
+          '    res = { success: false, message: fullError };\n'
+          '  } finally {\n'
+          '    window.__runResult = res;\n'
+          '    window.__runFinished = true;\n'
+          '    try {\n'
+          '      sendMessage(\'ToolboxChannel_Done\', JSON.stringify(res));\n'
+          '    } catch(e) {}\n'
+          '  }\n'
+          '})();';
+
+      final headerLineOffset = runnerPrefix.split('\n').length - 1;
+      final wrappedRunner = '$runnerPrefix$scriptSource$runnerSuffix';
 
       jsRuntime.evaluate(wrappedRunner);
       jsRuntime.executePendingJob();
 
-      // 纯事件驱动驱动循环，免除旧版 evaluate("window.__runFinished") 每次 20ms 的 JS 字符串重编译与求值开销
+      // 自适应无级事件泵循环：前 5 轮立即交出微任务队列，随后 2ms 微等待，任一阶段完成时立即打断退出
+      var pollIteration = 0;
       while (!runCompleter.isCompleted && !_wasCancelled) {
-        await Future.delayed(const Duration(milliseconds: 5));
         jsRuntime.executePendingJob();
+        final delay = (pollIteration < 5) ? Duration.zero : const Duration(milliseconds: 2);
+        pollIteration++;
+        await Future.any([
+          runCompleter.future,
+          Future.delayed(delay),
+        ]);
       }
 
       dynamic completionData;
@@ -374,7 +419,17 @@ class QuickJsBridgeService {
           isSuccess = false;
         }
         if (decoded['message'] != null) {
-          message = decoded['message'].toString();
+          var rawMsg = decoded['message'].toString();
+          if (!isSuccess) {
+            rawMsg = SourceMapResolver.compensateStackTrace(
+              rawMsg,
+              headerLineOffset: headerLineOffset,
+              scriptSource: scriptSource,
+              scriptFileName: _resolveScriptFileName(plugin),
+              pluginLocalDir: plugin.localDir,
+            );
+          }
+          message = rawMsg;
         }
         if (decoded.containsKey('data')) {
           resultData = decoded['data'];
@@ -410,12 +465,21 @@ class QuickJsBridgeService {
         resultText: resultText,
       );
     } catch (e, stack) {
-      onLog('>>> 运行时异常: $e\n$stack', true);
+      final compMsg = SourceMapResolver.compensateStackTrace(
+        e.toString(),
+        headerLineOffset: 7,
+        scriptSource: scriptSource,
+        scriptFileName: _resolveScriptFileName(plugin),
+        pluginLocalDir: plugin.localDir,
+      );
+      onLog('>>> 运行时异常: $compMsg\n$stack', true);
       return ProcessingResult(
         success: false,
-        message: 'QuickJS 沙箱运行异常: $e',
+        message: 'QuickJS 沙箱运行异常: $compMsg',
       );
     } finally {
+      chunkSession.closeAll();
+      _activeChunkSession = null;
       _activeCompleter = null;
       _activeRuntime = null;
       try {
@@ -433,6 +497,7 @@ class QuickJsBridgeService {
     String? pluginDirectory,
     required String pluginDataDir,
     required PluginManifest plugin,
+    required _ChunkSession chunkSession,
   }) {
     final isUnrestricted = plugin.hasUnrestrictedFsPermission;
     final allowParentDir = plugin.hasReadParentDirPermission;
@@ -564,6 +629,110 @@ class QuickJsBridgeService {
         );
         final f = File(target);
         return f.existsSync() ? f.lengthSync() : 0;
+
+      // --- 分块流式文件读写 (Chunked VFS) ---
+      case 'fs_open_reader':
+        final filePath = payload['path']?.toString() ?? '';
+        _assertPathInJail(
+          filePath,
+          outputDir: outputDir,
+          inputFiles: inputFiles,
+          pluginDirectory: pluginDirectory,
+          pluginDataDir: pluginDataDir,
+          isWrite: false,
+          isUnrestricted: isUnrestricted,
+          allowParentDir: allowParentDir,
+        );
+        final file = File(filePath);
+        if (!file.existsSync()) throw Exception('文件不存在: $filePath');
+        final raf = file.openSync(mode: FileMode.read);
+        final handle = chunkSession.nextHandle('reader');
+        final chunkSize = (payload['chunkSize'] as num?)?.toInt() ?? 65536;
+        final totalLength = raf.lengthSync();
+        chunkSession.readers[handle] = raf;
+        chunkSession.readerChunkSizes[handle] = chunkSize;
+        return {
+          'handle': handle,
+          'fileSize': totalLength,
+          'chunkSize': chunkSize,
+          'hasMore': totalLength > 0,
+        };
+
+      case 'fs_read_chunk':
+        final handle = payload['handle']?.toString() ?? '';
+        final raf = chunkSession.readers[handle];
+        if (raf == null) throw Exception('无效或已关闭的读取句柄: $handle');
+        final reqChunkSize = (payload['chunkSize'] as num?)?.toInt() ?? chunkSession.readerChunkSizes[handle] ?? 65536;
+        final bytes = raf.readSync(reqChunkSize);
+        final curPos = raf.positionSync();
+        final totalLen = raf.lengthSync();
+        final hasNext = curPos < totalLen && bytes.isNotEmpty;
+        return {
+          'hasNext': hasNext,
+          'data': base64Encode(bytes),
+          'bytesRead': bytes.length,
+          'position': curPos,
+          'total': totalLen,
+        };
+
+      case 'fs_close_reader':
+        final handle = payload['handle']?.toString() ?? '';
+        final raf = chunkSession.readers.remove(handle);
+        chunkSession.readerChunkSizes.remove(handle);
+        try {
+          raf?.closeSync();
+        } catch (_) {}
+        return true;
+
+      case 'fs_open_writer':
+        final filePath = payload['path']?.toString() ?? '';
+        _assertPathInJail(
+          filePath,
+          outputDir: outputDir,
+          inputFiles: inputFiles,
+          pluginDirectory: pluginDirectory,
+          pluginDataDir: pluginDataDir,
+          isWrite: true,
+          isUnrestricted: isUnrestricted,
+        );
+        final file = File(filePath);
+        file.parent.createSync(recursive: true);
+        final raf = file.openSync(mode: FileMode.write);
+        final handle = chunkSession.nextHandle('writer');
+        chunkSession.writers[handle] = raf;
+        return {
+          'handle': handle,
+        };
+
+      case 'fs_write_chunk':
+        final handle = payload['handle']?.toString() ?? '';
+        final raf = chunkSession.writers[handle];
+        if (raf == null) throw Exception('无效或已关闭的写入句柄: $handle');
+        final rawData = payload['data'];
+        final isBase64 = payload['isBase64'] == true;
+        List<int> bytes;
+        if (isBase64) {
+          bytes = base64Decode(rawData?.toString() ?? '');
+        } else if (rawData is List) {
+          bytes = rawData.cast<int>();
+        } else {
+          bytes = utf8.encode(rawData?.toString() ?? '');
+        }
+        raf.writeFromSync(bytes);
+        return {'bytesWritten': bytes.length};
+
+      case 'fs_close_writer':
+        final handle = payload['handle']?.toString() ?? '';
+        final raf = chunkSession.writers.remove(handle);
+        int finalSize = 0;
+        if (raf != null) {
+          try {
+            raf.flushSync();
+            finalSize = raf.lengthSync();
+            raf.closeSync();
+          } catch (_) {}
+        }
+        return {'success': true, 'fileSize': finalSize};
 
       // --- 插件专属持久化存储 (storage) ---
       case 'storage_get':
@@ -805,6 +974,66 @@ class QuickJsBridgeService {
         },
         fileSize: function(path) {
           return __Toolbox_syncCall('fs_size', { path: path });
+        },
+        openChunkReader: function(path, options) {
+          var chunkSize = (options && options.chunkSize) || 65536;
+          var info = __Toolbox_syncCall('fs_open_reader', { path: path, chunkSize: chunkSize });
+          var handle = info.handle;
+          var fileSize = info.fileSize;
+          var closed = false;
+          var hasMore = !!info.hasMore;
+          return {
+            fileSize: fileSize,
+            chunkSize: chunkSize,
+            hasNext: function() {
+              return !closed && hasMore;
+            },
+            nextChunk: function(asUint8Array) {
+              if (closed) throw new Error('ChunkReader 已关闭');
+              if (!hasMore) return null;
+              var res = __Toolbox_syncCall('fs_read_chunk', { handle: handle, chunkSize: chunkSize });
+              hasMore = !!res.hasNext;
+              if (!res.bytesRead || res.bytesRead === 0) {
+                return null;
+              }
+              if (asUint8Array !== false) {
+                return Toolbox.utils.base64ToBytes(res.data);
+              }
+              return res.data;
+            },
+            close: function() {
+              if (!closed) {
+                closed = true;
+                hasMore = false;
+                __Toolbox_syncCall('fs_close_reader', { handle: handle });
+              }
+            }
+          };
+        },
+        openChunkWriter: function(path) {
+          var info = __Toolbox_syncCall('fs_open_writer', { path: path });
+          var handle = info.handle;
+          var closed = false;
+          return {
+            writeChunk: function(chunk) {
+              if (closed) throw new Error('ChunkWriter 已关闭');
+              var b64;
+              if (chunk && typeof chunk === 'object' && (chunk instanceof Uint8Array || (chunk.buffer && chunk.buffer instanceof ArrayBuffer))) {
+                b64 = Toolbox.utils.bytesToBase64(chunk);
+              } else if (typeof chunk === 'string') {
+                b64 = Toolbox.crypto.base64Encode(chunk);
+              } else {
+                b64 = String(chunk || '');
+              }
+              return __Toolbox_syncCall('fs_write_chunk', { handle: handle, data: b64, isBase64: true });
+            },
+            close: function() {
+              if (!closed) {
+                closed = true;
+                return __Toolbox_syncCall('fs_close_writer', { handle: handle });
+              }
+            }
+          };
         }
       },
       storage: {
@@ -987,6 +1216,20 @@ class QuickJsBridgeService {
     }
 
     return null;
+  }
+
+  /// 解析插件执行脚本的主文件名
+  static String _resolveScriptFileName(PluginManifest plugin) {
+    final localDir = plugin.localDir;
+    if (localDir != null && localDir.isNotEmpty) {
+      for (var fileName in ['entry.js', 'index.js', 'main.js', 'tool.js']) {
+        final f = File(p.join(localDir, fileName));
+        if (f.existsSync()) {
+          return fileName;
+        }
+      }
+    }
+    return 'entry.js';
   }
 
   static Set<String> _scanDirectory(String dirPath) {

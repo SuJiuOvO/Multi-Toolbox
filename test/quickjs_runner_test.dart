@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_js/flutter_js.dart';
 import 'package:app/models/plugin_manifest.dart';
 import 'package:app/services/quickjs_bridge_service.dart';
+import 'package:app/services/source_map_resolver.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -1085,6 +1086,166 @@ void main() {
       } finally {
         HttpOverrides.global = prevOverrides;
         await server.close(force: true);
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('SourceMapResolver decodes VLQ mappings and maps original line and context', () {
+      const sampleMap = '''{
+        "version": 3,
+        "file": "entry.js",
+        "sources": ["src/index.ts"],
+        "sourcesContent": ["export function run() {\\n  throw new Error('boom');\\n}"],
+        "names": [],
+        "mappings": "AAAA;AACA"
+      }''';
+
+      final consumer = SourceMapConsumer.parse(sampleMap);
+      expect(consumer, isNotNull);
+      expect(consumer!.sources, ['src/index.ts']);
+
+      final mapped = consumer.findOriginalPosition(2, 4);
+      expect(mapped, isNotNull);
+      expect(mapped!.sourceFile, 'src/index.ts');
+      expect(mapped.originalLine, 2);
+
+      final ctx = consumer.getCodeContext('src/index.ts', 2);
+      expect(ctx, "  throw new Error('boom');");
+    });
+
+    test('SourceMapResolver extracts structured WASI Panic', () {
+      const stderr1 = "thread 'main' panicked at 'assertion failed: len > 0', src/main.rs:42:5";
+      final panic1 = SourceMapResolver.extractWasiPanic(stderr1);
+      expect(panic1, "panicked at 'assertion failed: len > 0', src/main.rs:42:5");
+
+      const stderr2 = "thread 'worker' panicked at src/crypto.rs:18:9:\nout of bounds";
+      final panic2 = SourceMapResolver.extractWasiPanic(stderr2);
+      expect(panic2, "panicked at 'out of bounds', src/crypto.rs:18:9");
+    });
+
+    test('QuickJsBridgeService compensates stack trace line offsets on runtime error', () async {
+      if (!canRunQuickJs) return;
+      final outDir = Directory.systemTemp.createTempSync('qjs_err_out_');
+
+      try {
+        final manifest = PluginManifest(
+          id: 'test-js-line-offset',
+          name: 'QuickJS Error Line Offset Test',
+          version: '1.0.0',
+          category: 'other',
+          description: 'Line offset verification',
+          icon: 'code',
+          author: 'Test Team',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ inputFiles, outputDir }) {
+                  // line 2
+                  throw new Error('Simulated runtime error at line 3');
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [],
+          outputDir: outDir.path,
+          onProgress: (p, s) {},
+          onLog: (l, e) {},
+        );
+
+        expect(result.success, isFalse);
+        // The error occurred on line 3 of the developer's script
+        expect(result.message, contains('Simulated runtime error at line 3'));
+        expect(result.message.contains('entry.js:3') || result.message.contains(':3:'), isTrue,
+            reason: 'Compensated stack trace should point to line 3: ${result.message}');
+      } finally {
+        if (outDir.existsSync()) outDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('QuickJsBridgeService Toolbox.fs.openChunkReader and openChunkWriter stream data in chunks', () async {
+      if (!canRunQuickJs) return;
+      final tempDir = Directory.systemTemp.createTempSync('qjs_chunk_test_');
+      final outDir = Directory.systemTemp.createTempSync('qjs_chunk_out_');
+
+      try {
+        // Create a 64KB test input file
+        final inputFile = File(p.join(tempDir.path, 'large_input.dat'));
+        final sampleBytes = List<int>.generate(65536, (i) => (i * 31) % 256);
+        inputFile.writeAsBytesSync(sampleBytes);
+
+        final manifest = PluginManifest(
+          id: 'test-js-chunk-stream',
+          name: 'QuickJS Chunk Streaming Test',
+          version: '1.0.0',
+          category: 'other',
+          description: 'Chunk streaming test',
+          icon: 'code',
+          author: 'Test Team',
+          engineType: 'quickjs',
+          executionType: 'quickjs',
+          platforms: ['universal'],
+          action: PluginActionDef(
+            handler: 'quickjs_eval',
+            params: {
+              'script': """
+                async function run({ inputFiles, outputDir }) {
+                  const inPath = inputFiles[0];
+                  const outPath = outputDir + '/streamed_copy.dat';
+                  
+                  const reader = Toolbox.fs.openChunkReader(inPath, { chunkSize: 16384 });
+                  const writer = Toolbox.fs.openChunkWriter(outPath);
+                  
+                  let chunksRead = 0;
+                  while (reader.hasNext()) {
+                    const chunk = reader.nextChunk();
+                    if (!chunk) break;
+                    chunksRead++;
+                    writer.writeChunk(chunk);
+                  }
+                  
+                  reader.close();
+                  const writeRes = writer.close();
+                  
+                  return {
+                    success: true,
+                    data: {
+                      chunksCount: chunksRead,
+                      fileSize: reader.fileSize,
+                      writtenSize: writeRes.fileSize
+                    }
+                  };
+                }
+              """
+            },
+          ),
+        );
+
+        final result = await QuickJsBridgeService.execute(
+          plugin: manifest,
+          formValues: {},
+          inputFiles: [inputFile.path],
+          outputDir: outDir.path,
+          onProgress: (p, s) {},
+          onLog: (l, e) {},
+        );
+
+        expect(result.success, isTrue, reason: result.message);
+        final outputFile = File(p.join(outDir.path, 'streamed_copy.dat'));
+        expect(outputFile.existsSync(), isTrue);
+        expect(outputFile.lengthSync(), 65536);
+        expect(outputFile.readAsBytesSync(), sampleBytes);
+        expect(result.resultData['chunksCount'], 4);
+      } finally {
+        if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
         if (outDir.existsSync()) outDir.deleteSync(recursive: true);
       }
     });

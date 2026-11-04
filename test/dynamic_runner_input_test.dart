@@ -650,5 +650,47 @@ void main() {
       expect(find.text('自定义'), findsOneWidget);
       expect(find.text('#FFFFFF'), findsWidgets);
     });
+
+    testWidgets('DynamicToolRunnerPage renders Dev Drawer with form values snapshot and VFS table', (tester) async {
+      final testPlugin = PluginManifest(
+        id: 'test-dev-drawer-tool',
+        name: 'Dev Drawer Test Tool',
+        version: '1.2.3',
+        minAppVersion: '1.0.0',
+        category: 'utility',
+        description: 'Test Dev Drawer functionality',
+        icon: 'build',
+        author: 'Tester',
+        engineType: 'quickjs',
+        executionType: 'quickjs',
+        isDevLink: true,
+        inputs: [
+          PluginInputDef(
+            id: 'mode',
+            label: '处理模式',
+            type: 'text',
+            defaultValue: 'fast',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicToolRunnerPage(plugin: testPlugin),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final devIconFinder = find.byIcon(Icons.bug_report_outlined);
+      expect(devIconFinder, findsOneWidget);
+      await tester.tap(devIconFinder);
+      await tester.pumpAndSettle();
+
+      expect(find.text('开发者调试抽屉 (Dev Drawer)'), findsOneWidget);
+      expect(find.text('实时表单参数快照 (Form Values)'), findsOneWidget);
+      expect(find.text('VFS 虚拟目录映射表 (WASI / POSIX)'), findsOneWidget);
+      expect(find.text('宿主注入环境变量 (Toolbox.env)'), findsOneWidget);
+      expect(find.text('🔗 Dev Link 本地软链'), findsOneWidget);
+    });
   });
 }

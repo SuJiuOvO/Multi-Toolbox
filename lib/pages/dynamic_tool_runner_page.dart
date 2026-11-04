@@ -1782,6 +1782,7 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         }
       },
       child: Scaffold(
+        endDrawer: _buildDevDrawer(context),
         appBar: AppBar(
           title: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1897,6 +1898,13 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
             ],
           ),
           actions: [
+            Builder(
+              builder: (ctx) => IconButton(
+                tooltip: '开发者调试抽屉 (Dev Drawer)',
+                icon: const Icon(Icons.bug_report_outlined),
+                onPressed: () => Scaffold.of(ctx).openEndDrawer(),
+              ),
+            ),
             IconButton(
               tooltip: '插件信息',
               icon: const Icon(Icons.info_outline),
@@ -1948,6 +1956,400 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               ),
       ),
     );
+  }
+
+  Widget _buildDevDrawer(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final engine = DynamicToolRunnerPage.resolveExecutionEngine(
+      plugin: widget.plugin,
+      isWindows: Platform.isWindows,
+    );
+
+    final visibleInputs = widget.plugin.inputs.where(_isInputVisible).toList();
+    final visibleFileInputs = visibleInputs.where((i) => i.isFileSelector).toList();
+    final effectiveInputs = <String>[];
+    for (var fileInput in visibleFileInputs) {
+      final val = _formValues[fileInput.id];
+      final rawList = val is List
+          ? List<String>.from(val)
+          : (val is String && val.isNotEmpty ? [val] : <String>[]);
+      final flattened = DynamicToolRunnerPage.flattenInputEntries(
+        rawEntries: rawList,
+        allowedExtensions: fileInput.allowedExtensions,
+      );
+      effectiveInputs.addAll(flattened);
+    }
+
+    final outDir = _formValues['outputDir']?.toString() ??
+        (Platform.isWindows ? r'C:\Users\...\Output' : '/sdcard/Download/Output');
+
+    String? nativeReproCmd;
+    if (widget.plugin.nativeRunner != null || widget.plugin.isWindowsExtension) {
+      nativeReproCmd = WindowsExtensionRunnerService.assembleCommandLine(
+        plugin: widget.plugin,
+        formValues: _formValues,
+        inputFiles: effectiveInputs,
+        outputDir: outDir,
+      );
+    }
+
+    final envSnapshot = {
+      'outputDir': outDir,
+      'inputFiles': effectiveInputs,
+      'params': _formValues,
+      'platform': Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other'),
+    };
+    final envJsonStr = const JsonEncoder.withIndent('  ').convert(envSnapshot);
+    final formJsonStr = const JsonEncoder.withIndent('  ').convert(_formValues);
+
+    return Drawer(
+      width: 480,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                border: Border(bottom: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0))),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.bug_report_rounded, color: Colors.amber, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '开发者调试抽屉 (Dev Drawer)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${widget.plugin.id} (v${widget.plugin.version})',
+                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    tooltip: '关闭抽屉',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+              width: double.infinity,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _buildDrawerBadge(
+                    label: _engineLabel(engine),
+                    color: _engineColor(engine),
+                    icon: _engineIcon(engine),
+                  ),
+                  if (widget.plugin.isDevLink)
+                    _buildDrawerBadge(
+                      label: '🔗 Dev Link 本地软链',
+                      color: Colors.orange,
+                    ),
+                  if (widget.plugin.isOfficial)
+                    _buildDrawerBadge(
+                      label: '官方认证',
+                      color: Colors.green,
+                      icon: Icons.verified_user_rounded,
+                    ),
+                  _buildDrawerBadge(
+                    label: '支持: ${widget.plugin.platforms.join(', ')}',
+                    color: Colors.blueGrey,
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildDevSectionHeader(
+                    title: '实时表单参数快照 (Form Values)',
+                    icon: Icons.data_object_rounded,
+                    actionText: '复制 JSON',
+                    onAction: () => _copyDevContent(context, formJsonStr, '已复制表单参数 JSON'),
+                  ),
+                  _buildCodeBlock(formJsonStr, isDark),
+                  const SizedBox(height: 16),
+                  _buildDevSectionHeader(
+                    title: 'VFS 虚拟目录映射表 (WASI / POSIX)',
+                    icon: Icons.folder_shared_rounded,
+                  ),
+                  _buildVfsMappingCard(
+                    isDark: isDark,
+                    outputDir: outDir,
+                    pluginDir: widget.plugin.localDir ?? '（未加载外部本地目录）',
+                    inputFiles: effectiveInputs,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildDevSectionHeader(
+                    title: '宿主注入环境变量 (Toolbox.env)',
+                    icon: Icons.settings_ethernet_rounded,
+                    actionText: '复制 env',
+                    onAction: () => _copyDevContent(context, envJsonStr, '已复制环境变量 JSON'),
+                  ),
+                  _buildCodeBlock(envJsonStr, isDark),
+                  const SizedBox(height: 16),
+                  if (nativeReproCmd != null) ...[
+                    _buildDevSectionHeader(
+                      title: '原生 CLI 复现指令 (Native Runner)',
+                      icon: Icons.terminal_rounded,
+                      actionText: '复制指令',
+                      onAction: () => _copyDevContent(context, nativeReproCmd!, '已复制原生 CLI 复现指令'),
+                    ),
+                    _buildCodeBlock(nativeReproCmd, isDark, selectable: true),
+                    const SizedBox(height: 6),
+                    Text(
+                      '提示：可直接在外部 PowerShell 或 CMD 控制台粘贴并运行此命令进行独立断点调试。',
+                      style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerBadge({
+    required String label,
+    required Color color,
+    IconData? icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDevSectionHeader({
+    required String title,
+    required IconData icon,
+    String? actionText,
+    VoidCallback? onAction,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.blueAccent),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ),
+          if (actionText != null && onAction != null)
+            InkWell(
+              borderRadius: BorderRadius.circular(4),
+              onTap: onAction,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.copy_rounded, size: 12, color: Colors.blueAccent),
+                    const SizedBox(width: 4),
+                    Text(
+                      actionText,
+                      style: const TextStyle(fontSize: 11, color: Colors.blueAccent, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCodeBlock(String code, bool isDark, {bool selectable = false}) {
+    final content = Text(
+      code,
+      style: const TextStyle(
+        fontFamily: 'Consolas, monospace',
+        fontSize: 11,
+        height: 1.4,
+      ),
+    );
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 220),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
+      child: SingleChildScrollView(
+        child: selectable ? SelectableText(code, style: const TextStyle(fontFamily: 'Consolas, monospace', fontSize: 11, height: 1.4)) : content,
+      ),
+    );
+  }
+
+  Widget _buildVfsMappingCard({
+    required bool isDark,
+    required String outputDir,
+    required String pluginDir,
+    required List<String> inputFiles,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildVfsRow('/output', outputDir),
+          const Divider(height: 12),
+          _buildVfsRow('/plugin', pluginDir),
+          const Divider(height: 12),
+          _buildVfsRow('/tmp', Directory.systemTemp.path),
+          if (inputFiles.isNotEmpty) ...[
+            const Divider(height: 12),
+            ...inputFiles.take(5).map((f) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: _buildVfsRow('/input/${p.basename(f)}', f),
+                )),
+            if (inputFiles.length > 5)
+              Text(
+                '  ... 另有 ${inputFiles.length - 5} 个输入文件',
+                style: const TextStyle(fontSize: 10, color: Colors.grey),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVfsRow(String vfsPath, String hostPath) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: Colors.blue.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            vfsPath,
+            style: const TextStyle(
+              fontSize: 10,
+              fontFamily: 'Consolas, monospace',
+              color: Colors.blueAccent,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        const Icon(Icons.arrow_forward_rounded, size: 10, color: Colors.grey),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            hostPath,
+            style: const TextStyle(fontSize: 10, fontFamily: 'Consolas, monospace'),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _copyDevContent(BuildContext context, String text, String message) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  String _engineLabel(PluginExecutionEngine engine) {
+    switch (engine) {
+      case PluginExecutionEngine.windowsNative:
+        return '🚀 Win 原生极速';
+      case PluginExecutionEngine.quickJs:
+        return '⚡ QuickJS 引擎';
+      case PluginExecutionEngine.wasmUniversal:
+        return '🦀 WASI 算力沙箱';
+      case PluginExecutionEngine.internalHandler:
+        return '🖼️ 宿主原生流水线';
+    }
+  }
+
+  Color _engineColor(PluginExecutionEngine engine) {
+    switch (engine) {
+      case PluginExecutionEngine.windowsNative:
+        return Colors.blue;
+      case PluginExecutionEngine.quickJs:
+        return Colors.teal;
+      case PluginExecutionEngine.wasmUniversal:
+        return Colors.deepOrange;
+      case PluginExecutionEngine.internalHandler:
+        return Colors.purple;
+    }
+  }
+
+  IconData _engineIcon(PluginExecutionEngine engine) {
+    switch (engine) {
+      case PluginExecutionEngine.windowsNative:
+        return Icons.desktop_windows_rounded;
+      case PluginExecutionEngine.quickJs:
+        return Icons.javascript_rounded;
+      case PluginExecutionEngine.wasmUniversal:
+        return Icons.memory_rounded;
+      case PluginExecutionEngine.internalHandler:
+        return Icons.auto_awesome_rounded;
+    }
   }
 
   List<Widget> _buildDataResultCards({
