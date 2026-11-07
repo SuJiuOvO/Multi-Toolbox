@@ -26,6 +26,7 @@ class WebviewBridgeService {
   void Function(String message, String type)? onShowToast;
   Future<bool> Function(String title, String message)? onConfirmDialog;
   Future<void> Function(bool fullscreen)? onSetFullscreen;
+  void Function(bool isDark)? onThemeChanged;
   void Function(String event, dynamic payload)? onEmitEvent;
 
   // 可插拔子系统服务实例
@@ -40,6 +41,7 @@ class WebviewBridgeService {
     this.onShowToast,
     this.onConfirmDialog,
     this.onSetFullscreen,
+    this.onThemeChanged,
     this.onEmitEvent,
     WindowsUninstallerService? uninstallerService,
     SshConnectionService? sshService,
@@ -218,6 +220,11 @@ class WebviewBridgeService {
         if (onSetFullscreen != null) {
           await onSetFullscreen!(fs);
         }
+        return true;
+      }
+      case 'system_set_theme': {
+        final dark = payload['isDark'] == true;
+        onThemeChanged?.call(dark);
         return true;
       }
       case 'system_toast': {
@@ -520,6 +527,7 @@ class WebviewBridgeService {
     system: {
       setKeepScreenOn: function(keep) { return Toolbox.invoke('system_keep_screen_on', { keep: !!keep }); },
       setFullscreen: function(fs) { return Toolbox.invoke('system_set_fullscreen', { fullscreen: !!fs }); },
+      setTheme: function(isDark) { return Toolbox.invoke('system_set_theme', { isDark: !!isDark }); },
       showToast: function(msg, type) { return Toolbox.invoke('system_toast', { message: msg, type: type || 'info' }); },
       copyText: function(text) { return Toolbox.invoke('system_copy_text', { text: text }); },
       readText: function() { return Toolbox.invoke('system_read_text', {}); },

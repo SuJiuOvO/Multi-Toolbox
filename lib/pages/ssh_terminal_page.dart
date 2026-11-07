@@ -68,8 +68,11 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
     _terminal.onResize = (width, height, pixelWidth, pixelHeight) {
       if (!_connected) return;
       _resizeDebounce?.cancel();
-      _resizeDebounce = Timer(const Duration(milliseconds: 200), () {
-        if (_connected) _service.resize(width, height, pixelWidth, pixelHeight);
+      _resizeDebounce = Timer(const Duration(milliseconds: 300), () {
+        if (!_connected) return;
+        // 软键盘弹起高度急剧缩小保护：限制最低行数为 10 行，防止远端 Shell/提示符折叠错位
+        final safeRows = height < 10 ? 10 : height;
+        _service.resize(width, safeRows, pixelWidth, pixelHeight);
       });
     };
     _loadProfiles();
@@ -416,6 +419,54 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
     }
   }
 
+  Future<void> _showCopyMenu() async {
+    final selection = _terminalController.selection;
+    final hasSelection = selection != null;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasSelection)
+                ListTile(
+                  leading: const Icon(Icons.select_all_rounded, color: Colors.blueAccent),
+                  title: const Text('复制当前选区文本'),
+                  subtitle: const Text('仅将触摸或鼠标高亮的内容存入剪贴板'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _copy(all: false);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.copy_all_rounded, color: Colors.tealAccent),
+                title: const Text('复制全部终端输出历史'),
+                subtitle: const Text('完整提取所有会话缓冲区文本'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _copy(all: true);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.paste_rounded, color: Colors.amberAccent),
+                title: const Text('粘贴剪贴板命令'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _paste();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmDisconnect() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -746,7 +797,10 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
                                 : Colors.blueGrey),
                     const SizedBox(width: 8),
                     Expanded(
-                        child: Text(_status,
+                        child: Text(
+                            _connected
+                                ? '● 会话在线 · 字体 ${_fontSize.toInt()}pt'
+                                : _status,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -757,20 +811,20 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
                           height: 14,
                           child: CircularProgressIndicator(strokeWidth: 2)),
                     IconButton(
-                        tooltip: '复制终端文本',
-                        onPressed: () => _copy(),
+                        tooltip: '复制选项与粘贴',
+                        onPressed: _showCopyMenu,
                         icon: const Icon(Icons.copy_rounded,
                             color: Colors.white70, size: 18)),
                     IconButton(
                         tooltip: '缩小字体 (当前 ${_fontSize.toInt()}pt)',
                         onPressed: () => setState(
-                            () => _fontSize = (_fontSize - 2).clamp(8.0, 32.0)),
+                            () => _fontSize = (_fontSize - 2).clamp(8.0, 42.0)),
                         icon: const Icon(Icons.text_decrease,
                             color: Colors.white70, size: 18)),
                     IconButton(
                         tooltip: '放大字体 (当前 ${_fontSize.toInt()}pt)',
                         onPressed: () => setState(
-                            () => _fontSize = (_fontSize + 2).clamp(8.0, 32.0)),
+                            () => _fontSize = (_fontSize + 2).clamp(8.0, 42.0)),
                         icon: const Icon(Icons.text_increase,
                             color: Colors.white70, size: 18)),
                     if (_connected || _connecting)
@@ -809,7 +863,8 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
                         _terminalButton('↓', () => _service.send('\x1b[B')),
                         _terminalButton('←', () => _service.send('\x1b[D')),
                         _terminalButton('→', () => _service.send('\x1b[C')),
-                        TextButton(onPressed: () => _copy(), child: const Text('复制选中/全部')),
+                        _terminalButton('选区复制', () => _copy(all: false)),
+                        _terminalButton('全部复制', () => _copy(all: true)),
                         _terminalButton('粘贴', _paste),
                         TextButton(
                             onPressed: () {

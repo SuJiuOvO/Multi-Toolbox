@@ -34,6 +34,7 @@ class _WebviewToolRunnerPageState extends State<WebviewToolRunnerPage> {
   String? _errorMessage;
   bool _isFullscreen = false;
   bool? _originalDesktopFullscreen;
+  bool _isPluginDark = false;
 
   static const Map<String, String> _mimeTypes = {
     '.html': 'text/html; charset=utf-8',
@@ -74,6 +75,8 @@ class _WebviewToolRunnerPageState extends State<WebviewToolRunnerPage> {
       final pluginDataDir = p.join(appSupport.path, 'plugin_data', widget.plugin.id);
       await Directory(pluginDataDir).create(recursive: true);
 
+      _isPluginDark = widget.plugin.webViewRunner?.initialTheme == 'dark';
+
       _bridgeService = WebviewBridgeService(
         plugin: widget.plugin,
         pluginLocalDir: pluginDir,
@@ -81,6 +84,13 @@ class _WebviewToolRunnerPageState extends State<WebviewToolRunnerPage> {
         onShowToast: _handleToast,
         onConfirmDialog: _handleConfirmDialog,
         onSetFullscreen: _toggleFullscreen,
+        onThemeChanged: (isDark) {
+          if (mounted && _isPluginDark != isDark) {
+            setState(() {
+              _isPluginDark = isDark;
+            });
+          }
+        },
         onEmitEvent: (event, payload) {
           if (!mounted) return;
           _webViewController?.evaluateJavascript(
@@ -197,17 +207,52 @@ class _WebviewToolRunnerPageState extends State<WebviewToolRunnerPage> {
 
   void _handleToast(String message, String type) {
     if (!mounted) return;
-    final color = type == 'error'
-        ? Colors.red.shade700
-        : type == 'success'
-            ? Colors.green.shade700
-            : Colors.blueGrey.shade800;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    final isSuccess = type == 'success';
+    final isError = type == 'error';
+    final accentColor = isSuccess
+        ? const Color(0xFF10B981)
+        : isError
+            ? const Color(0xFFEF4444)
+            : const Color(0xFF38BDF8);
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: color,
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSuccess
+                  ? Icons.check_circle_rounded
+                  : isError
+                      ? Icons.error_rounded
+                      : Icons.info_rounded,
+              color: accentColor,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFFF8FAFC),
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xEE1E293B),
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: Color(0x22FFFFFF), width: 1),
+        ),
+        elevation: 6,
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        duration: const Duration(milliseconds: 2000),
       ),
     );
   }
@@ -285,6 +330,11 @@ class _WebviewToolRunnerPageState extends State<WebviewToolRunnerPage> {
       );
     }
 
+    final isSystemDark = Theme.of(context).brightness == Brightness.dark;
+    final effectiveDark = _isPluginDark || isSystemDark;
+    final bgColor = effectiveDark ? const Color(0xFF0F172A) : Theme.of(context).colorScheme.surface;
+    final fgColor = effectiveDark ? const Color(0xFFF8FAFC) : Theme.of(context).colorScheme.onSurface;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -302,18 +352,39 @@ class _WebviewToolRunnerPageState extends State<WebviewToolRunnerPage> {
         }
       },
       child: Scaffold(
+        backgroundColor: bgColor,
         appBar: _isFullscreen
             ? null
             : AppBar(
-                title: Text(widget.plugin.name),
+                backgroundColor: bgColor,
+                foregroundColor: fgColor,
+                elevation: 0,
+                surfaceTintColor: Colors.transparent,
+                title: Text(
+                  widget.plugin.name,
+                  style: TextStyle(
+                    color: fgColor,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                  ),
+                ),
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(1),
+                  child: Container(
+                    color: effectiveDark
+                        ? const Color(0xFF1E293B)
+                        : Theme.of(context).colorScheme.outlineVariant.withOpacity(0.3),
+                    height: 1,
+                  ),
+                ),
                 actions: [
                   IconButton(
-                    icon: const Icon(Icons.refresh),
+                    icon: Icon(Icons.refresh_rounded, color: fgColor),
                     tooltip: '刷新页面',
                     onPressed: () => _webViewController?.reload(),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.fullscreen),
+                    icon: Icon(Icons.fullscreen_rounded, color: fgColor),
                     tooltip: '全屏模式',
                     onPressed: () => _toggleFullscreen(true),
                   ),

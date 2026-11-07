@@ -214,6 +214,19 @@ void main() {
       expect(script, contains('ssh:'));
       expect(script, contains('saveFile:'));
       expect(script, contains('openFile:'));
+      expect(script, contains('setTheme:'));
+    });
+
+    test('system_set_theme triggers onThemeChanged hook', () async {
+      bool? darkState;
+      bridge.onThemeChanged = (isDark) {
+        darkState = isDark;
+      };
+      final res = await bridge.handleBridgeCall('system_set_theme', {
+        'isDark': true,
+      });
+      expect(res['success'], isTrue);
+      expect(darkState, isTrue);
     });
 
     test('system_open_file enforces Path Jail security', () async {
