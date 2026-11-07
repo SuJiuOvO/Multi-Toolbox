@@ -285,84 +285,101 @@ class _WebviewToolRunnerPageState extends State<WebviewToolRunnerPage> {
       );
     }
 
-    return Scaffold(
-      appBar: _isFullscreen
-          ? null
-          : AppBar(
-              title: Text(widget.plugin.name),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: '刷新页面',
-                  onPressed: () => _webViewController?.reload(),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.fullscreen),
-                  tooltip: '全屏模式',
-                  onPressed: () => _toggleFullscreen(true),
-                ),
-              ],
-            ),
-      body: Stack(
-        children: [
-          InAppWebView(
-            initialUrlRequest: URLRequest(url: WebUri(_serverUrl!)),
-            initialSettings: InAppWebViewSettings(
-              isInspectable: true,
-              allowsInlineMediaPlayback: true,
-              transparentBackground: true,
-              supportZoom: false,
-            ),
-            initialUserScripts: UnmodifiableListView([
-              UserScript(
-                source: WebviewBridgeService.getInjectionScript(),
-                injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isFullscreen) {
+          await _toggleFullscreen(false);
+          return;
+        }
+        if (await _webViewController?.canGoBack() ?? false) {
+          await _webViewController?.goBack();
+          return;
+        }
+        if (context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        appBar: _isFullscreen
+            ? null
+            : AppBar(
+                title: Text(widget.plugin.name),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: '刷新页面',
+                    onPressed: () => _webViewController?.reload(),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.fullscreen),
+                    tooltip: '全屏模式',
+                    onPressed: () => _toggleFullscreen(true),
+                  ),
+                ],
               ),
-            ]),
-            onWebViewCreated: (controller) {
-              _webViewController = controller;
-              controller.addJavaScriptHandler(
-                handlerName: 'ToolboxBridge',
-                callback: (args) async {
-                  if (args.isEmpty || args[0] is! Map) {
-                    return {'success': false, 'error': '无效的 RPC 参数'};
-                  }
-                  final call = Map<String, dynamic>.from(args[0] as Map);
-                  final action = call['action']?.toString() ?? '';
-                  final payload = Map<String, dynamic>.from(call['payload'] ?? {});
-                  return await _bridgeService?.handleBridgeCall(action, payload);
-                },
-              );
-            },
-            onLoadStop: (controller, url) async {
-              final isDark = Theme.of(context).brightness == Brightness.dark;
-              // 补充注入一次以确保单页应用 (SPA) 动态更新时 window.Toolbox 始终就绪
-              await controller.evaluateJavascript(
-                source: WebviewBridgeService.getInjectionScript(),
-              );
-              await controller.evaluateJavascript(
-                source: "if (window.Toolbox && window.Toolbox.emit) { window.Toolbox.emit('theme_change', { isDark: $isDark }); }",
-              );
-            },
-          ),
-          if (_isFullscreen)
-            Positioned(
-              top: 16,
-              right: 16,
-              child: Opacity(
-                opacity: 0.6,
-                child: Material(
-                  color: Colors.black54,
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
-                    tooltip: '退出全屏',
-                    onPressed: () => _toggleFullscreen(false),
+        body: Stack(
+          children: [
+            InAppWebView(
+              initialUrlRequest: URLRequest(url: WebUri(_serverUrl!)),
+              initialSettings: InAppWebViewSettings(
+                isInspectable: true,
+                allowsInlineMediaPlayback: true,
+                transparentBackground: true,
+                supportZoom: false,
+              ),
+              initialUserScripts: UnmodifiableListView([
+                UserScript(
+                  source: WebviewBridgeService.getInjectionScript(),
+                  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                ),
+              ]),
+              onWebViewCreated: (controller) {
+                _webViewController = controller;
+                controller.addJavaScriptHandler(
+                  handlerName: 'ToolboxBridge',
+                  callback: (args) async {
+                    if (args.isEmpty || args[0] is! Map) {
+                      return {'success': false, 'error': '无效的 RPC 参数'};
+                    }
+                    final call = Map<String, dynamic>.from(args[0] as Map);
+                    final action = call['action']?.toString() ?? '';
+                    final payload = Map<String, dynamic>.from(call['payload'] ?? {});
+                    return await _bridgeService?.handleBridgeCall(action, payload);
+                  },
+                );
+              },
+              onLoadStop: (controller, url) async {
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+                // 补充注入一次以确保单页应用 (SPA) 动态更新时 window.Toolbox 始终就绪
+                await controller.evaluateJavascript(
+                  source: WebviewBridgeService.getInjectionScript(),
+                );
+                await controller.evaluateJavascript(
+                  source: "if (window.Toolbox && window.Toolbox.emit) { window.Toolbox.emit('theme_change', { isDark: $isDark }); }",
+                );
+              },
+            ),
+            if (_isFullscreen)
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Opacity(
+                  opacity: 0.6,
+                  child: Material(
+                    color: Colors.black54,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
+                      tooltip: '退出全屏',
+                      onPressed: () => _toggleFullscreen(false),
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

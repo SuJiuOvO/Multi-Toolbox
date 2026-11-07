@@ -18,13 +18,13 @@ void main() {
       expect(PluginManagerService.compareVersions('0.9.5', '1.0.0'), -1);
     });
 
-    test('isAppVersionCompatible checks against currentAppVersion (1.1.2)', () {
-      // currentAppVersion is 1.1.2
+    test('isAppVersionCompatible checks against currentAppVersion', () {
+      final current = PluginManagerService.currentAppVersion;
       expect(PluginManagerService.isAppVersionCompatible('1.0.0'), isTrue);
       expect(PluginManagerService.isAppVersionCompatible('0.9.0'), isTrue);
       expect(PluginManagerService.isAppVersionCompatible(''), isTrue);
-      expect(PluginManagerService.isAppVersionCompatible('1.1.2'), isTrue);
-      expect(PluginManagerService.isAppVersionCompatible('1.1.3'), isFalse);
+      expect(PluginManagerService.isAppVersionCompatible(current), isTrue);
+      expect(PluginManagerService.isAppVersionCompatible('99.0.0'), isFalse);
     });
 
     test('currentAppVersion matches pubspec.yaml version automatically', () {
@@ -39,7 +39,7 @@ void main() {
         'id': 'test_tool',
         'name': '测试工具',
         'version': '1.0.0',
-        'minAppVersion': '1.2.0',
+        'minAppVersion': '99.0.0',
         'category': 'image',
         'description': '这是一个高精度的图片特征提取与智能剪裁工具，支持深度检索。',
         'icon': 'compress',
@@ -64,7 +64,7 @@ void main() {
 
       final manifest = PluginManifest.fromJson(jsonMap);
       expect(manifest.id, 'test_tool');
-      expect(manifest.minAppVersion, '1.2.0');
+      expect(manifest.minAppVersion, '99.0.0');
       expect(manifest.description, contains('高精度的图片特征提取'));
       expect(PluginManagerService.isAppVersionCompatible(manifest.minAppVersion), isFalse);
     });

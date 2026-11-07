@@ -57,6 +57,32 @@ class PluginManagerService {
     return 0;
   }
 
+  /// 获取分类的人类友好中文展示名称
+  static String getCategoryDisplayName(String category) {
+    switch (category.toLowerCase().trim()) {
+      case 'all':
+        return '全部';
+      case 'image':
+        return '图片处理';
+      case 'media':
+        return '音视频';
+      case 'document':
+        return '文档/PDF';
+      case 'utility':
+        return '系统实用';
+      case 'network':
+        return '网络通信';
+      case 'text':
+        return '文本代码';
+      case 'other':
+        return '综合工具';
+      case 'win_ext':
+        return 'Win 工坊';
+      default:
+        return category;
+    }
+  }
+
   /// 检查当前客户端版本是否满足插件的最低版本要求
   static bool isAppVersionCompatible(String minAppVersion) {
     if (minAppVersion.trim().isEmpty) return true;
@@ -328,8 +354,10 @@ class PluginManagerService {
           if (!mFile.existsSync()) {
             shouldUpdate = true;
           } else {
-            final currentContent = await mFile.readAsString();
-            if (currentContent.trim() != assetData.trim()) {
+            // 语义化版本校验保护：只有当安装包内置资产的版本严格高于本地插件版本时才升级。
+            // 严禁旧版内置 asset 覆盖用户从商店或社区更新的高版本插件包！
+            final localPlugin = loaded[existingIdx];
+            if (compareVersions(assetPlugin.version, localPlugin.version) > 0) {
               shouldUpdate = true;
             }
           }

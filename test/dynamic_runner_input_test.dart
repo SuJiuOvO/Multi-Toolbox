@@ -580,6 +580,82 @@ void main() {
 
       expect(find.text('全局顶级测试横幅提示消息'), findsOneWidget);
       expect(find.text('组件级别专属黄色告警横幅'), findsOneWidget);
+
+      // 点击关闭第一个横幅
+      final closeIcons = find.byIcon(Icons.close_rounded);
+      expect(closeIcons, findsNWidgets(2));
+      await tester.tap(closeIcons.first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('全局顶级测试横幅提示消息'), findsNothing);
+      expect(find.text('组件级别专属黄色告警横幅'), findsOneWidget);
+    });
+
+    testWidgets('Color picker expands and collapses presets when > 3 options', (tester) async {
+      final multiPresetPlugin = PluginManifest(
+        id: 'multi-preset-tool',
+        name: 'Multi Preset Tool',
+        version: '1.0.0',
+        category: 'image',
+        description: 'Testing color picker expansion',
+        icon: 'palette',
+        author: 'Tester',
+        engineType: 'quickjs',
+        executionType: 'quickjs',
+        platforms: ['universal'],
+        inputs: [
+          PluginInputDef(
+            id: 'bgColor',
+            type: 'color_picker',
+            label: '背景底色',
+            defaultValue: '#FFFFFF',
+            options: [
+              PluginSelectOption(label: '纯白底', value: '#FFFFFF'),
+              PluginSelectOption(label: '素雅浅灰', value: '#F3F4F6'),
+              PluginSelectOption(label: '天蓝底', value: '#38BDF8'),
+              PluginSelectOption(label: '樱花粉', value: '#F472B6'),
+              PluginSelectOption(label: '活力黄', value: '#FBBF24'),
+              PluginSelectOption(label: '纯黑底', value: '#000000'),
+            ],
+          ),
+        ],
+        outputs: [],
+        action: PluginActionDef(
+          handler: 'quickjs_eval',
+          params: {'script': 'async function run() { return { success: true }; }'},
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicToolRunnerPage(plugin: multiPresetPlugin),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 折叠状态下，前3个显示，后面的不显示，显示展开按钮
+      expect(find.text('纯白底'), findsOneWidget);
+      expect(find.text('素雅浅灰'), findsOneWidget);
+      expect(find.text('天蓝底'), findsOneWidget);
+      expect(find.text('展开全部 (6)'), findsOneWidget);
+      expect(find.text('樱花粉'), findsNothing);
+      expect(find.text('纯黑底'), findsNothing);
+
+      // 点击展开
+      await tester.tap(find.text('展开全部 (6)'));
+      await tester.pumpAndSettle();
+
+      // 全部6个显示，显示收起按钮
+      expect(find.text('樱花粉'), findsOneWidget);
+      expect(find.text('活力黄'), findsOneWidget);
+      expect(find.text('纯黑底'), findsOneWidget);
+      expect(find.text('收起'), findsOneWidget);
+
+      // 点击收起
+      await tester.tap(find.text('收起'));
+      await tester.pumpAndSettle();
+      expect(find.text('展开全部 (6)'), findsOneWidget);
+      expect(find.text('樱花粉'), findsNothing);
     });
 
     test('formatBytes correctly formats byte sizes', () {

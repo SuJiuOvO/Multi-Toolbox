@@ -212,6 +212,16 @@ void main() {
       expect(script, contains('dialog:'));
       expect(script, contains('uninstaller:'));
       expect(script, contains('ssh:'));
+      expect(script, contains('saveFile:'));
+      expect(script, contains('openFile:'));
+    });
+
+    test('system_open_file enforces Path Jail security', () async {
+      final res = await bridge.handleBridgeCall('system_open_file', {
+        'path': p.join(tempDir.path, 'outside_forbidden.txt'),
+      });
+      expect(res['success'], isFalse);
+      expect(res['error'], contains('沙箱安全拦截'));
     });
 
     test('Uninstaller API checks platform support', () async {

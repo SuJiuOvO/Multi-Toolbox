@@ -3,6 +3,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 import '../models/plugin_manifest.dart';
+import '../models/registry_mirror_node.dart';
+import '../theme/app_theme_manager.dart';
 import '../widgets/plugin_icon_widget.dart';
 import '../services/app_update_service.dart';
 import '../services/plugin_manager_service.dart';
@@ -10,14 +12,20 @@ import 'installed_plugins_manager_page.dart';
 
 class PluginStorePage extends StatefulWidget {
   final VoidCallback onInstalledChanged;
+  final int initialTab;
 
-  const PluginStorePage({super.key, required this.onInstalledChanged});
+  const PluginStorePage({
+    super.key,
+    required this.onInstalledChanged,
+    this.initialTab = 0,
+  });
 
   @override
   State<PluginStorePage> createState() => _PluginStorePageState();
 }
 
-class _PluginStorePageState extends State<PluginStorePage> {
+class _PluginStorePageState extends State<PluginStorePage> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   final PluginManagerService _pluginManager = PluginManagerService();
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -32,11 +40,17 @@ class _PluginStorePageState extends State<PluginStorePage> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTab.clamp(0, 1),
+    );
     _refreshStore();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -49,12 +63,9 @@ class _PluginStorePageState extends State<PluginStorePage> {
   }
 
   void _openInstalledManager() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => InstalledPluginsManagerPage(onInstalledChanged: widget.onInstalledChanged),
-      ),
-    ).then((_) => _refreshStore(silent: true));
+    if (_tabController.index != 1) {
+      _tabController.animateTo(1);
+    }
   }
 
   Future<void> _refreshStore({bool silent = false}) async {
@@ -245,12 +256,12 @@ class _PluginStorePageState extends State<PluginStorePage> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       updateInfo.releaseNotes,
-                      style: const TextStyle(fontSize: 12.5, height: 1.4, color: Colors.black87),
+                      style: TextStyle(fontSize: 12.5, height: 1.4, color: Theme.of(context).colorScheme.onSurface),
                     ),
                   ),
                   if (isUpdating) ...[
@@ -328,9 +339,9 @@ class _PluginStorePageState extends State<PluginStorePage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '百宝箱支持在国内/国际复杂网络下自动故障转移。您可以保持「智能竞速」，或指定首选线路：',
-                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
                     ),
                     const SizedBox(height: 12),
 
@@ -492,9 +503,9 @@ class _PluginStorePageState extends State<PluginStorePage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               '输入完整的远程索引 (index.json) HTTP/HTTPS 地址：',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -676,12 +687,12 @@ class _PluginStorePageState extends State<PluginStorePage> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: SelectableText(
                     item.description,
-                    style: const TextStyle(fontSize: 13, height: 1.45, color: Colors.black87),
+                    style: TextStyle(fontSize: 13, height: 1.45, color: theme.colorScheme.onSurface),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -702,7 +713,7 @@ class _PluginStorePageState extends State<PluginStorePage> {
                           Expanded(
                             child: RichText(
                               text: TextSpan(
-                                style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
                                 children: [
                                   TextSpan(text: '${inp.label} (${inp.type}): ', style: const TextStyle(fontWeight: FontWeight.w600)),
                                   TextSpan(text: '字段 ${inp.id}$optionsText'),
@@ -892,11 +903,30 @@ class _PluginStorePageState extends State<PluginStorePage> {
       return true;
     }).toList();
 
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0B1120) : theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          isMobile ? '插件模块市场' : '功能插件市场 (云端社区中心)',
+          isMobile ? '功能插件中心' : '功能插件中心 (云端市场与已安装管理)',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 16 : 18),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppThemeManager.accentBlue,
+          labelColor: AppThemeManager.accentBlue,
+          unselectedLabelColor: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+          tabs: const [
+            Tab(
+              icon: Icon(Icons.storefront_outlined, size: 18),
+              text: '探索市场',
+            ),
+            Tab(
+              icon: Icon(Icons.inventory_2_outlined, size: 18),
+              text: '已安装管理',
+            ),
+          ],
         ),
         actions: [
           if (!isMobile) ...[
@@ -1046,11 +1076,33 @@ class _PluginStorePageState extends State<PluginStorePage> {
           const SizedBox(width: 4),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-              slivers: [
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildMarketplaceView(theme, isDark, isMobile, activeNode, filteredPlugins),
+          InstalledPluginsManagerPage(
+            isEmbedded: true,
+            onInstalledChanged: widget.onInstalledChanged,
+            onNavigateToMarket: () => _tabController.animateTo(0),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMarketplaceView(
+    ThemeData theme,
+    bool isDark,
+    bool isMobile,
+    RegistryMirrorNode activeNode,
+    List<PluginManifest> filteredPlugins,
+  ) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+      slivers: [
                 // 顶部多源网络节点连接状态条
                 SliverToBoxAdapter(
                   child: Container(
@@ -1272,8 +1324,12 @@ class _PluginStorePageState extends State<PluginStorePage> {
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
-                            elevation: 1,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0), width: 1.1),
+                            ),
                             child: Padding(
                               padding: EdgeInsets.all(isMobile ? 12 : 15),
                               child: Column(
@@ -1301,8 +1357,9 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                                   child: Text(
                                                     item.name,
                                                     style: TextStyle(
-                                                      fontWeight: FontWeight.w600,
+                                                      fontWeight: FontWeight.bold,
                                                       fontSize: isMobile ? 14 : 15,
+                                                      color: theme.colorScheme.onSurface,
                                                     ),
                                                   ),
                                                 ),
@@ -1358,28 +1415,28 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                                 Expanded(
                                                   child: Text(
                                                     'v${item.version} · ${item.author} · ${(item.size != null ? (item.size! / 1024).toStringAsFixed(1) : "0")} KB',
-                                                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
                                                     overflow: TextOverflow.ellipsis,
                                                   ),
                                                 ),
-                                                const SizedBox(width: 6),
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                                  decoration: BoxDecoration(
-                                                    color: isCompatible
-                                                        ? Colors.green.withValues(alpha: 0.1)
-                                                        : Colors.red.withValues(alpha: 0.1),
-                                                    borderRadius: BorderRadius.circular(3),
-                                                  ),
-                                                  child: Text(
-                                                    '最低: v${item.minAppVersion}',
-                                                    style: TextStyle(
-                                                      fontSize: 9,
-                                                      color: isCompatible ? Colors.green.shade800 : Colors.redAccent,
-                                                      fontWeight: FontWeight.bold,
+                                                if (!isCompatible) ...[
+                                                  const SizedBox(width: 6),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.red.withValues(alpha: 0.12),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                    ),
+                                                    child: Text(
+                                                      '需客户端: v${item.minAppVersion}',
+                                                      style: const TextStyle(
+                                                        fontSize: 9.5,
+                                                        color: Colors.redAccent,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
+                                                ],
                                               ],
                                             ),
                                           ],
@@ -1392,7 +1449,7 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                     item.description,
                                     style: TextStyle(
                                       fontSize: isMobile ? 12 : 13,
-                                      color: Colors.black87,
+                                      color: theme.colorScheme.onSurfaceVariant,
                                       height: 1.35,
                                     ),
                                     maxLines: isMobile ? 2 : 3,
@@ -1429,11 +1486,11 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                           decoration: BoxDecoration(
-                                            color: Colors.grey.shade200,
+                                            color: isDark ? const Color(0xFF334155) : Colors.grey.shade200,
                                             borderRadius: BorderRadius.circular(6),
                                           ),
-                                          child: const Text('平台不兼容',
-                                              style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                          child: Text('平台不兼容',
+                                              style: TextStyle(fontSize: 11, color: isDark ? Colors.white60 : Colors.grey)),
                                         )
                                       else if (!isCompatible)
                                         FilledButton(
@@ -1446,28 +1503,31 @@ class _PluginStorePageState extends State<PluginStorePage> {
                                             );
                                           },
                                           style: FilledButton.styleFrom(
-                                            backgroundColor: Colors.grey,
+                                            backgroundColor: isDark ? const Color(0xFF334155) : Colors.grey,
                                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                             visualDensity: VisualDensity.compact,
                                           ),
-                                          child: const Text('客户端版本过低', style: TextStyle(fontSize: 12)),
+                                          child: Text('需客户端 v${item.minAppVersion}', style: const TextStyle(fontSize: 12)),
                                         )
                                       else if (item.isUpdateAvailable)
                                         FilledButton(
                                           onPressed: isAnyBusy ? null : () => _installPlugin(item),
                                           style: FilledButton.styleFrom(
-                                            backgroundColor: Colors.orange,
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            backgroundColor: AppThemeManager.accentYellow,
+                                            foregroundColor: Colors.black,
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                             visualDensity: VisualDensity.compact,
                                           ),
-                                          child: Text(isDownloading ? '更新中...' : '更新',
-                                              style: const TextStyle(fontSize: 12)),
+                                          child: Text(isDownloading ? '更新中...' : '立即更新 (v${item.version})',
+                                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                                         )
                                       else
                                         FilledButton.icon(
                                           onPressed: isAnyBusy ? null : () => _installPlugin(item),
                                           style: FilledButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            backgroundColor: AppThemeManager.accentBlue,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                             visualDensity: VisualDensity.compact,
                                           ),
                                           icon: isDownloading
@@ -1502,7 +1562,6 @@ class _PluginStorePageState extends State<PluginStorePage> {
                     ),
                   ),
               ],
-            ),
-    );
+            );
   }
 }

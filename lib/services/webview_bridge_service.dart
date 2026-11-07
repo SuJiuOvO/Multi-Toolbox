@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -248,6 +250,16 @@ class WebviewBridgeService {
         }
         throw Exception('无效或不支持的外部 URL: $rawUrl');
       }
+      case 'system_open_file': {
+        final filePath = payload['path']?.toString() ?? '';
+        assertPathInJail(filePath, isWrite: false);
+        final file = File(filePath);
+        if (!await file.exists()) {
+          throw Exception('文件不存在: $filePath');
+        }
+        final res = await OpenFilex.open(filePath);
+        return res.type.name;
+      }
 
       // ==========================
       // 4. 对话框能力 (Dialog API)
@@ -272,6 +284,37 @@ class WebviewBridgeService {
         if (dirPath == null || dirPath.trim().isEmpty) return null;
         allowedRoots.add(p.canonicalize(dirPath));
         return dirPath;
+      }
+      case 'dialog_save_file': {
+        final defaultName = payload['defaultName']?.toString() ?? 'output.bin';
+        final exts = (payload['extensions'] as List?)?.map((e) => e.toString()).toList();
+        final contentBase64 = payload['contentBase64']?.toString();
+
+        String? savePath;
+        if (Platform.isWindows) {
+          savePath = await FilePicker.platform.saveFile(
+            dialogTitle: payload['dialogTitle']?.toString() ?? '保存文件',
+            fileName: defaultName,
+            allowedExtensions: exts,
+            type: exts != null && exts.isNotEmpty ? FileType.custom : FileType.any,
+          );
+        } else {
+          Directory? saveDir = await getDownloadsDirectory();
+          saveDir ??= await getExternalStorageDirectory();
+          saveDir ??= await getApplicationDocumentsDirectory();
+          savePath = p.join(saveDir.path, defaultName);
+        }
+
+        if (savePath == null) return null;
+
+        if (contentBase64 != null && contentBase64.isNotEmpty) {
+          final bytes = base64Decode(contentBase64);
+          final file = File(savePath);
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes);
+        }
+        allowedRoots.add(p.canonicalize(File(savePath).parent.path));
+        return savePath;
       }
       case 'dialog_confirm': {
         final title = payload['title']?.toString() ?? '确认操作';
@@ -480,12 +523,14 @@ class WebviewBridgeService {
       showToast: function(msg, type) { return Toolbox.invoke('system_toast', { message: msg, type: type || 'info' }); },
       copyText: function(text) { return Toolbox.invoke('system_copy_text', { text: text }); },
       readText: function() { return Toolbox.invoke('system_read_text', {}); },
-      openExternal: function(url) { return Toolbox.invoke('system_open_external', { url: url }); }
+      openExternal: function(url) { return Toolbox.invoke('system_open_external', { url: url }); },
+      openFile: function(path) { return Toolbox.invoke('system_open_file', { path: path }); }
     },
 
     dialog: {
       pickFiles: function(opts) { return Toolbox.invoke('dialog_pick_files', opts || {}); },
       pickDirectory: function() { return Toolbox.invoke('dialog_pick_directory', {}); },
+      saveFile: function(opts) { return Toolbox.invoke('dialog_save_file', opts || {}); },
       confirm: function(title, msg) { return Toolbox.invoke('dialog_confirm', { title: title, message: msg }); }
     },
 

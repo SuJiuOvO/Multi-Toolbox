@@ -17,6 +17,7 @@ import '../services/android_office_bridge.dart';
 import '../services/notification_service.dart';
 import '../services/settings_service.dart';
 import '../services/storage_permission_service.dart';
+import '../services/plugin_manager_service.dart';
 import 'terminal_log_viewer.dart';
 
 enum PluginExecutionEngine {
@@ -158,6 +159,8 @@ class DynamicToolRunnerPage extends StatefulWidget {
 
 class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
   final Map<String, dynamic> _formValues = {};
+  final Set<String> _dismissedBanners = {};
+  final Map<String, bool> _colorPickerExpanded = {};
   bool _isProcessing = false;
   bool _hasConfirmedNativeSecurityWarning = false;
   final Map<String, bool> _showCompareMode = {};
@@ -1169,31 +1172,6 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     final formSection = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF3F4F6),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.tips_and_updates, size: 20, color: theme.colorScheme.primary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  widget.plugin.description,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: textPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
         if (widget.plugin.banners.isNotEmpty) ...[
           ...widget.plugin.banners.map((b) => _buildBannerCard(b, context)),
           const SizedBox(height: 12),
@@ -1800,100 +1778,102 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (widget.plugin.isDualAdaptivePlugin) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.indigo.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.indigo.withValues(alpha: 0.4)),
+              if (!isMobile) ...[
+                if (widget.plugin.isDualAdaptivePlugin) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.indigo.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.indigo.withValues(alpha: 0.4)),
+                    ),
+                    child: Text(
+                      Platform.isWindows ? '🚀 Win 原生极速模式' : '🦀 Android Wasm 沙箱模式',
+                      style: const TextStyle(fontSize: 10, color: Colors.indigo, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                  child: Text(
-                    Platform.isWindows ? '🚀 Win 原生极速模式' : '🦀 Android Wasm 沙箱模式',
-                    style: const TextStyle(fontSize: 10, color: Colors.indigo, fontWeight: FontWeight.bold),
+                ] else if (widget.plugin.isWindowsExtension) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.blue.withValues(alpha: 0.4)),
+                    ),
+                    child: const Text(
+                      '⚡ Win 开放工坊',
+                      style: TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ),
-              ] else if (widget.plugin.isWindowsExtension) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.blue.withValues(alpha: 0.4)),
+                ],
+                if (widget.plugin.isQuickJsPlugin) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.teal.withValues(alpha: 0.4)),
+                    ),
+                    child: const Text(
+                      '⚡ QuickJS 引擎',
+                      style: TextStyle(fontSize: 10, color: Colors.teal, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                  child: const Text(
-                    '⚡ Win 开放工坊',
-                    style: TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold),
+                ],
+                if (widget.plugin.isWasmPlugin) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.deepOrange.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.deepOrange.withValues(alpha: 0.4)),
+                    ),
+                    child: const Text(
+                      '🦀 Wasm 沙箱',
+                      style: TextStyle(fontSize: 10, color: Colors.deepOrange, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ),
-              ],
-              if (widget.plugin.isQuickJsPlugin) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.teal.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.teal.withValues(alpha: 0.4)),
+                ],
+                if (widget.plugin.isOfficial) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.verified_user_rounded, size: 10, color: Colors.green),
+                        SizedBox(width: 3),
+                        Text(
+                          '官方认证',
+                          style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: const Text(
-                    '⚡ QuickJS 引擎',
-                    style: TextStyle(fontSize: 10, color: Colors.teal, fontWeight: FontWeight.bold),
+                ] else ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.grey.withValues(alpha: 0.4)),
+                    ),
+                    child: const Text(
+                      '社区插件',
+                      style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ),
-              ],
-              if (widget.plugin.isWasmPlugin) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.deepOrange.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.deepOrange.withValues(alpha: 0.4)),
-                  ),
-                  child: const Text(
-                    '🦀 Wasm 沙箱',
-                    style: TextStyle(fontSize: 10, color: Colors.deepOrange, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-              if (widget.plugin.isOfficial) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.verified_user_rounded, size: 10, color: Colors.green),
-                      SizedBox(width: 3),
-                      Text(
-                        '官方认证',
-                        style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-              ] else ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.grey.withValues(alpha: 0.4)),
-                  ),
-                  child: const Text(
-                    '社区插件',
-                    style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold),
-                  ),
-                ),
+                ],
               ],
             ],
           ),
@@ -1906,20 +1886,9 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               ),
             ),
             IconButton(
-              tooltip: '插件信息',
+              tooltip: '插件信息与说明',
               icon: const Icon(Icons.info_outline),
-              onPressed: () {
-                showAboutDialog(
-                  context: context,
-                  applicationName: widget.plugin.name,
-                  applicationVersion: 'v${widget.plugin.version}',
-                  children: [
-                    Text('作者: ${widget.plugin.author}'),
-                    const SizedBox(height: 8),
-                    Text(widget.plugin.description),
-                  ],
-                );
-              },
+              onPressed: () => _showPluginInfoSheet(context),
             ),
           ],
         ),
@@ -1954,6 +1923,163 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+
+  void _showPluginInfoSheet(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+                      child: PluginIconWidget(
+                        manifest: widget.plugin,
+                        size: 22,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.plugin.name,
+                            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'v${widget.plugin.version} · 作者: ${widget.plugin.author}',
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    if (widget.plugin.isDualAdaptivePlugin)
+                      _buildChipBadge(
+                        Platform.isWindows ? '🚀 Win 原生极速' : '🦀 Android Wasm 沙箱',
+                        Colors.indigo,
+                      )
+                    else if (widget.plugin.isWindowsExtension)
+                      _buildChipBadge('⚡ Win 开放工坊', Colors.blue)
+                    else if (widget.plugin.isQuickJsPlugin)
+                      _buildChipBadge('⚡ QuickJS 引擎', Colors.teal)
+                    else if (widget.plugin.isWasmPlugin)
+                      _buildChipBadge('🦀 Wasm 沙箱', Colors.deepOrange)
+                    else if (widget.plugin.isWebviewPlugin)
+                      _buildChipBadge('🌐 Webview 交互视窗', Colors.purple),
+                    if (widget.plugin.isOfficial)
+                      _buildChipBadge('官方认证', Colors.green, icon: Icons.verified_user_rounded)
+                    else
+                      _buildChipBadge('社区插件', Colors.grey),
+                    _buildChipBadge(
+                      PluginManagerService.getCategoryDisplayName(widget.plugin.category),
+                      Colors.blueGrey,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '功能简介与使用说明',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  child: Text(
+                    widget.plugin.description,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+                if (widget.plugin.permissions.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(Icons.security, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      Text(
+                        '权限声明: ${widget.plugin.permissions.join(', ')}',
+                        style: TextStyle(fontSize: 11.5, color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildChipBadge(String label, Color color, {IconData? icon}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 11, color: color),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            label,
+            style: TextStyle(fontSize: 10.5, color: color, fontWeight: FontWeight.bold),
+          ),
+        ],
       ),
     );
   }
@@ -2600,6 +2726,11 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
     if (banner.platform == 'windows' && !Platform.isWindows) return const SizedBox.shrink();
     if (banner.platform == 'android' && !Platform.isAndroid) return const SizedBox.shrink();
 
+    final bannerKey = '${banner.type}:${banner.platform}:${banner.message}';
+    if (_dismissedBanners.contains(bannerKey)) {
+      return const SizedBox.shrink();
+    }
+
     if (banner.visibleIf != null && !_evalCondition(banner.visibleIf!)) {
       return const SizedBox.shrink();
     }
@@ -2697,6 +2828,19 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
                 color: textColor,
                 height: 1.4,
               ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              setState(() {
+                _dismissedBanners.add(bannerKey);
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(Icons.close_rounded, size: 16, color: iconColor.withValues(alpha: 0.7)),
             ),
           ),
         ],
@@ -3293,6 +3437,14 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
         '#6366F1', '#A855F7', '#EC4899', '#EEEEEE',
       ];
 
+      final isExpanded = _colorPickerExpanded[input.id] ?? false;
+      final visiblePresets = (!isExpanded && quickIdPresets.length > 3)
+          ? quickIdPresets.sublist(0, 3)
+          : quickIdPresets;
+      final visibleSwatches = (!isExpanded && inlineSwatches.length > 8)
+          ? inlineSwatches.sublist(0, 8)
+          : inlineSwatches;
+
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: Column(
@@ -3360,54 +3512,74 @@ class _DynamicToolRunnerPageState extends State<DynamicToolRunnerPage> {
               ],
             ),
             const SizedBox(height: 8),
-            // 常用证件推荐底色快捷选择
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  ...quickIdPresets.map((preset) {
-                    final pVal = preset['value']!;
-                    final pCol = DynamicToolRunnerPage.parseHexColor(pVal);
-                    final isTrans = pVal == 'transparent';
-                    final isSelected = isTrans
-                        ? isTransparent
-                        : (!isTransparent && curVal.replaceAll('#', '').toLowerCase() == pVal.replaceAll('#', '').toLowerCase());
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        avatar: Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isTrans ? Colors.transparent : pCol,
-                            border: Border.all(color: Colors.grey.shade400),
-                          ),
-                          child: isTrans ? const Icon(Icons.block, size: 10, color: Colors.red) : null,
-                        ),
-                        label: Text(preset['label']!, style: const TextStyle(fontSize: 12)),
-                        selected: isSelected,
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        onSelected: (_) {
-                          setState(() {
-                            _formValues[input.id] = pVal;
-                          });
-                        },
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            // 精选色块阵列
+            // 常用证件推荐底色快捷选择（默认展示常用项，超量支持展开/收起，全响应式换行）
             Wrap(
               spacing: 6,
               runSpacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                ...inlineSwatches.map((hex) {
+                ...visiblePresets.map((preset) {
+                  final pVal = preset['value']!;
+                  final pCol = DynamicToolRunnerPage.parseHexColor(pVal);
+                  final isTrans = pVal == 'transparent';
+                  final isSelected = isTrans
+                      ? isTransparent
+                      : (!isTransparent && curVal.replaceAll('#', '').toLowerCase() == pVal.replaceAll('#', '').toLowerCase());
+                  return ChoiceChip(
+                    avatar: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isTrans ? Colors.transparent : pCol,
+                        border: Border.all(color: Colors.grey.shade400),
+                      ),
+                      child: isTrans ? const Icon(Icons.block, size: 10, color: Colors.red) : null,
+                    ),
+                    label: Text(preset['label']!, style: const TextStyle(fontSize: 12)),
+                    selected: isSelected,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    onSelected: (_) {
+                      setState(() {
+                        _formValues[input.id] = pVal;
+                      });
+                    },
+                  );
+                }),
+                if (quickIdPresets.length > 3)
+                  ActionChip(
+                    avatar: Icon(
+                      isExpanded ? Icons.expand_less : Icons.expand_more,
+                      size: 16,
+                      color: theme.colorScheme.primary,
+                    ),
+                    label: Text(
+                      isExpanded ? '收起' : '展开全部 (${quickIdPresets.length})',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      setState(() {
+                        _colorPickerExpanded[input.id] = !isExpanded;
+                      });
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // 精选色块阵列（折叠显示高频热门8色，展开显示全部精选色板）
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ...visibleSwatches.map((hex) {
                   final isTrans = hex == 'transparent';
                   final color = DynamicToolRunnerPage.parseHexColor(hex);
                   final isSelected = isTrans

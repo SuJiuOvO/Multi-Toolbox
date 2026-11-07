@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -37,6 +38,8 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
   bool _configExpanded = true;
   bool _ctrl = false;
   bool _showPassword = false;
+  bool _rememberCredentials = true;
+  Timer? _resizeDebounce;
   double _fontSize = 14;
   String _status = '尚未连接';
   String? _error;
@@ -63,7 +66,11 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
       }
     };
     _terminal.onResize = (width, height, pixelWidth, pixelHeight) {
-      if (_connected) _service.resize(width, height, pixelWidth, pixelHeight);
+      if (!_connected) return;
+      _resizeDebounce?.cancel();
+      _resizeDebounce = Timer(const Duration(milliseconds: 200), () {
+        if (_connected) _service.resize(width, height, pixelWidth, pixelHeight);
+      });
     };
     _loadProfiles();
   }
@@ -86,13 +93,26 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
       );
 
   void _selectProfile(SshProfile profile) {
-    _password.clear();
-    _privateKey.clear();
-    _passphrase.clear();
     _host.text = profile.host;
     _port.text = '${profile.port}';
     _user.text = profile.username;
     _name.text = profile.name;
+    _rememberCredentials = profile.rememberCredentials;
+    if (profile.rememberCredentials) {
+      if (profile.authMethod == SshAuthMethod.password) {
+        _password.text = profile.password;
+        _privateKey.clear();
+        _passphrase.clear();
+      } else {
+        _password.clear();
+        _privateKey.text = profile.privateKey;
+        _passphrase.text = profile.passphrase;
+      }
+    } else {
+      _password.clear();
+      _privateKey.clear();
+      _passphrase.clear();
+    }
     setState(() {
       _auth = profile.authMethod;
       _error = null;
@@ -100,7 +120,17 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
   }
 
   Future<void> _saveProfile() async {
-    final profile = _profile;
+    final profile = SshProfile.withCredentials(
+      name: _name.text.trim(),
+      host: _host.text.trim(),
+      port: int.tryParse(_port.text.trim()) ?? 0,
+      username: _user.text.trim(),
+      authMethod: _auth,
+      password: _password.text,
+      privateKey: _privateKey.text,
+      passphrase: _passphrase.text,
+      rememberCredentials: _rememberCredentials,
+    );
     final error = profile.validate();
     if (error != null) {
       setState(() => _error = error);
@@ -114,8 +144,11 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
       await _profilesStore.save(profiles);
       if (!mounted) return;
       setState(() => _profiles = profiles);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('连接配置已保存，密码和私钥不会保存')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_rememberCredentials
+            ? '连接配置与本地加密凭据已保存'
+            : '连接配置已保存（未记住认证信息）'),
+      ));
     } catch (_) {
       if (mounted) setState(() => _error = '连接配置保存失败，请稍后重试');
     }
@@ -160,9 +193,11 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
         },
       );
       if (!mounted || attempt != _attempt) return;
-      _password.clear();
-      _privateKey.clear();
-      _passphrase.clear();
+      if (!_rememberCredentials) {
+        _password.clear();
+        _privateKey.clear();
+        _passphrase.clear();
+      }
       setState(() {
         _connected = _service.isConnected;
         _connecting = false;
@@ -346,11 +381,65 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
     }
   }
 
-  Future<void> _copy() async {
+  Future<void> _copy({bool all = false}) async {
     final selection = _terminalController.selection;
-    if (selection == null) return;
-    await Clipboard.setData(
-        ClipboardData(text: _terminal.buffer.getText(selection)));
+    String text = '';
+    if (!all && selection != null) {
+      text = _terminal.buffer.getText(selection);
+    }
+    if (text.isEmpty) {
+      final lines = <String>[];
+      for (int i = 0; i < _terminal.buffer.lines.length; i++) {
+        final line = _terminal.buffer.lines[i].toString().trimRight();
+        if (line.isNotEmpty) lines.add(line);
+      }
+      text = lines.join('\n');
+    }
+    if (text.trim().isNotEmpty) {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(selection != null && !all
+                ? '已复制选中文本到剪贴板'
+                : '已复制终端屏幕输出内容到剪贴板'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('终端当前无可用文本可复制')),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmDisconnect() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('断开 SSH 连接？'),
+        content: Text('确定要断开与 ${_profile.identity} 的远程终端会话吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('断开连接'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      _disconnect();
+    }
   }
 
   Future<void> _paste() async {
@@ -381,6 +470,7 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
   @override
   void dispose() {
     _attempt++;
+    _resizeDebounce?.cancel();
     _service.disconnect();
     _terminal.onOutput = null;
     _terminal.onResize = null;
@@ -433,9 +523,6 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
       ]),
     );
     final content = !showTerminal
-        // The disconnected form must not resize with every keyboard animation
-        // frame. The fields are at the top of a scroll view, so disabling body
-        // resizing removes the expensive layout/IME feedback loop.
         ? SingleChildScrollView(
             child: Align(
               alignment: Alignment.topCenter,
@@ -446,37 +533,56 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
               ),
             ),
           )
-        : wide
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(
-                      width: 320, child: SingleChildScrollView(child: form)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildTerminal()),
-                ],
-              )
-            : Column(
-                children: [
-                  connectionPanel,
-                  const SizedBox(height: 10),
-                  Expanded(child: _buildTerminal()),
-                ],
-              );
+        : _buildTerminal();
     return Scaffold(
-      // Keep the form's layout stable during Android IME animation. Once the
-      // terminal is connected, resize again so the soft keyboard never covers
-      // the terminal's cursor and shortcut bar.
       resizeToAvoidBottomInset: showTerminal,
-      appBar: AppBar(title: const Text('SSH 安全终端'), actions: [
-        IconButton(
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('SSH 安全终端'),
+            if (_connected) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    _profile.identity,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          if (_connected)
+            IconButton(
+              tooltip: '断开连接',
+              icon: const Icon(Icons.power_settings_new_rounded, color: Colors.redAccent),
+              onPressed: _confirmDisconnect,
+            ),
+          IconButton(
             tooltip: '已信任的服务器',
             onPressed: busy ? null : _showKnownHosts,
-            icon: const Icon(Icons.verified_user_outlined)),
-      ]),
+            icon: const Icon(Icons.verified_user_outlined),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Padding(
-          padding: EdgeInsets.all(wide ? 20 : 10),
+          padding: EdgeInsets.all(wide ? (showTerminal ? 10 : 20) : (showTerminal ? 4 : 10)),
           child: content,
         ),
       ),
@@ -508,7 +614,8 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text('加密连接 · 本机直连', style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 6),
-      const Text('仅保存地址与用户名。认证信息仅在本次会话内使用。', style: TextStyle(fontSize: 12)),
+      const Text('配置与凭据经本地 AES-256 加密保护，防止被其它恶意插件窃取或上传利用。',
+          style: TextStyle(fontSize: 12)),
       const SizedBox(height: 16),
       if (_profiles.isNotEmpty) ...[
         PopupMenuButton<SshProfile>(
@@ -571,6 +678,15 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
           value: _showPassword,
           onChanged:
               busy ? null : (value) => setState(() => _showPassword = value)),
+      CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('记住密码/私钥（本机安全加密保存）'),
+          subtitle: const Text('断开或下次打开无需重新输入，凭据仅在本地解密',
+              style: TextStyle(fontSize: 11)),
+          value: _rememberCredentials,
+          onChanged:
+              busy ? null : (val) => setState(() => _rememberCredentials = val ?? false)),
       if (_error != null)
         Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -640,24 +756,29 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
                           width: 14,
                           height: 14,
                           child: CircularProgressIndicator(strokeWidth: 2)),
-                    if (_connected || _connecting)
-                      IconButton(
-                          tooltip: '关闭 SSH 连接',
-                          onPressed: _disconnect,
-                          icon: const Icon(Icons.close,
-                              color: Colors.white70, size: 18)),
                     IconButton(
-                        tooltip: '缩小字体',
+                        tooltip: '复制终端文本',
+                        onPressed: () => _copy(),
+                        icon: const Icon(Icons.copy_rounded,
+                            color: Colors.white70, size: 18)),
+                    IconButton(
+                        tooltip: '缩小字体 (当前 ${_fontSize.toInt()}pt)',
                         onPressed: () => setState(
-                            () => _fontSize = (_fontSize - 1).clamp(10, 24)),
+                            () => _fontSize = (_fontSize - 2).clamp(8.0, 32.0)),
                         icon: const Icon(Icons.text_decrease,
                             color: Colors.white70, size: 18)),
                     IconButton(
-                        tooltip: '放大字体',
+                        tooltip: '放大字体 (当前 ${_fontSize.toInt()}pt)',
                         onPressed: () => setState(
-                            () => _fontSize = (_fontSize + 1).clamp(10, 24)),
+                            () => _fontSize = (_fontSize + 2).clamp(8.0, 32.0)),
                         icon: const Icon(Icons.text_increase,
                             color: Colors.white70, size: 18)),
+                    if (_connected || _connecting)
+                      IconButton(
+                          tooltip: '断开 SSH 连接',
+                          onPressed: _confirmDisconnect,
+                          icon: const Icon(Icons.close,
+                              color: Colors.white70, size: 18)),
                   ])),
               Expanded(
                   child: TerminalView(_terminal,
@@ -688,7 +809,7 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
                         _terminalButton('↓', () => _service.send('\x1b[B')),
                         _terminalButton('←', () => _service.send('\x1b[D')),
                         _terminalButton('→', () => _service.send('\x1b[C')),
-                        TextButton(onPressed: _copy, child: const Text('复制选中')),
+                        TextButton(onPressed: () => _copy(), child: const Text('复制选中/全部')),
                         _terminalButton('粘贴', _paste),
                         TextButton(
                             onPressed: () {

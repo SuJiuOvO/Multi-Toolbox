@@ -5,6 +5,7 @@ import '../services/plugin_manager_service.dart';
 import '../theme/app_theme_manager.dart';
 import '../widgets/plugin_icon_widget.dart';
 import 'dynamic_tool_runner_page.dart';
+import 'plugin_runner_page.dart';
 import 'plugin_store_page.dart';
 
 /// 插件与功能模块管理页面
@@ -17,17 +18,21 @@ import 'plugin_store_page.dart';
 /// 6. 深色/浅色主题智能切换适配。
 class InstalledPluginsManagerPage extends StatefulWidget {
   final VoidCallback? onInstalledChanged;
+  final bool isEmbedded;
+  final VoidCallback? onNavigateToMarket;
 
   const InstalledPluginsManagerPage({
     super.key,
     this.onInstalledChanged,
+    this.isEmbedded = false,
+    this.onNavigateToMarket,
   });
 
   @override
-  State<InstalledPluginsManagerPage> createState() => _InstalledPluginsManagerPageState();
+  State<InstalledPluginsManagerPage> createState() => InstalledPluginsManagerPageState();
 }
 
-class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPage> {
+class InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPage> {
   final PluginManagerService _pluginManager = PluginManagerService();
   final TextEditingController _searchController = TextEditingController();
 
@@ -312,7 +317,7 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => DynamicToolRunnerPage(plugin: plugin),
+        builder: (_) => PluginRunnerPage.destinationFor(plugin),
       ),
     );
   }
@@ -353,108 +358,70 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
       return true;
     }).toList();
 
-    final textPrimary = isDark ? Colors.white : const Color(0xFF1E293B);
-    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final textPrimary = theme.colorScheme.onSurface;
+    final textSecondary = theme.colorScheme.onSurfaceVariant;
     final searchBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
     final searchBorder = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          '插件与模块管理',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        actions: [
-          if (isMobile) ...[
-            IconButton(
-              icon: const Icon(Icons.code_rounded, color: Colors.indigo),
-              tooltip: '关联本地开发目录',
-              onPressed: _pickAndLinkDevPlugin,
+    final content = RefreshIndicator(
+      onRefresh: () => _loadData(silent: true),
+      child: Column(
+        children: [
+          // 搜索与快捷统计头部
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 12 : 20,
+              vertical: 10,
             ),
-            IconButton(
-              icon: const Icon(Icons.file_upload_outlined, color: AppThemeManager.accentBlue),
-              tooltip: '本地安装模块',
-              onPressed: _pickAndInstallLocalPlugin,
-            ),
-            IconButton(
-              icon: const Icon(Icons.add_shopping_cart_outlined, color: AppThemeManager.accentGreen),
-              tooltip: '插件市场',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => PluginStorePage(onInstalledChanged: widget.onInstalledChanged ?? () {}),
-                  ),
-                ).then((_) => _loadData(silent: true));
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: '刷新列表',
-              onPressed: () => _loadData(),
-            ),
-          ] else ...[
-            OutlinedButton.icon(
-              onPressed: _pickAndLinkDevPlugin,
-              icon: const Icon(Icons.code_rounded, size: 16),
-              label: const Text('关联开发目录'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _pickAndInstallLocalPlugin,
-              icon: const Icon(Icons.file_upload_outlined, size: 16),
-              label: const Text('本地安装模块'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => PluginStorePage(onInstalledChanged: widget.onInstalledChanged ?? () {}),
-                  ),
-                ).then((_) => _loadData(silent: true));
-              },
-              icon: const Icon(Icons.add_shopping_cart_outlined, size: 16),
-              label: const Text('前往插件市场'),
-            ),
-            const SizedBox(width: 4),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: '刷新已安装列表',
-              onPressed: () => _loadData(),
-            ),
-            const SizedBox(width: 8),
-          ],
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => _loadData(silent: true),
-        child: Column(
-          children: [
-            // 搜索与快捷统计头部
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: isMobile ? 12 : 20,
-                vertical: 10,
-              ),
-              decoration: BoxDecoration(
-                color: theme.scaffoldBackgroundColor,
-                border: Border(
-                  bottom: BorderSide(
-                    color: isDark ? const Color(0xFF334155).withValues(alpha: 0.5) : const Color(0xFFE2E8F0),
-                    width: 1,
-                  ),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF0B1120) : theme.scaffoldBackgroundColor,
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? const Color(0xFF334155).withValues(alpha: 0.5) : const Color(0xFFE2E8F0),
+                  width: 1,
                 ),
               ),
-              child: Column(
-                children: [
-                  // 搜索输入框
-                  TextField(
-                    controller: _searchController,
-                    style: TextStyle(fontSize: 14, color: textPrimary),
-                    decoration: InputDecoration(
-                      filled: true,
+            ),
+            child: Column(
+              children: [
+                if (widget.isEmbedded) ...[
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _pickAndLinkDevPlugin,
+                        icon: const Icon(Icons.code_rounded, size: 14),
+                        label: const Text('关联开发目录', style: TextStyle(fontSize: 11.5)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: _pickAndInstallLocalPlugin,
+                        icon: const Icon(Icons.file_upload_outlined, size: 14),
+                        label: const Text('本地安装模块', style: TextStyle(fontSize: 11.5)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 18),
+                        tooltip: '刷新已安装列表',
+                        onPressed: () => _loadData(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                // 搜索输入框
+                TextField(
+                  controller: _searchController,
+                  style: TextStyle(fontSize: 14, color: textPrimary),
+                  decoration: InputDecoration(
+                    filled: true,
                       fillColor: searchBg,
                       hintText: '搜索已安装模块（名称、功能简介、分类、ID或作者）...',
                       hintStyle: TextStyle(fontSize: 13, color: textSecondary.withValues(alpha: 0.7)),
@@ -521,8 +488,84 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
             ),
           ],
         ),
+      );
+
+    if (widget.isEmbedded) {
+      return content;
+    }
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0B1120) : theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: const Text(
+          '插件与模块管理',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        actions: [
+          if (isMobile) ...[
+            IconButton(
+              icon: const Icon(Icons.code_rounded, color: Colors.indigo),
+              tooltip: '关联本地开发目录',
+              onPressed: _pickAndLinkDevPlugin,
+            ),
+            IconButton(
+              icon: const Icon(Icons.file_upload_outlined, color: AppThemeManager.accentBlue),
+              tooltip: '本地安装模块',
+              onPressed: _pickAndInstallLocalPlugin,
+            ),
+            IconButton(
+              icon: const Icon(Icons.storefront_outlined, color: AppThemeManager.accentGreen),
+              tooltip: '插件市场',
+              onPressed: _openStore,
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: '刷新列表',
+              onPressed: () => _loadData(),
+            ),
+          ] else ...[
+            OutlinedButton.icon(
+              onPressed: _pickAndLinkDevPlugin,
+              icon: const Icon(Icons.code_rounded, size: 16),
+              label: const Text('关联开发目录'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: _pickAndInstallLocalPlugin,
+              icon: const Icon(Icons.file_upload_outlined, size: 16),
+              label: const Text('本地安装模块'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: _openStore,
+              icon: const Icon(Icons.storefront_outlined, size: 16),
+              label: const Text('前往插件市场'),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: '刷新已安装列表',
+              onPressed: () => _loadData(),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
       ),
+      body: content,
     );
+  }
+
+  void _openStore() {
+    if (widget.onNavigateToMarket != null) {
+      widget.onNavigateToMarket!();
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PluginStorePage(onInstalledChanged: widget.onInstalledChanged ?? () {}),
+        ),
+      ).then((_) => _loadData(silent: true));
+    }
   }
 
   Widget _buildFilterChip(String filterKey, String label, bool isDark) {
@@ -745,7 +788,7 @@ class _InstalledPluginsManagerPageState extends State<InstalledPluginsManagerPag
               children: [
                 Expanded(
                   child: Text(
-                    '作者: ${plugin.author} · 分类: ${plugin.category}',
+                    '作者: ${plugin.author} · 分类: ${PluginManagerService.getCategoryDisplayName(plugin.category)}',
                     style: TextStyle(fontSize: 11, color: textSecondary.withValues(alpha: 0.8)),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

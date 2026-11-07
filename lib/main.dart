@@ -5,7 +5,6 @@ import 'models/plugin_manifest.dart';
 import 'widgets/plugin_icon_widget.dart';
 import 'pages/plugin_runner_page.dart';
 import 'pages/plugin_store_page.dart';
-import 'pages/installed_plugins_manager_page.dart';
 import 'pages/settings_page.dart';
 import 'services/app_update_service.dart';
 import 'services/notification_service.dart';
@@ -380,7 +379,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => InstalledPluginsManagerPage(onInstalledChanged: _refreshList),
+        builder: (_) => PluginStorePage(initialTab: 1, onInstalledChanged: _refreshList),
       ),
     ).then((_) => _refreshList());
   }
@@ -389,7 +388,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PluginStorePage(onInstalledChanged: _refreshList),
+        builder: (_) => PluginStorePage(initialTab: 0, onInstalledChanged: _refreshList),
       ),
     ).then((_) => _refreshList());
   }
@@ -544,7 +543,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                         ...categoryCounts.keys
                             .where((k) => k != 'all' && k != 'image' && k != 'media' && k != 'document')
                             .map((customCat) => _buildFilterChoiceItem(
-                                  label: '$customCat (${categoryCounts[customCat] ?? 0})',
+                                  label: '${PluginManagerService.getCategoryDisplayName(customCat)} (${categoryCounts[customCat] ?? 0})',
                                   icon: Icons.extension_outlined,
                                   selected: tempCategory == customCat,
                                   onTap: () => setDialogState(() => tempCategory = customCat),
@@ -822,8 +821,8 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
             actions: [
               if (isMobile) ...[
                 IconButton(
-                  icon: const Icon(Icons.add_shopping_cart, color: AppThemeManager.accentBlue),
-                  tooltip: '下载新工具 / 模块市场',
+                  icon: const Icon(Icons.storefront_outlined, color: AppThemeManager.accentBlue),
+                  tooltip: '功能插件中心 (探索市场与已安装管理)',
                   onPressed: _openStore,
                 ),
                 IconButton(
@@ -905,7 +904,7 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                 OutlinedButton.icon(
                   onPressed: _openPluginsManager,
                   icon: const Icon(Icons.tune_rounded, size: 17),
-                  label: const Text('插件管理'),
+                  label: const Text('已安装管理'),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
@@ -916,8 +915,8 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                 const SizedBox(width: 8),
                 FilledButton.icon(
                   onPressed: _openStore,
-                  icon: const Icon(Icons.add_shopping_cart, size: 18),
-                  label: const Text('功能中心 / 模块市场'),
+                  icon: const Icon(Icons.storefront_outlined, size: 18),
+                  label: const Text('功能插件中心'),
                 ),
                 IconButton(
                   tooltip: '系统设置与关于',
@@ -1054,18 +1053,19 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // 深度搜索 开关样式（Switch 开关，消除放大镜图标误导）
+                  // 深度搜索 开关（自适应紧凑形态：移动端优雅药丸图标，桌面端完整标签与开关）
                   Tooltip(
-                    message: '深度搜索开关：开启后在功能模块详细简介与参数说明中检索',
+                    message: _isDeepSearch ? '深度搜索：已开启 (深入匹配功能简介、算法及参数)' : '深度搜索：已关闭 (点击开启深入匹配)',
                     child: InkWell(
                       onTap: () => setState(() => _isDeepSearch = !_isDeepSearch),
                       borderRadius: BorderRadius.circular(20),
-                      child: Container(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
                         height: 38,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 10),
                         decoration: BoxDecoration(
                           color: _isDeepSearch
-                              ? AppThemeManager.accentYellow.withValues(alpha: 0.15)
+                              ? AppThemeManager.accentYellow.withValues(alpha: 0.18)
                               : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF3F4F6)),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
@@ -1077,24 +1077,42 @@ class _ToolboxHomePageState extends State<ToolboxHomePage> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              '深度搜索',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: _isDeepSearch ? FontWeight.bold : FontWeight.w500,
-                                color: _isDeepSearch ? AppThemeManager.accentYellow : textPrimary,
-                              ),
+                            Icon(
+                              _isDeepSearch ? Icons.saved_search_rounded : Icons.search_rounded,
+                              size: 18,
+                              color: _isDeepSearch ? AppThemeManager.accentYellow : textSecondary,
                             ),
-                            const SizedBox(width: 2),
-                            Transform.scale(
-                              scale: 0.68,
-                              child: Switch(
-                                value: _isDeepSearch,
-                                activeColor: AppThemeManager.accentYellow,
-                                onChanged: (val) => setState(() => _isDeepSearch = val),
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            if (!isMobile) ...[
+                              const SizedBox(width: 4),
+                              Text(
+                                '深度搜索',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: _isDeepSearch ? FontWeight.bold : FontWeight.w500,
+                                  color: _isDeepSearch ? AppThemeManager.accentYellow : textPrimary,
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 2),
+                              Transform.scale(
+                                scale: 0.68,
+                                child: Switch(
+                                  value: _isDeepSearch,
+                                  activeColor: AppThemeManager.accentYellow,
+                                  onChanged: (val) => setState(() => _isDeepSearch = val),
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                            ] else ...[
+                              const SizedBox(width: 3),
+                              Text(
+                                '深度',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: _isDeepSearch ? FontWeight.bold : FontWeight.normal,
+                                  color: _isDeepSearch ? AppThemeManager.accentYellow : textSecondary,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),

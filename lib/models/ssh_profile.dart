@@ -1,17 +1,99 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
+import 'package:pointycastle/export.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum SshAuthMethod { password, privateKey }
 
-/// Connection metadata only. Credentials never belong in this object or JSON.
+/// AES-256-CBC with PKCS7 padding and HMAC-SHA256 authentication for local vault storage.
+class SshCredentialCrypto {
+  static const _masterSeed = 'MultiToolbox_SSH_Vault_Secure_Key_2026_V1';
+
+  static Uint8List _deriveKey() {
+    return Uint8List.fromList(sha256.convert(utf8.encode(_masterSeed)).bytes);
+  }
+
+  static String encrypt(String plainText) {
+    if (plainText.isEmpty) return '';
+    try {
+      final key = _deriveKey();
+      final rnd = Random.secure();
+      final iv = Uint8List.fromList(List<int>.generate(16, (_) => rnd.nextInt(256)));
+      final plainBytes = Uint8List.fromList(utf8.encode(plainText));
+
+      final cipher = PaddedBlockCipherImpl(
+        PKCS7Padding(),
+        CBCBlockCipher(AESEngine()),
+      )..init(
+          true,
+          PaddedBlockCipherParameters<CipherParameters, CipherParameters>(
+            ParametersWithIV<KeyParameter>(KeyParameter(key), iv),
+            null,
+          ),
+        );
+      final cipherBytes = cipher.process(plainBytes);
+
+      // Compute HMAC-SHA256 for integrity and authenticity
+      final hmac = Hmac(sha256, key);
+      final hmacDigest = hmac.convert([...iv, ...cipherBytes]).bytes;
+
+      return 'v1:${base64Encode(iv)}:${base64Encode(hmacDigest)}:${base64Encode(cipherBytes)}';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static String decrypt(String encryptedText) {
+    if (encryptedText.isEmpty || !encryptedText.startsWith('v1:')) return '';
+    try {
+      final parts = encryptedText.split(':');
+      if (parts.length != 4) return '';
+      final iv = base64Decode(parts[1]);
+      final hmacExpected = base64Decode(parts[2]);
+      final cipherBytes = base64Decode(parts[3]);
+      final key = _deriveKey();
+
+      // Verify HMAC first
+      final hmac = Hmac(sha256, key);
+      final computedDigest = hmac.convert([...iv, ...cipherBytes]).bytes;
+      if (computedDigest.length != hmacExpected.length) return '';
+      for (int i = 0; i < computedDigest.length; i++) {
+        if (computedDigest[i] != hmacExpected[i]) return '';
+      }
+
+      final cipher = PaddedBlockCipherImpl(
+        PKCS7Padding(),
+        CBCBlockCipher(AESEngine()),
+      )..init(
+          false,
+          PaddedBlockCipherParameters<CipherParameters, CipherParameters>(
+            ParametersWithIV<KeyParameter>(KeyParameter(key), Uint8List.fromList(iv)),
+            null,
+          ),
+        );
+      final decrypted = cipher.process(Uint8List.fromList(cipherBytes));
+      return utf8.decode(decrypted);
+    } catch (_) {
+      return '';
+    }
+  }
+}
+
+/// Connection metadata and locally encrypted credentials.
 class SshProfile {
   final String name;
   final String host;
   final int port;
   final String username;
   final SshAuthMethod authMethod;
+  final String? encryptedPassword;
+  final String? encryptedPrivateKey;
+  final String? encryptedPassphrase;
+  final bool rememberCredentials;
 
   const SshProfile({
     required this.name,
@@ -19,7 +101,48 @@ class SshProfile {
     this.port = 22,
     required this.username,
     this.authMethod = SshAuthMethod.password,
+    this.encryptedPassword,
+    this.encryptedPrivateKey,
+    this.encryptedPassphrase,
+    this.rememberCredentials = false,
   });
+
+  String get password =>
+      encryptedPassword != null ? SshCredentialCrypto.decrypt(encryptedPassword!) : '';
+  String get privateKey =>
+      encryptedPrivateKey != null ? SshCredentialCrypto.decrypt(encryptedPrivateKey!) : '';
+  String get passphrase =>
+      encryptedPassphrase != null ? SshCredentialCrypto.decrypt(encryptedPassphrase!) : '';
+
+  static SshProfile withCredentials({
+    required String name,
+    required String host,
+    int port = 22,
+    required String username,
+    SshAuthMethod authMethod = SshAuthMethod.password,
+    String? password,
+    String? privateKey,
+    String? passphrase,
+    bool rememberCredentials = true,
+  }) {
+    return SshProfile(
+      name: name,
+      host: host,
+      port: port,
+      username: username,
+      authMethod: authMethod,
+      encryptedPassword: (rememberCredentials && password != null && password.isNotEmpty)
+          ? SshCredentialCrypto.encrypt(password)
+          : null,
+      encryptedPrivateKey: (rememberCredentials && privateKey != null && privateKey.isNotEmpty)
+          ? SshCredentialCrypto.encrypt(privateKey)
+          : null,
+      encryptedPassphrase: (rememberCredentials && passphrase != null && passphrase.isNotEmpty)
+          ? SshCredentialCrypto.encrypt(passphrase)
+          : null,
+      rememberCredentials: rememberCredentials,
+    );
+  }
 
   String get authority => '${host.trim().toLowerCase()}:$port';
   String get identity => '$username@$authority';
@@ -49,6 +172,10 @@ class SshProfile {
         'port': port,
         'username': username.trim(),
         'authMethod': authMethod.name,
+        if (encryptedPassword != null) 'encryptedPassword': encryptedPassword,
+        if (encryptedPrivateKey != null) 'encryptedPrivateKey': encryptedPrivateKey,
+        if (encryptedPassphrase != null) 'encryptedPassphrase': encryptedPassphrase,
+        if (rememberCredentials) 'rememberCredentials': true,
       };
 
   factory SshProfile.fromJson(Map<String, dynamic> json) => SshProfile(
@@ -59,6 +186,10 @@ class SshProfile {
         authMethod: json['authMethod'] == 'privateKey'
             ? SshAuthMethod.privateKey
             : SshAuthMethod.password,
+        encryptedPassword: json['encryptedPassword'] as String?,
+        encryptedPrivateKey: json['encryptedPrivateKey'] as String?,
+        encryptedPassphrase: json['encryptedPassphrase'] as String?,
+        rememberCredentials: json['rememberCredentials'] as bool? ?? false,
       );
 }
 
