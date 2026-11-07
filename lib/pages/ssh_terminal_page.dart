@@ -547,83 +547,88 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
     final busy = _connecting || _connected;
     final wide = MediaQuery.sizeOf(context).width >= 920;
     final showTerminal = _connected;
-    final form = _buildForm(busy);
-    final panelBody = _configExpanded
-        ? (showTerminal
-            ? ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 320),
-                child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: form))
-            : Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: form))
-        : const SizedBox.shrink();
-    final connectionPanel = Material(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(12),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(
-            dense: true,
-            title: const Text('连接配置'),
-            subtitle:
-                Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis),
-            trailing:
-                Icon(_configExpanded ? Icons.expand_less : Icons.expand_more),
-            onTap: () => setState(() => _configExpanded = !_configExpanded)),
-        panelBody,
-      ]),
-    );
-    final content = !showTerminal
-        ? SingleChildScrollView(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints:
-                    BoxConstraints(maxWidth: wide ? 680 : double.infinity),
-                child: connectionPanel,
-              ),
+
+    if (showTerminal) {
+      // STAGE 2: 二级界面 - 终端全屏独占会话
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _confirmDisconnect();
+        },
+        child: Scaffold(
+          resizeToAvoidBottomInset: true,
+          appBar: AppBar(
+            titleSpacing: 0,
+            leading: IconButton(
+              tooltip: '断开并返回配置',
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: _confirmDisconnect,
             ),
-          )
-        : _buildTerminal();
-    return Scaffold(
-      resizeToAvoidBottomInset: showTerminal,
-      appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('SSH 安全终端'),
-            if (_connected) ...[
-              const SizedBox(width: 8),
-              Flexible(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
-                  ),
-                  child: Text(
-                    _profile.identity,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('SSH 终端'),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
+                    ),
+                    child: Text(
+                      '● ${_profile.identity}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
+              ],
+            ),
+            actions: [
+              IconButton(
+                tooltip: '缩小字体 (当前 ${_fontSize.toInt()}pt)',
+                onPressed: () => setState(
+                    () => _fontSize = (_fontSize - 2).clamp(8.0, 42.0)),
+                icon: const Icon(Icons.text_decrease, size: 20),
+              ),
+              IconButton(
+                tooltip: '放大字体 (当前 ${_fontSize.toInt()}pt)',
+                onPressed: () => setState(
+                    () => _fontSize = (_fontSize + 2).clamp(8.0, 42.0)),
+                icon: const Icon(Icons.text_increase, size: 20),
+              ),
+              IconButton(
+                tooltip: '复制选项与粘贴',
+                onPressed: _showCopyMenu,
+                icon: const Icon(Icons.copy_rounded, size: 20),
+              ),
+              IconButton(
+                tooltip: '断开 SSH 连接',
+                icon: const Icon(Icons.power_settings_new_rounded, color: Colors.redAccent),
+                onPressed: _confirmDisconnect,
               ),
             ],
-          ],
+          ),
+          body: SafeArea(
+            child: _buildTerminal(),
+          ),
         ),
+      );
+    }
+
+    // STAGE 1: 一级界面 - 连接配置与会话管理
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      appBar: AppBar(
+        title: const Text('SSH 安全终端'),
         actions: [
-          if (_connected)
-            IconButton(
-              tooltip: '断开连接',
-              icon: const Icon(Icons.power_settings_new_rounded, color: Colors.redAccent),
-              onPressed: _confirmDisconnect,
-            ),
           IconButton(
             tooltip: '已信任的服务器',
             onPressed: busy ? null : _showKnownHosts,
@@ -632,20 +637,28 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
         ],
       ),
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(wide ? (showTerminal ? 10 : 20) : (showTerminal ? 4 : 10)),
-          child: content,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(wide ? 20 : 12),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: wide ? 680 : double.infinity),
+              child: _buildForm(busy),
+            ),
+          ),
         ),
       ),
     );
   }
 
   Widget _buildForm(bool busy) {
+    final theme = Theme.of(context);
     Widget field(TextEditingController controller, String label,
             {Key? key,
             bool secret = false,
             TextInputType? keyboard,
-            String? hint}) =>
+            String? hint,
+            int maxLines = 1}) =>
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: TextField(
@@ -656,223 +669,276 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
               autocorrect: false,
               enableSuggestions: false,
               keyboardType: keyboard,
+              maxLines: maxLines,
               decoration: InputDecoration(
                   labelText: label,
                   hintText: hint,
                   border: const OutlineInputBorder(),
                   isDense: true)),
         );
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('加密连接 · 本机直连', style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 6),
-      const Text('配置与凭据经本地 AES-256 加密保护，防止被其它恶意插件窃取或上传利用。',
-          style: TextStyle(fontSize: 12)),
-      const SizedBox(height: 16),
-      if (_profiles.isNotEmpty) ...[
-        PopupMenuButton<SshProfile>(
-            enabled: !busy,
-            onSelected: _selectProfile,
-            itemBuilder: (_) => _profiles
-                .map((profile) => PopupMenuItem(
-                    value: profile,
-                    child: Text(
-                        '${profile.name.isEmpty ? profile.host : profile.name}\n${profile.identity}')))
-                .toList(),
-            child: const ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.bookmarks_outlined),
-                title: Text('选择已保存连接'),
-                trailing: Icon(Icons.arrow_drop_down))),
-      ],
-      field(_name, '连接名称（可选）'),
-      field(_host, '主机 / IP',
-          key: const Key('ssh-host'),
-          hint: '192.168.1.10 或 server.example.com'),
-      Row(children: [
-        Expanded(flex: 2, child: field(_user, '用户名')),
-        const SizedBox(width: 10),
-        Expanded(child: field(_port, '端口', keyboard: TextInputType.number))
-      ]),
-      SegmentedButton<SshAuthMethod>(
-          segments: const [
-            ButtonSegment(
-                value: SshAuthMethod.password,
-                label: Text('密码'),
-                icon: Icon(Icons.password)),
-            ButtonSegment(
-                value: SshAuthMethod.privateKey,
-                label: Text('私钥'),
-                icon: Icon(Icons.key)),
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+          width: 1,
+        ),
+      ),
+      color: theme.colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(
+            children: [
+              Icon(Icons.terminal_rounded, color: theme.colorScheme.primary, size: 26),
+              const SizedBox(width: 10),
+              Text('连接配置', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  _status,
+                  style: TextStyle(fontSize: 11.5, color: theme.colorScheme.primary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.shield_outlined, size: 20, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '🔐 本地安全加密 · 直连无中转\n所有配置与凭据经 AES-256 本地加密存储，有效防范恶意插件窃取。',
+                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (_profiles.isNotEmpty) ...[
+            PopupMenuButton<SshProfile>(
+                enabled: !busy,
+                onSelected: _selectProfile,
+                itemBuilder: (_) => _profiles
+                    .map((profile) => PopupMenuItem(
+                        value: profile,
+                        child: Text(
+                            '${profile.name.isEmpty ? profile.host : profile.name}\n${profile.identity}')))
+                    .toList(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: theme.colorScheme.outlineVariant),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.bookmark_border_rounded, size: 18),
+                      SizedBox(width: 8),
+                      Text('快速载入已保存的连接'),
+                      Spacer(),
+                      Icon(Icons.arrow_drop_down),
+                    ],
+                  ),
+                )),
           ],
-          selected: {
-            _auth
-          },
-          onSelectionChanged: busy
-              ? null
-              : (selection) => setState(() => _auth = selection.single)),
-      const SizedBox(height: 14),
-      if (_auth == SshAuthMethod.password)
-        field(_password, 'SSH 密码', secret: true)
-      else ...[
-        field(_privateKey, 'PEM / OpenSSH 私钥（粘贴或导入）', secret: true),
-        OutlinedButton.icon(
-            onPressed: busy ? null : _importKey,
-            icon: const Icon(Icons.file_open_outlined),
-            label: const Text('导入私钥文件')),
-        const SizedBox(height: 12),
-        field(_passphrase, '私钥口令（未加密则留空）', secret: true),
-      ],
-      SwitchListTile.adaptive(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          title: const Text('显示认证信息'),
-          value: _showPassword,
-          onChanged:
-              busy ? null : (value) => setState(() => _showPassword = value)),
-      CheckboxListTile(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          title: const Text('记住密码/私钥（本机安全加密保存）'),
-          subtitle: const Text('断开或下次打开无需重新输入，凭据仅在本地解密',
-              style: TextStyle(fontSize: 11)),
-          value: _rememberCredentials,
-          onChanged:
-              busy ? null : (val) => setState(() => _rememberCredentials = val ?? false)),
-      if (_error != null)
-        Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(_error!,
-                key: const Key('ssh-error'),
-                style: TextStyle(color: Theme.of(context).colorScheme.error))),
-      FilledButton.icon(
-          key: const Key('ssh-connect'),
-          onPressed: busy ? _disconnect : _connect,
-          icon: Icon(busy ? Icons.stop_circle_outlined : Icons.terminal),
-          label: Text(_connecting
-              ? '取消连接'
-              : _connected
-                  ? '断开连接'
-                  : '连接服务器')),
-      const SizedBox(height: 8),
-      OutlinedButton.icon(
-          onPressed: busy ? null : _saveProfile,
-          icon: const Icon(Icons.save_outlined),
-          label: const Text('保存连接配置')),
-      if (_profiles.any((entry) => entry.identity == _profile.identity))
-        TextButton(
-            onPressed: busy
-                ? null
-                : () async {
-                    try {
-                      final profiles = _profiles
-                          .where((entry) => entry.identity != _profile.identity)
-                          .toList();
-                      await _profilesStore.save(profiles);
-                      if (mounted) setState(() => _profiles = profiles);
-                    } catch (_) {
-                      if (mounted) setState(() => _error = '连接配置删除失败，请稍后重试');
-                    }
-                  },
-            child: const Text('删除当前已保存配置')),
-      const SizedBox(height: 12),
-    ]);
+          field(_name, '连接名称（可选备注）', hint: '例如：生产主控 / 测试节点'),
+          Row(children: [
+            Expanded(flex: 3, child: field(_host, '主机 / IP 地址',
+                key: const Key('ssh-host'),
+                hint: '47.253.208.133 或 domain.com')),
+            const SizedBox(width: 10),
+            Expanded(flex: 1, child: field(_port, '端口', keyboard: TextInputType.number, hint: '22'))
+          ]),
+          field(_user, '登录用户名', hint: 'root'),
+          const SizedBox(height: 4),
+          SegmentedButton<SshAuthMethod>(
+              segments: const [
+                ButtonSegment(
+                    value: SshAuthMethod.password,
+                    label: Text('密码'),
+                    icon: Icon(Icons.password_rounded)),
+                ButtonSegment(
+                    value: SshAuthMethod.privateKey,
+                    label: Text('私钥'),
+                    icon: Icon(Icons.key_rounded)),
+              ],
+              selected: {_auth},
+              onSelectionChanged: busy
+                  ? null
+                  : (selection) => setState(() => _auth = selection.single)),
+          const SizedBox(height: 14),
+          if (_auth == SshAuthMethod.password)
+            field(_password, 'SSH 登录密码', secret: true, hint: '输入远程主机密码')
+          else ...[
+            Row(
+              children: [
+                const Text('PEM / OpenSSH 私钥', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                const Spacer(),
+                OutlinedButton.icon(
+                    onPressed: busy ? null : _importKey,
+                    icon: const Icon(Icons.folder_open_rounded, size: 16),
+                    label: const Text('导入私钥文件')),
+              ],
+            ),
+            const SizedBox(height: 8),
+            field(_privateKey, '私钥内容', maxLines: 3, hint: '点击上方导入或直接粘贴 -----BEGIN... 私钥内容'),
+            field(_passphrase, '私钥口令（未加密则留空）', secret: true),
+          ],
+          SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('明文显示认证信息'),
+              value: _showPassword,
+              onChanged:
+                  busy ? null : (value) => setState(() => _showPassword = value)),
+          CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('记住密码/私钥（本地 AES-256 加密保存）'),
+              subtitle: const Text('凭据仅在本地安全解密，后续连接无需反复输入',
+                  style: TextStyle(fontSize: 11)),
+              value: _rememberCredentials,
+              onChanged:
+                  busy ? null : (val) => setState(() => _rememberCredentials = val ?? false)),
+          if (_error != null)
+            Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline_rounded, color: theme.colorScheme.error, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(_error!,
+                            key: const Key('ssh-error'),
+                            style: TextStyle(color: theme.colorScheme.error, fontSize: 13)),
+                      ),
+                    ],
+                  ),
+                )),
+          const SizedBox(height: 6),
+          FilledButton.icon(
+              key: const Key('ssh-connect'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: busy ? _disconnect : _connect,
+              icon: _connecting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : Icon(busy ? Icons.stop_circle_outlined : Icons.bolt_rounded),
+              label: Text(_connecting
+                  ? '正在建立安全连接…'
+                  : _connected
+                      ? '断开连接'
+                      : '连接远程终端')),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+              onPressed: busy ? null : _saveProfile,
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('保存此连接配置')),
+          if (_profiles.any((entry) => entry.identity == _profile.identity))
+            TextButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        try {
+                          final profiles = _profiles
+                              .where((entry) => entry.identity != _profile.identity)
+                              .toList();
+                          await _profilesStore.save(profiles);
+                          if (mounted) setState(() => _profiles = profiles);
+                        } catch (_) {
+                          if (mounted) setState(() => _error = '连接配置删除失败，请稍后重试');
+                        }
+                      },
+                child: const Text('删除当前已保存配置', style: TextStyle(color: Colors.redAccent))),
+        ]),
+      ),
+    );
   }
 
-  Widget _buildTerminal() => ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: ColoredBox(
-            color: const Color(0xFF10151F),
-            child: Column(children: [
-              Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  color: const Color(0xFF1C2534),
-                  child: Row(children: [
-                    Icon(Icons.circle,
-                        size: 9,
-                        color: _connected
-                            ? Colors.greenAccent
-                            : _connecting
-                                ? Colors.amber
-                                : Colors.blueGrey),
-                    const SizedBox(width: 8),
-                    Expanded(
-                        child: Text(
-                            _connected
-                                ? '● 会话在线 · 字体 ${_fontSize.toInt()}pt'
-                                : _status,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 12))),
-                    if (_connecting)
-                      const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
-                    IconButton(
-                        tooltip: '复制选项与粘贴',
-                        onPressed: _showCopyMenu,
-                        icon: const Icon(Icons.copy_rounded,
-                            color: Colors.white70, size: 18)),
-                    IconButton(
-                        tooltip: '缩小字体 (当前 ${_fontSize.toInt()}pt)',
-                        onPressed: () => setState(
-                            () => _fontSize = (_fontSize - 2).clamp(8.0, 42.0)),
-                        icon: const Icon(Icons.text_decrease,
-                            color: Colors.white70, size: 18)),
-                    IconButton(
-                        tooltip: '放大字体 (当前 ${_fontSize.toInt()}pt)',
-                        onPressed: () => setState(
-                            () => _fontSize = (_fontSize + 2).clamp(8.0, 42.0)),
-                        icon: const Icon(Icons.text_increase,
-                            color: Colors.white70, size: 18)),
-                    if (_connected || _connecting)
-                      IconButton(
-                          tooltip: '断开 SSH 连接',
-                          onPressed: _confirmDisconnect,
-                          icon: const Icon(Icons.close,
-                              color: Colors.white70, size: 18)),
-                  ])),
-              Expanded(
-                  child: TerminalView(_terminal,
-                      controller: _terminalController,
-                      focusNode: _terminalFocus,
-                      readOnly: !_connected,
-                      padding: const EdgeInsets.all(10),
-                      textStyle: TerminalStyle(fontSize: _fontSize),
-                      keyboardType: TextInputType.visiblePassword,
-                      // Windows desktop key events are delivered directly by
-                      // xterm's hardware listener. Mobile keeps the native
-                      // text-input connection for the on-screen keyboard.
-                      hardwareKeyboardOnly: Platform.isWindows,
-                      deleteDetection: true)),
-              SizedBox(
-                  height: 44,
-                  child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: Row(children: [
-                        _terminalButton(
-                            'Ctrl', () => setState(() => _ctrl = !_ctrl),
-                            selected: _ctrl),
-                        _terminalButton('Esc', () => _service.send('\x1b')),
-                        _terminalButton('Tab', () => _service.send('\t')),
-                        _terminalButton('Ctrl+C', () => _service.send('\x03')),
-                        _terminalButton('↑', () => _service.send('\x1b[A')),
-                        _terminalButton('↓', () => _service.send('\x1b[B')),
-                        _terminalButton('←', () => _service.send('\x1b[D')),
-                        _terminalButton('→', () => _service.send('\x1b[C')),
-                        _terminalButton('选区复制', () => _copy(all: false)),
-                        _terminalButton('全部复制', () => _copy(all: true)),
-                        _terminalButton('粘贴', _paste),
-                        TextButton(
-                            onPressed: () {
-                              _terminal.write('\x1b[2J\x1b[H\x1b[3J');
-                            },
-                            child: const Text('清屏')),
-                      ]))),
-            ])),
+  Widget _buildTerminal() => ColoredBox(
+        color: const Color(0xFF0F141F),
+        child: Column(
+          children: [
+            Expanded(
+              child: TerminalView(
+                _terminal,
+                controller: _terminalController,
+                focusNode: _terminalFocus,
+                readOnly: !_connected,
+                padding: const EdgeInsets.all(10),
+                textStyle: TerminalStyle(fontSize: _fontSize),
+                keyboardType: TextInputType.visiblePassword,
+                hardwareKeyboardOnly: Platform.isWindows,
+                deleteDetection: true,
+              ),
+            ),
+            Container(
+              height: 44,
+              color: const Color(0xFF161F2E),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Row(
+                  children: [
+                    _terminalButton(
+                        'Ctrl', () => setState(() => _ctrl = !_ctrl),
+                        selected: _ctrl),
+                    _terminalButton('Esc', () => _service.send('\x1b')),
+                    _terminalButton('Tab', () => _service.send('\t')),
+                    _terminalButton('Ctrl+C', () => _service.send('\x03')),
+                    _terminalButton('↑', () => _service.send('\x1b[A')),
+                    _terminalButton('↓', () => _service.send('\x1b[B')),
+                    _terminalButton('←', () => _service.send('\x1b[D')),
+                    _terminalButton('→', () => _service.send('\x1b[C')),
+                    _terminalButton('选区复制', () => _copy(all: false)),
+                    _terminalButton('全部复制', () => _copy(all: true)),
+                    _terminalButton('粘贴', _paste),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.lightBlueAccent,
+                        minimumSize: const Size(44, 40),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      onPressed: () {
+                        _terminal.write('\x1b[2J\x1b[H\x1b[3J');
+                      },
+                      child: const Text('清屏'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       );
 
   Widget _terminalButton(String label, VoidCallback onPressed,
