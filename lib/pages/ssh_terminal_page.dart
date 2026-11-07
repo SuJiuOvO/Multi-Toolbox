@@ -35,7 +35,6 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
   SshAuthMethod _auth = SshAuthMethod.password;
   bool _connecting = false;
   bool _connected = false;
-  bool _configExpanded = true;
   bool _ctrl = false;
   bool _showPassword = false;
   bool _rememberCredentials = true;
@@ -205,7 +204,6 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
         _connected = _service.isConnected;
         _connecting = false;
         _ctrl = false;
-        _configExpanded = false;
         _status = _connected ? '已连接 · ${_profile.identity}' : '远程会话已结束';
       });
       if (_connected) _requestTerminalFocus();
@@ -304,6 +302,95 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
     } catch (_) {
       if (mounted) {
         setState(() => _error = '无法导入：请选择 1MB 以内的 PEM / OpenSSH 私钥文件');
+      }
+    }
+  }
+
+
+  Future<void> _importKeyFromDirectory() async {
+    try {
+      final dirPath = await FilePicker.platform.getDirectoryPath();
+      if (dirPath == null || !mounted) return;
+      final dir = Directory(dirPath);
+      if (!await dir.exists()) {
+        if (mounted) setState(() => _error = '所选目录不存在');
+        return;
+      }
+      final entries = await dir.list(followLinks: false).toList();
+      final files = entries.whereType<File>().toList();
+      if (files.isEmpty) {
+        if (mounted) setState(() => _error = '所选目录中未发现文件');
+        return;
+      }
+
+      files.sort((a, b) {
+        final aName = a.uri.pathSegments.last.toLowerCase();
+        final bName = b.uri.pathSegments.last.toLowerCase();
+        final aKey = aName.contains('id_') ||
+            aName.endsWith('.pem') ||
+            aName.endsWith('.key');
+        final bKey = bName.contains('id_') ||
+            bName.endsWith('.pem') ||
+            bName.endsWith('.key');
+        if (aKey && !bKey) return -1;
+        if (!aKey && bKey) return 1;
+        return aName.compareTo(bName);
+      });
+
+      if (!mounted) return;
+      final selectedFile = await showDialog<File>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('从目录选择私钥'),
+          content: SizedBox(
+            width: 480,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: files.length > 40 ? 40 : files.length,
+              itemBuilder: (c, idx) {
+                final f = files[idx];
+                final name = f.uri.pathSegments.last;
+                final isKeyLike = name.contains('id_') ||
+                    name.endsWith('.pem') ||
+                    name.endsWith('.key');
+                return ListTile(
+                  leading: Icon(
+                    isKeyLike ? Icons.vpn_key_rounded : Icons.description_outlined,
+                    color: isKeyLike ? Colors.amber : null,
+                  ),
+                  title: Text(name),
+                  onTap: () => Navigator.pop(ctx, f),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+          ],
+        ),
+      );
+
+      if (selectedFile == null || !mounted) return;
+      final len = await selectedFile.length();
+      if (len > 1024 * 1024) throw const FormatException();
+      final bytes = await selectedFile.readAsBytes();
+      final content = utf8.decode(bytes);
+      if (!content.contains('PRIVATE KEY-----')) {
+        if (mounted) setState(() => _error = '所选文件不是有效的 PEM / OpenSSH 私钥');
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _privateKey.text = content;
+          _error = null;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = '无法从目录读取私钥，请直接使用“选择私钥文件”');
       }
     }
   }
@@ -453,12 +540,86 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
                 },
               ),
               ListTile(
+                leading: const Icon(Icons.article_outlined, color: Colors.purpleAccent),
+                title: const Text('在弹窗中框选/长按复制终端文本'),
+                subtitle: const Text('提供文本框选视图，支持原生触摸光标精确长按复制'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showTextInspector();
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.paste_rounded, color: Colors.amberAccent),
                 title: const Text('粘贴剪贴板命令'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _paste();
                 },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  void _showTextInspector() {
+    final lines = <String>[];
+    for (int i = 0; i < _terminal.buffer.lines.length; i++) {
+      final line = _terminal.buffer.lines[i].toString().trimRight();
+      if (line.isNotEmpty) lines.add(line);
+    }
+    final fullText = lines.join('\n');
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (c, scrollCtrl) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Text('终端历史文本（长按框选复制）',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  TextButton.icon(
+                    icon: const Icon(Icons.copy_all_rounded, size: 18),
+                    label: const Text('全选复制'),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: fullText));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('已复制全部文本到剪贴板')),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollCtrl,
+                  child: SelectableText(
+                    fullText.isEmpty ? '(暂无终端输出内容)' : fullText,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: _fontSize,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -787,14 +948,21 @@ class _SshTerminalPageState extends State<SshTerminalPage> {
           if (_auth == SshAuthMethod.password)
             field(_password, 'SSH 登录密码', secret: true, hint: '输入远程主机密码')
           else ...[
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const Text('PEM / OpenSSH 私钥', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                const Spacer(),
+                const SizedBox(width: 4),
                 OutlinedButton.icon(
                     onPressed: busy ? null : _importKey,
-                    icon: const Icon(Icons.folder_open_rounded, size: 16),
+                    icon: const Icon(Icons.insert_drive_file_outlined, size: 15),
                     label: const Text('导入私钥文件')),
+                OutlinedButton.icon(
+                    onPressed: busy ? null : _importKeyFromDirectory,
+                    icon: const Icon(Icons.folder_open_rounded, size: 15),
+                    label: const Text('从文件夹导入')),
               ],
             ),
             const SizedBox(height: 8),
